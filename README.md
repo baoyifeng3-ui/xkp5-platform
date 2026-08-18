@@ -1,8 +1,22 @@
-# Match 比赛系统
+# XKP5.0平台
 
-项目采用本地优先的开发方式：MySQL 和 FastDFS 在 Docker 中运行，Vue 与
-Spring Boot 直接在 macOS 上运行。修改代码后可以立即热更新，部署时再使用完整
-Docker Compose。
+本仓库是 XKP5.0 管理服务器的独立代码库，复用原竞赛平台的 Vue 2 与 Spring
+Boot 基线，但后续提交、版本和部署均与原 `competition` 仓库分离。处理服务器、
+Docker 容器编排、CUDA MPS 和离线授权将在后续阶段通过 Agent 接入。
+
+当前第一阶段已经提供三类独立工作区：
+
+- 超级管理员：系统运维和普通管理员账号维护。
+- 普通管理员：主页、课程、资源、实训、竞赛、用户和设备管理。
+- 普通用户：课程平台、资源中心和实训环境。
+
+竞赛管理继续复用原平台的比赛控制、赛程赛规、试卷题目、试卷评分、比赛账号、
+比赛设备和平台设置；“比赛预览”以参赛用户视角只读显示原有四个比赛页面。
+
+## 仓库边界
+
+开发目录为 `xkp5-platform`。不要在原 `competition` 仓库提交 XKP5.0 的改动，
+也不要把原仓库的 `.git`、`.env`、数据库目录、`node_modules` 或构建产物复制进来。
 
 ## 本地端口
 
@@ -15,6 +29,9 @@ Docker Compose。
 | FastDFS | 22122 / 23000 / 8888 |
 
 ## 第一次配置
+
+环境要求：JDK 17、Maven 3.9、Node.js 16、Docker Desktop 与 Docker Compose。
+Windows 开发可使用 PowerShell；生产服务器目标为 Ubuntu 22.04 amd64。
 
 1. 创建本地配置并填写你自己的 MySQL 密码：
 
@@ -91,7 +108,22 @@ npm run serve
 浏览器打开 http://localhost:19140。前端统一通过 `/api`、`/dataset` 和
 `/files` 访问后端及资源，不需要修改 IP。
 
-管理员初始账号为 `admin`，初始密码为 `admin`。第一次登录必须修改密码。
+超级管理员初始账号为 `admin`，初始密码为 `admin`。第一次登录必须修改密码。
+超级管理员登录后在“管理员账号”中创建日常使用的普通管理员；新管理员首次登录同样
+必须修改初始密码。
+
+### Windows Docker 整体启动
+
+Docker Hub 网络可用时，可直接构建并启动完整管理服务器：
+
+```powershell
+Copy-Item .env.prod.example .env
+docker compose --env-file .env -f compose.prod.yml up -d --build
+docker compose --env-file .env -f compose.prod.yml ps
+```
+
+访问 `http://localhost:19140`。如果构建提示无法连接 `auth.docker.io:443`，这是
+Docker Desktop 到 Docker Hub 的网络或代理问题，不是项目代码或数据库错误。
 
 ## 停止
 

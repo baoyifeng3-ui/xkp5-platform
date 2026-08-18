@@ -2,17 +2,17 @@
     <div class="login-box" :style="loginStyle">
         <header class="login-brand">
             <span class="login-brand-mark" />
-            <div><strong>{{ loginBrandName }}</strong><small>Competition Console</small></div>
+            <div><strong>{{ loginBrandName }}</strong><small>Management Platform</small></div>
         </header>
         <main class="login-shell">
             <section class="login-intro">
-                <span class="login-kicker">人工智能技术与应用大赛</span>
+                <span class="login-kicker">课程 · 实训 · 竞赛一体化管理</span>
                 <h1>{{ loginTitle }}</h1>
                 <p>{{ loginDescription }}</p>
-                <div class="login-state"><i />竞赛服务就绪</div>
+                <div class="login-state"><i />平台服务就绪</div>
             </section>
             <el-card class="login-card" shadow="never">
-                <div class="login-card-heading"><span>账号登录</span><small>请使用分配的比赛账号</small></div>
+                <div class="login-card-heading"><span>账号登录</span><small>请使用已分配的平台账号</small></div>
                 <el-form :model="ruleForm" :rules="rules" ref="ruleForm" label-position="top" class="login-form">
                     <el-form-item label="账号" prop="UserName">
                         <el-input v-model="ruleForm.UserName" prefix-icon="el-icon-user" autocomplete="username" placeholder="请输入账号" />

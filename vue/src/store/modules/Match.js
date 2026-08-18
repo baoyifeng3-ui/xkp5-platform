@@ -2,7 +2,7 @@ import { userLoginApi, scoreTopApi, scoreApi, trainUrlApi, getUserApi, getTeamUs
 import { setToken, getToken, setPlan, getPlan, setUserName, getUserName, setUserInfo, getUserInfo, clearSession } from "@/utils/auth"
 import { Message } from 'element-ui'
 
-const DEFAULT_PLATFORM_NAME = '数据杯管理台'
+const DEFAULT_PLATFORM_NAME = 'XKP5.0平台'
 const DEFAULT_THEME_COLOR = '#162d45'
 
 const state = {
@@ -15,10 +15,10 @@ const state = {
     platformName: DEFAULT_PLATFORM_NAME,
     themeColor: DEFAULT_THEME_COLOR,
     loginBackgroundUrl: '',
-    loginBrandName: '数智杯竞赛平台-登陆页',
-    loginTitle: '进入比赛工作台',
-    loginDescription: '参赛账号可在开放登录后进入平台，比赛开始前将显示赛前倒计时。',
-    loginCopyright: '2026 数智杯人工智能比赛平台',
+    loginBrandName: 'XKP5.0平台',
+    loginTitle: '进入平台工作台',
+    loginDescription: '请使用已分配的平台账号登录。',
+    loginCopyright: '2026 XKP5.0平台',
     tableData: [],
     plan: getPlan("Plan"),
     activePaper: getPlan() || '',
@@ -66,10 +66,10 @@ const mutations = {
             ? String(value.themeColor).toLowerCase()
             : DEFAULT_THEME_COLOR
         state.loginBackgroundUrl = String(value.loginBackgroundUrl || '').trim()
-        state.loginBrandName = String(value.loginBrandName || '').trim() || '数智杯竞赛平台-登陆页'
-        state.loginTitle = String(value.loginTitle || '').trim() || '进入比赛工作台'
-        state.loginDescription = String(value.loginDescription || '').trim() || '参赛账号可在开放登录后进入平台，比赛开始前将显示赛前倒计时。'
-        state.loginCopyright = String(value.loginCopyright || '').trim() || '2026 数智杯人工智能比赛平台'
+        state.loginBrandName = String(value.loginBrandName || '').trim() || 'XKP5.0平台'
+        state.loginTitle = String(value.loginTitle || '').trim() || '进入平台工作台'
+        state.loginDescription = String(value.loginDescription || '').trim() || '请使用已分配的平台账号登录。'
+        state.loginCopyright = String(value.loginCopyright || '').trim() || '2026 XKP5.0平台'
         document.documentElement.style.setProperty('--platform-theme-color', state.themeColor)
     },
     SET_URL (state, url) {
@@ -89,10 +89,10 @@ const mutations = {
         state.platformName = DEFAULT_PLATFORM_NAME
         state.themeColor = DEFAULT_THEME_COLOR
         state.loginBackgroundUrl = ''
-        state.loginBrandName = '数智杯竞赛平台-登陆页'
-        state.loginTitle = '进入比赛工作台'
-        state.loginDescription = '参赛账号可在开放登录后进入平台，比赛开始前将显示赛前倒计时。'
-        state.loginCopyright = '2026 数智杯人工智能比赛平台'
+        state.loginBrandName = 'XKP5.0平台'
+        state.loginTitle = '进入平台工作台'
+        state.loginDescription = '请使用已分配的平台账号登录。'
+        state.loginCopyright = '2026 XKP5.0平台'
         state.plan = ''
         state.activePaper = ''
     }
