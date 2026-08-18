@@ -50,4 +50,7 @@ public class User implements Serializable {
     @TableField("is_admin")
     private Boolean isAdmin;
 
+    @TableField("role")
+    private String role;
+
 }
