@@ -36,3 +36,8 @@ match:
     script: ${MATCH_SCORING_SCRIPT:python/evaluation_score.py}
     annotations-root: ${MATCH_SCORING_ANNOTATIONS_ROOT:python}
     timeout-seconds: ${MATCH_SCORING_TIMEOUT_SECONDS:30}
+
+xkp:
+  licensing:
+    environment: DEVELOPMENT
+    development-identity: ${XKP_DEVELOPMENT_IDENTITY:windows-docker-development}

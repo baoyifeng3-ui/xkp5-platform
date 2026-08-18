@@ -33,3 +33,8 @@ match:
     script: ${MATCH_SCORING_SCRIPT:/app/python/evaluation_score.py}
     annotations-root: ${MATCH_SCORING_ANNOTATIONS_ROOT:/data/scoring}
     timeout-seconds: ${MATCH_SCORING_TIMEOUT_SECONDS:30}
+
+xkp:
+  licensing:
+    environment: PRODUCTION
+    host-identity-file: ${XKP_HOST_IDENTITY_FILE:/etc/xkp/host-identity.json}
