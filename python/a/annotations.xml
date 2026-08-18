@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<annotations>
+  <version>1.1</version>
+  <meta>
+    <task>
+      <id>11</id>
+      <name>matchA_test</name>
+      <size>10</size>
+      <mode>annotation</mode>
+      <overlap>0</overlap>
+      <bugtracker></bugtracker>
+      <created>2022-04-08 04:13:16.023352+00:00</created>
+      <updated>2022-04-08 04:20:34.299085+00:00</updated>
+      <start_frame>0</start_frame>
+      <stop_frame>9</stop_frame>
+      <frame_filter></frame_filter>
+      <labels>
+        <label>
+          <name>horse</name>
+          <color>#fa3253</color>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>cow</name>
+          <color>#b83df5</color>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>sheep</name>
+          <color>#83e070</color>
+          <attributes>
+          </attributes>
+        </label>
+      </labels>
+      <segments>
+        <segment>
+          <id>4</id>
+          <start>0</start>
+          <stop>9</stop>
+          <url>/dataset/A</url>
+        </segment>
+      </segments>
+      <owner>
+        <username>data</username>
+        <email></email>
+      </owner>
+      <assignee></assignee>
+    </task>
+    <dumped>2022-04-08 04:20:44.174287+00:00</dumped>
+  </meta>
+  <image id="9" name="a/dataset/test/9.jpg" width="480" height="640">
+    <box label="sheep" occluded="0" source="manual" xtl="57.10" ytl="163.73" xbr="176.17" ybr="233.90" z_order="0">
+    </box>
+    <box label="sheep" occluded="0" source="manual" xtl="292.05" ytl="393.40" xbr="401.60" ybr="486.92" z_order="0">
+    </box>
+    <box label="sheep" occluded="0" source="manual" xtl="215.51" ytl="249.80" xbr="293.12" ybr="380.61" z_order="0">
+    </box>
+  </image>
+  <image id="8" name="a/dataset/test/8.jpg" width="640" height="480">
+    <box label="cow" occluded="0" source="manual" xtl="193.24" ytl="61.44" xbr="441.21" ybr="430.50" z_order="0">
+    </box>
+  </image>
+  <image id="7" name="a/dataset/test/7.jpg" width="500" height="379">
+    <box label="sheep" occluded="0" source="manual" xtl="177.62" ytl="232.96" xbr="275.83" ybr="299.69" z_order="0">
+    </box>
+    <box label="sheep" occluded="0" source="manual" xtl="221.70" ytl="265.10" xbr="287.79" ybr="351.31" z_order="0">
+    </box>
+    <box label="sheep" occluded="0" source="manual" xtl="238.68" ytl="206.51" xbr="343.82" ybr="265.06" z_order="0">
+    </box>
+    <box label="sheep" occluded="0" source="manual" xtl="3.23" ytl="288.99" xbr="58.63" ybr="368.94" z_order="0">
+    </box>
+    <box label="sheep" occluded="0" source="manual" xtl="302.90" ytl="288.36" xbr="380.97" ybr="338.72" z_order="0">
+    </box>
+  </image>
+  <image id="6" name="a/dataset/test/6.jpg" width="606" height="640">
+    <box label="sheep" occluded="0" source="manual" xtl="4.27" ytl="202.01" xbr="301.94" ybr="373.17" z_order="0">
+    </box>
+    <box label="sheep" occluded="0" source="manual" xtl="215.83" ytl="231.77" xbr="577.29" ybr="413.57" z_order="0">
+    </box>
+  </image>
+  <image id="5" name="a/dataset/test/5.jpg" width="640" height="413">
+    <box label="cow" occluded="0" source="manual" xtl="243.85" ytl="124.21" xbr="549.83" ybr="380.10" z_order="0">
+    </box>
+    <box label="sheep" occluded="0" source="manual" xtl="137.50" ytl="240.80" xbr="219.84" ybr="322.47" z_order="0">
+    </box>
+    <box label="sheep" occluded="0" source="manual" xtl="0.99" ytl="254.56" xbr="124.48" ybr="322.47" z_order="0">
+    </box>
+  </image>
+  <image id="4" name="a/dataset/test/4.jpg" width="640" height="414">
+    <box label="cow" occluded="0" source="manual" xtl="101.27" ytl="89.38" xbr="571.74" ybr="376.15" z_order="0">
+    </box>
+  </image>
+  <image id="3" name="a/dataset/test/3.jpg" width="640" height="458">
+    <box label="cow" occluded="0" source="manual" xtl="167.05" ytl="184.09" xbr="470.61" ybr="388.74" z_order="0">
+    </box>
+  </image>
+  <image id="2" name="a/dataset/test/2.jpg" width="836" height="560">
+    <box label="cow" occluded="0" source="manual" xtl="298.05" ytl="67.91" xbr="494.23" ybr="436.28" z_order="0">
+    </box>
+    <box label="cow" occluded="0" source="manual" xtl="27.35" ytl="139.54" xbr="247.81" ybr="433.49" z_order="0">
+    </box>
+    <box label="cow" occluded="0" source="manual" xtl="477.58" ytl="16.74" xbr="812.46" ybr="465.12" z_order="0">
+    </box>
+  </image>
+  <image id="1" name="a/dataset/test/10.jpg" width="640" height="480">
+    <box label="sheep" occluded="0" source="manual" xtl="237.09" ytl="87.75" xbr="310.45" ybr="124.43" z_order="0">
+    </box>
+    <box label="sheep" occluded="0" source="manual" xtl="330.38" ytl="43.81" xbr="343.93" ybr="69.41" z_order="0">
+    </box>
+    <box label="sheep" occluded="0" source="manual" xtl="295.29" ytl="259.10" xbr="478.68" ybr="390.66" z_order="0">
+    </box>
+    <box label="sheep" occluded="0" source="manual" xtl="60.88" ytl="259.10" xbr="111.11" ybr="305.34" z_order="0">
+    </box>
+    <box label="sheep" occluded="0" source="manual" xtl="233.90" ytl="331.65" xbr="339.95" ybr="393.13" z_order="0">
+    </box>
+  </image>
+  <image id="0" name="a/dataset/test/1.jpg" width="640" height="428">
+    <box label="cow" occluded="0" source="manual" xtl="192.01" ytl="137.20" xbr="419.52" ybr="278.68" z_order="0">
+    </box>
+    <box label="cow" occluded="0" source="manual" xtl="475.69" ytl="130.09" xbr="575.93" ybr="312.09" z_order="0">
+    </box>
+    <box label="cow" occluded="0" source="manual" xtl="27.07" ytl="186.25" xbr="152.91" ybr="269.44" z_order="0">
+    </box>
+  </image>
+</annotations>

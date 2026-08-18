@@ -1,0 +1,24 @@
+version: '3'
+services:
+  java:                                  # 后端springboot容器
+    container_name: match-java    # 容器名为'xiao-xiao-su-api'
+    restart: always                     # 重启策略: 容器退出时总是重启容器
+    build:
+      context: ./                       # 指定设定上下文根目录，然后以该目录为准指定Dockerfile
+      dockerfile: ./docker/java/Dockerfile
+    working_dir: /app                   # 设置工作目录为容器内的app文件夹
+    environment:
+      TZ: Asia/Shanghai
+    volumes:                            # 挂载文件
+      - ./java/match-mgr:/app                 # 将主机的code-api文件夹(java代码)映射到容器内的app文件夹
+      - ./java/logs/:/app/log                # 映射容器产生的日志到主机的logs文件夹
+      - ./java/.m2:/root/.m2
+      - /home:/home  #******************************************************************************* 如果当前文件的目录不在/home下面，那么需要改成- /:/  或当前目录（- $pwd:$pwd）如 - /usr:/usr ,且可能有问题，未验证
+    
+    ports:                              # 映射端口
+      - "18080:18080"
+      - "18081:18081"
+   # ********************************************************************************************************************修改成正确的环境
+    command: mvn spring-boot:run -Dspring-boot.run.profiles=test -Dspring-boot.run.jvmArguments="--add-opens=java.base/java.lang=ALL-UNNAMED -Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=18081"
+  
+   

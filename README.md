@@ -1,0 +1,203 @@
+# Match 比赛系统
+
+项目采用本地优先的开发方式：MySQL 和 FastDFS 在 Docker 中运行，Vue 与
+Spring Boot 直接在 macOS 上运行。修改代码后可以立即热更新，部署时再使用完整
+Docker Compose。
+
+## 本地端口
+
+| 服务 | 地址 |
+| --- | --- |
+| 前端 | http://localhost:19140 |
+| 后端 | http://localhost:19141 |
+| 健康检查 | http://localhost:19141/health |
+| MySQL | localhost:3307 |
+| FastDFS | 22122 / 23000 / 8888 |
+
+## 第一次配置
+
+1. 创建本地配置并填写你自己的 MySQL 密码：
+
+   ```bash
+   cp .env.local.example .env.local
+   ```
+
+   本地开发使用 MySQL root 用户，因此 `.env.local` 中
+   `MATCH_DB_PASSWORD` 和 `MYSQL_ROOT_PASSWORD` 必须相同。如果复用现有
+   `match_mysql_data` 数据卷，请填写该数据卷当前的 root 密码。
+
+2. 创建 Python 3.11 环境：
+
+   ```bash
+   conda env create -f python/environment.yml
+   conda activate match-local
+   which python
+   ```
+
+   将 `which python` 输出的绝对路径填到 `.env.local` 的
+   `MATCH_PYTHON_EXECUTABLE`。
+
+3. 如果旧的完整 Docker 项目还在运行，先停止它以释放 3307、8888 等端口：
+
+   ```bash
+   docker compose -f docker-compose154.yml down
+   ```
+
+   该命令保留数据库卷。不要追加 `-v`。
+
+## 日常本地启动
+
+只启动 MySQL 和 FastDFS：
+
+```bash
+make infra-up
+make infra-status
+```
+
+### 后端（IDEA）
+
+打开 `java/match-mgr` Maven 模块，运行 `com.match.Application`。Run
+Configuration 设置：
+
+- JDK：17
+- Working directory：项目根目录
+- Active profiles：`local`
+- VM options：`--add-opens=java.base/java.lang=ALL-UNNAMED`
+- Environment variables：至少设置
+  `MATCH_DB_PASSWORD=你的密码;MATCH_PYTHON_EXECUTABLE=Conda Python绝对路径`
+
+也可以在终端启动：
+
+```bash
+SPRING_PROFILES_ACTIVE=local \
+MATCH_DB_PASSWORD='你的密码' \
+MATCH_PYTHON_EXECUTABLE='/Conda环境中的绝对路径/python' \
+mvn -f java/match-mgr/pom.xml spring-boot:run
+```
+
+后端启动时 Flyway 会自动升级数据库结构，并保留当前比赛数据。
+
+### 前端
+
+推荐 Node.js 16（项目已提供 `.nvmrc`）：
+
+```bash
+cd vue
+nvm use
+npm install
+npm run serve
+```
+
+浏览器打开 http://localhost:19140。前端统一通过 `/api`、`/dataset` 和
+`/files` 访问后端及资源，不需要修改 IP。
+
+管理员初始账号为 `admin`，初始密码为 `admin`。第一次登录必须修改密码。
+
+## 停止
+
+前端和后端在 IDEA/终端中按停止按钮或 `Ctrl+C`。停止基础设施但保留数据：
+
+```bash
+make infra-down
+```
+
+不要使用 `docker compose down -v`，否则会删除数据库卷。
+
+## 数据库备份与恢复
+
+```bash
+make db-backup
+make db-restore FILE=backups/match-20260731-120000.sql
+```
+
+备份保存在 `backups/`。恢复前应先再做一次备份。
+
+## 赛卷资源
+
+现有赛卷文件放在：
+
+```text
+download/dataset/A/
+download/dataset/B/
+python/a/annotations.xml
+python/b/annotations.xml
+```
+
+管理员在管理页选择当前试卷；普通用户登录后直接进入管理员选择的卷。管理端可通过
+“新增试卷”登记单字母卷名，系统会自动创建 `python/{卷名小写}/annotations.xml`
+空模板和 `download/dataset/{卷名大写}/` 空目录。运维人员补入有效标注和数据文件、
+管理员新增题目后，该试卷才可启用。
+
+## Ubuntu 22.04 部署
+
+服务器安装 Docker 与 Compose，创建生产配置并填写强密码：
+
+```bash
+cp .env.prod.example .env
+make prod-up
+```
+
+访问 `http://服务器局域网IP:19140`。后端端口为 19141，MySQL 宿主端口为
+3307。生产前应将本地备份 SQL 恢复到服务器，而不是复制 MySQL 数据目录。
+
+停止生产服务并保留数据：
+
+```bash
+make prod-down
+```
+
+### 服务器日常更新
+
+本地提交并推送到 Gitee 后，在服务器项目目录执行：
+
+```bash
+./deploy/server-update.sh
+```
+
+脚本会先将数据库备份到项目同级的 `backups/`，再快进拉取 `master`、构建并
+依次更新 Java 和 Vue。MySQL、FastDFS、数据库卷、上传文件和 `.env` 不会被
+重建或删除。也可以使用等价入口：
+
+```bash
+make server-update
+```
+
+首次使用或修改脚本后可先检查执行顺序：
+
+```bash
+./deploy/server-update.sh --dry-run
+make server-update-test
+```
+
+### 完全离线部署
+
+在联网的 212 源服务器构建带完整数据快照的版本化发布包：
+
+```bash
+make offline-test
+make offline-release VERSION=20260807-01
+```
+
+打包过程中会短暂停止服务以取得一致的 MySQL、FastDFS、赛卷和评分资源快照，完成后自动恢复服务。发布包生成在 `dist/match-v2-20260807-01.tar.gz`，并在校验成功后清理 `<none>` 悬空镜像。
+
+将发布包复制到完全离线的 Ubuntu x86_64/amd64 服务器，解压并创建该服务器独立的配置：
+
+```bash
+tar -xzf match-v2-20260807-01.tar.gz
+cd match-v2-20260807-01
+cp .env.example /root/match-v2.env
+vi /root/match-v2.env
+sudo ./install.sh --install-dir /opt/match-v2 --env-file /root/match-v2.env
+```
+
+对已有服务器只更新应用镜像并保留数据：
+
+```bash
+sudo ./upgrade.sh --install-dir /opt/match-v2
+```
+
+完整操作和快照重置说明见发布包内的 `README.md`。
+
+训练服务器不由本项目部署。管理员可持续新增训练服务器；每台服务器配置 4 个
+节点，每个节点提供 4 个槽位。槽位会根据基础端口自动生成 VSCode、CVAT 和
+T100 地址，例如第 1 至 4 个槽位使用 9091-9094、8081-8084、5001-5004。

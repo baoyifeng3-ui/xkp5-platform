@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<annotations>
+  <version>1.1</version>
+  <meta>
+    <task>
+      <id>15</id>
+      <name>b</name>
+      <size>10</size>
+      <mode>annotation</mode>
+      <overlap>0</overlap>
+      <bugtracker></bugtracker>
+      <created>2022-04-12 10:08:40.845705+00:00</created>
+      <updated>2022-04-12 10:15:36.585773+00:00</updated>
+      <start_frame>0</start_frame>
+      <stop_frame>9</stop_frame>
+      <frame_filter></frame_filter>
+      <labels>
+        <label>
+          <name>Apple</name>
+          <color>#fa3253</color>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>Pear</name>
+          <color>#ffcc33</color>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>Cantaloupe</name>
+          <color>#24b353</color>
+          <attributes>
+          </attributes>
+        </label>
+      </labels>
+      <segments>
+        <segment>
+          <id>14</id>
+          <start>0</start>
+          <stop>9</stop>
+          <url>/dataset/B</url>
+        </segment>
+      </segments>
+      <owner>
+        <username>wang</username>
+        <email>1730764704@qq.com</email>
+      </owner>
+      <assignee></assignee>
+    </task>
+    <dumped>2022-04-12 10:15:44.562911+00:00</dumped>
+  </meta>
+  <image id="9" name="b/dataset/test/6.jpg" width="1024" height="768">
+    <box label="Pear" occluded="0" source="manual" xtl="69.33" ytl="154.42" xbr="495.43" ybr="697.89" z_order="0">
+    </box>
+    <box label="Pear" occluded="0" source="manual" xtl="497.98" ytl="125.08" xbr="987.90" ybr="719.58" z_order="0">
+    </box>
+  </image>
+  <image id="8" name="b/dataset/test/5.jpg" width="1024" height="683">
+    <box label="Cantaloupe" occluded="0" source="manual" xtl="64.99" ytl="137.26" xbr="475.70" ybr="576.34" z_order="0">
+    </box>
+    <box label="Cantaloupe" occluded="0" source="manual" xtl="497.26" ytl="141.80" xbr="920.45" ybr="555.91" z_order="0">
+    </box>
+  </image>
+  <image id="7" name="b/dataset/test/4.jpg" width="1024" height="695">
+    <box label="Cantaloupe" occluded="0" source="manual" xtl="405.77" ytl="50.76" xbr="912.58" ybr="528.70" z_order="0">
+    </box>
+    <box label="Cantaloupe" occluded="0" source="manual" xtl="45.60" ytl="484.85" xbr="225.70" ybr="661.48" z_order="0">
+    </box>
+  </image>
+  <image id="6" name="b/dataset/test/3.jpg" width="1024" height="1024">
+    <box label="Pear" occluded="0" source="manual" xtl="136.10" ytl="267.10" xbr="688.96" ybr="916.89" z_order="0">
+    </box>
+  </image>
+  <image id="5" name="b/dataset/test/10.jpg" width="768" height="1024">
+    <box label="Pear" occluded="0" source="manual" xtl="4.60" ytl="5.20" xbr="341.45" ybr="445.72" z_order="0">
+    </box>
+    <box label="Pear" occluded="0" source="manual" xtl="229.18" ytl="3.40" xbr="611.90" ybr="234.79" z_order="0">
+    </box>
+    <box label="Pear" occluded="0" source="manual" xtl="332.90" ytl="142.94" xbr="737.78" ybr="654.94" z_order="0">
+    </box>
+    <box label="Pear" occluded="0" source="manual" xtl="4.65" ytl="360.67" xbr="383.97" ybr="906.69" z_order="0">
+    </box>
+    <box label="Pear" occluded="0" source="manual" xtl="258.10" ytl="581.80" xbr="766.69" ybr="1024.00" z_order="0">
+    </box>
+  </image>
+  <image id="4" name="b/dataset/test/9.jpg" width="1024" height="1024">
+    <box label="Apple" occluded="0" source="manual" xtl="28.97" ytl="54.49" xbr="1010.40" ybr="990.04" z_order="0">
+    </box>
+  </image>
+  <image id="3" name="b/dataset/test/2.jpg" width="450" height="640">
+    <box label="Apple" occluded="0" source="manual" xtl="69.75" ytl="159.48" xbr="392.90" ybr="465.66" z_order="0">
+    </box>
+  </image>
+  <image id="2" name="b/dataset/test/8.jpg" width="1024" height="768">
+    <box label="Pear" occluded="0" source="manual" xtl="745.47" ytl="84.26" xbr="961.08" ybr="270.51" z_order="0">
+    </box>
+    <box label="Pear" occluded="0" source="manual" xtl="629.38" ytl="191.42" xbr="972.56" ybr="523.11" z_order="0">
+    </box>
+    <box label="Pear" occluded="0" source="manual" xtl="290.03" ytl="218.21" xbr="675.31" ybr="538.42" z_order="0">
+    </box>
+    <box label="Pear" occluded="0" source="manual" xtl="522.22" ytl="428.70" xbr="861.57" ybr="764.23" z_order="0">
+    </box>
+    <box label="Pear" occluded="0" source="manual" xtl="267.07" ytl="505.25" xbr="510.70" ybr="765.50" z_order="0">
+    </box>
+    <box label="Pear" occluded="0" source="manual" xtl="8.90" ytl="264.14" xbr="362.75" ybr="614.97" z_order="0">
+    </box>
+    <box label="Pear" occluded="0" source="manual" xtl="107.60" ytl="16.64" xbr="481.40" ybr="341.96" z_order="0">
+    </box>
+    <box label="Pear" occluded="0" source="manual" xtl="459.71" ytl="51.09" xbr="732.72" ybr="285.82" z_order="0">
+    </box>
+  </image>
+  <image id="1" name="b/dataset/test/7.jpg" width="1024" height="693">
+    <box label="Cantaloupe" occluded="0" source="manual" xtl="50.33" ytl="57.58" xbr="623.61" ybr="587.12" z_order="0">
+    </box>
+    <box label="Cantaloupe" occluded="0" source="manual" xtl="653.54" ytl="192.30" xbr="954.00" ybr="552.58" z_order="0">
+    </box>
+  </image>
+  <image id="0" name="b/dataset/test/1.jpg" width="1024" height="683">
+    <box label="Apple" occluded="0" source="manual" xtl="145.55" ytl="129.32" xbr="602.77" ybr="579.74" z_order="0">
+    </box>
+  </image>
+</annotations>

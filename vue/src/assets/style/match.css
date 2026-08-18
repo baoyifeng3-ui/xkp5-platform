@@ -1,0 +1,236 @@
+.m-tips {
+    width: 620px;
+    height: 476px;
+    border-radius: 20px;
+    background-image: url(../image/tip.png);
+    background-size: 100% 100%;
+    top: 50px;
+    left: 50%;
+    margin-left: -310px;
+    position: absolute;
+}
+
+.m-box {
+    width: 100%;
+    height: 500px;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: 0;
+    margin: auto;
+}
+
+.m-title {
+    width: 132px;
+    height: 24px;
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    margin-left: -67px;
+    background-image: url(../image/know.png);
+    background-size: 100% 100%;
+}
+
+.tips1 {
+    width: 90%;
+    height: 20px;
+    left: 5%;
+    top: 70px;
+    position: absolute;
+}
+
+.tips-page {
+    width: 18px;
+    height: 18px;
+    text-align: center;
+    line-height: 18px;
+    font-size: 18px;
+    color: #999;
+    position: absolute;
+    left: 0;
+    top: 4px;
+}
+
+.tips2line {
+    width: 500px;
+    height: 60px;
+    line-height: 25px;
+    font-size: 16px;
+    color: #000;
+    position: absolute;
+    left: 30px;
+    top: 0;
+}
+
+.tips2line span,
+.tips5line span {
+    color: #f00;
+}
+
+.tips2 {
+    width: 90%;
+    height: 70px;
+    left: 5%;
+    top: 130px;
+    position: absolute;
+}
+
+.tips3 {
+    width: 90%;
+    height: 70px;
+    left: 5%;
+    top: 205px;
+    position: absolute;
+}
+
+.tips3line {
+    width: 500px;
+    height: 60px;
+    line-height: 25px;
+    font-size: 16px;
+    color: #000;
+    position: absolute;
+    left: 30px;
+    top: 0;
+}
+
+
+.tips4 {
+    width: 90%;
+    height: 45px;
+    left: 5%;
+    top: 280px;
+    position: absolute;
+}
+
+.tips5line {
+    width: 500px;
+    height: 75px;
+    line-height: 25px;
+    font-size: 16px;
+    color: #000;
+    position: absolute;
+    left: 30px;
+    top: 0;
+}
+
+.tips-btn {
+    width: 100%;
+    height: 40px;
+    position: absolute;
+    bottom: 50px;
+}
+
+.tips-btn .el-button {
+    width: 120px;
+    position: absolute;
+    left: 50%;
+    margin-left: -60px;
+    border-radius: 10px;
+    background-image: linear-gradient(to right, #002d6c, #0d4c97);
+}
+
+.el-button--primary:focus, .el-button--primary:hover {
+    background-image: linear-gradient(to right, #002d6c, #0d4c97) !important;
+}
+
+.el-button--primary.is-disabled {
+    background-image: linear-gradient(to right, #3b5463, #3b5463) !important;
+}
+
+.m-white {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background-color: #fff;
+    position: absolute;
+    left: 10px;
+    top: 10px;
+}
+
+.tips3line span {
+    color: #f00;
+}
+
+.m-ab {
+    width: 1000px;
+    height: 400px;
+    margin: 80px auto 0;
+    position: relative;
+}
+
+.ab-title {
+    width: 350px;
+    height: 60px;
+    top: 10px;
+    position: absolute;
+    left: 50%;
+    margin-left: -175px;
+    background-image: url(../image/konwtext.png);
+    background-size: 100% 100%;
+}
+
+.ab-preview {
+    width: 400px;
+    height: 250px;
+    top: 80px;
+    position: absolute;
+    left: 50%;
+    margin-left: -210px;
+    background-image: url(../image/preview.png);
+    background-size: 100% 100%;
+}
+
+.ab-preview img {
+    width: 380px;
+    height: 230px;
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    margin: auto;
+}
+
+.btn-a {
+    width: 208px;
+    height: 100px;
+    cursor: pointer;
+    position: absolute;
+    top: 350px;
+    left: 200px;
+    border-radius: 15px;
+    background-color: #1c2a34;
+    font-size: 48px;
+    color: #fff;
+    text-align: center;
+    line-height: 100px;
+    border: 3px solid #999;
+    box-shadow: 5px 5px 5px #000;
+}
+
+.btn-b {
+    width: 208px;
+    height: 100px;
+    cursor: pointer;
+    position: absolute;
+    top: 350px;
+    right: 200px;
+    border-radius: 15px;
+    background-color: #1c2a34;
+    font-size: 48px;
+    color: #fff;
+    text-align: center;
+    line-height: 100px;
+    border: 3px solid #999;
+    box-shadow: 5px 5px 5px #000;
+}
+
+.light .btn-a {
+    background-color: #378aef;
+}
+
+.light .btn-b {
+    background-color: #478adb;
+}

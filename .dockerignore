@@ -1,0 +1,15 @@
+.git
+.idea
+.env
+.env.local
+backups
+download
+fastdfs
+mysql
+java/.m2
+java/logs
+java/match-mgr/target
+vue/dist
+vue/node_modules
+vue/public.zip
+*.swp

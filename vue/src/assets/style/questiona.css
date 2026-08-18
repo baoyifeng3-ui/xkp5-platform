@@ -1,0 +1,147 @@
+.a-box {
+    width: 1200px;
+    height: 540px;
+    /* margin: 10px auto; */
+    margin: 40px auto 0;
+    overflow-x: auto;
+    background-color: #fff;
+}
+
+.a-title {
+    width: 1100px;
+    height: 30px;
+    text-align: center;
+    line-height: 30px;
+    font-size: 30px;
+    font-weight: bold;
+    margin: 10px auto 20px;
+}
+
+.a-tips {
+    width: 800px;
+    height: 30px;
+    margin: 10px auto 0;
+    border-bottom: 1px solid #000;
+}
+
+.a-t1,
+.a-t2,
+.a-t3,
+.a-t4 {
+    width: 25%;
+    height: 30px;
+    line-height: 30px;
+    font-size: 14px;
+    text-align: left;
+    float: left;
+}
+
+.a-cmd {
+    width: 800px;
+    height: 120px;
+    margin: 10px auto 0;
+}
+
+.a-c1,
+.a-c2,
+.a-c3,
+.a-c4,
+.a-c5,
+.a-c6,
+.a-c7,
+.a-c8 {
+    width: 40%;
+    height: 20px;
+    font-size: 14px;
+    text-align: left;
+    line-height: 20px;
+    float: left;
+    margin-left: 35px;
+}
+
+.a-c1,
+.a-c2 {
+    width: 50%;
+    margin-left: 0 !important;
+}
+
+.a-background {
+    width: 80%;
+    box-sizing: border-box;
+    margin: 10px auto 0;
+    border: 1px solid #999;
+    line-height: 20px;
+    font-size: 12px;
+    padding: 15px;
+}
+
+.indent {
+    font-size: 14px;
+    text-indent: 30px;
+}
+
+.a-bg-title {
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.a-warning {
+    width: 400px;
+    height: 40px;
+    text-align: center;
+    color: #999;
+    margin: 30px auto;
+    font-size: 14px;
+}
+
+.a-question {
+    width: 800px;
+    margin: 10px auto;
+}
+
+.a-q-title {
+    height: 20px;
+    line-height: 20px;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.a-q-text {
+    font-size: 14px;
+}
+
+.h2 {
+    height: 40px;
+}
+
+.a-q-red {
+    font-size: 14px;
+    color: #f00;
+    text-indent: 30px;
+}
+
+.h1 {
+    height: 20px;
+}
+
+.a-blue {
+    color: #00f;
+    font-size: 14px;
+    padding-left: 30px;
+}
+
+.h3 {
+    height: 60px;
+}
+
+.h5 {
+    height: 100px;
+}
+
+.red {
+    color: #f00;
+}
+
+.h9 {
+    height: 180px;
+}
