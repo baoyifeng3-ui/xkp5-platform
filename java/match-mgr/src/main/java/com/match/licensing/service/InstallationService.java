@@ -25,9 +25,14 @@ public class InstallationService {
 
     @Transactional
     public String installationId() {
+        return installation().getInstallationId();
+    }
+
+    @Transactional
+    public PlatformInstallation installation() {
         PlatformInstallation existing = mapper.selectById(PRIMARY);
         if (existing != null) {
-            return existing.getInstallationId();
+            return existing;
         }
 
         LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
@@ -38,13 +43,21 @@ public class InstallationService {
         created.setUpdatedAt(now);
         try {
             mapper.insert(created);
-            return created.getInstallationId();
+            return created;
         } catch (DuplicateKeyException concurrentCreation) {
             PlatformInstallation concurrent = mapper.selectById(PRIMARY);
             if (concurrent != null) {
-                return concurrent.getInstallationId();
+                return concurrent;
             }
             throw concurrentCreation;
         }
+    }
+
+    @Transactional
+    public void updateMaxTrustedTime(LocalDateTime trustedTime) {
+        PlatformInstallation installation = installation();
+        installation.setMaxTrustedTime(trustedTime);
+        installation.setUpdatedAt(LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC));
+        mapper.updateById(installation);
     }
 }

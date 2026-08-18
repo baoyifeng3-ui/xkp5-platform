@@ -16,4 +16,8 @@ public class InvalidLicenseException extends RuntimeException {
     public String getCode() {
         return code;
     }
+
+    public String getReasonCode() {
+        return code;
+    }
 }

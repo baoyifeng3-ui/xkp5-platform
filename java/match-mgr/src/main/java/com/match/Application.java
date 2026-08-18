@@ -3,9 +3,11 @@ package com.match;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 
 @SpringBootApplication //springboot的全局的自动配置注解
+@EnableScheduling
 @MapperScan({"com.match.mapper", "com.match.licensing.persistence"})
 public class Application {
 
