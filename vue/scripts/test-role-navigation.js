@@ -17,7 +17,7 @@ assert.strictEqual(navigation.routeRoles['/operations'], 'SUPER_ADMIN')
 assert.strictEqual(navigation.routeRoles['/management'], 'ADMIN')
 assert.strictEqual(navigation.routeRoles['/course-platform'], 'USER')
 assert.deepStrictEqual(navigation.previewDestinations, ['/Publicity', '/Home', '/Question', '/Detect'])
-assert.deepStrictEqual(navigation.operationsItems.map(item => item.label), ['运维主页', '管理员账号', '授权诊断'])
+assert.deepStrictEqual(navigation.operationsItems.map(item => item.label), ['运维主页', '处理服务器', '管理员账号', '授权诊断'])
 navigation.competitionItems.forEach(item => assert.ok(item.route, `${item.label} must define a route`))
 
 console.log('role navigation tests passed')

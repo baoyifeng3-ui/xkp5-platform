@@ -31,6 +31,7 @@ import TrainingEnvironment from '@/views/user/TrainingEnvironment.vue'
 import OperationsHome from '@/views/operations/OperationsHome.vue'
 import AdministratorManagement from '@/views/operations/AdministratorManagement.vue'
 import LicenseDiagnostics from '@/views/operations/LicenseDiagnostics.vue'
+import ProcessingAgents from '@/views/operations/ProcessingAgents.vue'
 import ChangePassword from '@/views/ChangePassword.vue'
 import { getToken, mustChangePassword, getRole, landingRoute, getCompetitionAccessPhase } from '@/utils/auth'
 
@@ -43,6 +44,7 @@ const routes = [
     path: '/operations', component: OperationsShell, meta: { roles: ['SUPER_ADMIN'] },
     children: [
       { path: '', name: 'OperationsHome', component: OperationsHome },
+      { path: 'processing-agents', name: 'ProcessingAgents', component: ProcessingAgents },
       { path: 'administrators', name: 'AdministratorManagement', component: AdministratorManagement },
       { path: 'license', name: 'LicenseDiagnostics', component: LicenseDiagnostics }
     ]
