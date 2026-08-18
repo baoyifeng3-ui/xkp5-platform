@@ -6,7 +6,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 
 @SpringBootApplication //springboot的全局的自动配置注解
-@MapperScan("com.match.mapper")
+@MapperScan({"com.match.mapper", "com.match.licensing.persistence"})
 public class Application {
 
     public static void main(String[] args) {
