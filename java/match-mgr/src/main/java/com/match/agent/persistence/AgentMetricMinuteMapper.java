@@ -2,6 +2,12 @@ package com.match.agent.persistence;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import org.apache.ibatis.annotations.Insert;
+import org.apache.ibatis.annotations.Delete;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
+
+import java.time.LocalDateTime;
+import java.util.List;
 
 public interface AgentMetricMinuteMapper extends BaseMapper<AgentMetricMinuteRecord> {
     @Insert("INSERT INTO processing_agent_metric_minute ("
@@ -46,4 +52,13 @@ public interface AgentMetricMinuteMapper extends BaseMapper<AgentMetricMinuteRec
             + "docker_available_samples = docker_available_samples + VALUES(docker_available_samples), "
             + "updated_at = VALUES(updated_at)")
     int accumulate(AgentMetricMinuteRecord record);
+
+    @Select("SELECT * FROM processing_agent_metric_minute WHERE agent_id = #{agentId} "
+            + "AND bucket_start >= #{from} AND bucket_start <= #{to} ORDER BY bucket_start")
+    List<AgentMetricMinuteRecord> selectHistory(@Param("agentId") String agentId,
+                                                @Param("from") LocalDateTime from,
+                                                @Param("to") LocalDateTime to);
+
+    @Delete("DELETE FROM processing_agent_metric_minute WHERE bucket_start < #{cutoff}")
+    int deleteBefore(@Param("cutoff") LocalDateTime cutoff);
 }

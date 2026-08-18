@@ -2,6 +2,7 @@ package com.match.agent.web;
 
 import com.match.agent.model.RegistrationTokenRequest;
 import com.match.agent.service.RegistrationTokenService;
+import com.match.agent.service.AgentAdministrationService;
 import com.match.entity.User;
 import com.match.security.RoleGuard;
 import org.junit.Test;
@@ -19,7 +20,8 @@ public class SuperAdminAgentControllerTest {
         User actor = new User();
         actor.setUserId(7);
         when(roleGuard.requireSuperAdmin()).thenReturn(actor);
-        SuperAdminAgentController controller = new SuperAdminAgentController(roleGuard, tokens);
+        SuperAdminAgentController controller = new SuperAdminAgentController(roleGuard, tokens,
+                mock(AgentAdministrationService.class));
         RegistrationTokenRequest request = new RegistrationTokenRequest();
         request.setLabel("机房 A");
 
