@@ -112,7 +112,11 @@ public class AgentHeartbeatService {
         validatePercent(metrics.getGpuMemoryPercent());
         validatePercent(metrics.getSystemDiskPercent());
         validatePercent(metrics.getWorkspaceDiskPercent());
-        if (negative(metrics.getRunningEnvironmentCount()) || negative(metrics.getRunningContainerCount())) {
+        if (negative(metrics.getRamTotalBytes()) || negative(metrics.getRamUsedBytes())
+                || negative(metrics.getGpuMemoryTotalBytes()) || negative(metrics.getGpuMemoryUsedBytes())
+                || negative(metrics.getSystemDiskTotalBytes()) || negative(metrics.getSystemDiskUsedBytes())
+                || negative(metrics.getWorkspaceDiskTotalBytes()) || negative(metrics.getWorkspaceDiskUsedBytes())
+                || negative(metrics.getRunningEnvironmentCount()) || negative(metrics.getRunningContainerCount())) {
             throw invalidHeartbeat();
         }
     }
@@ -132,6 +136,10 @@ public class AgentHeartbeatService {
     }
 
     private boolean negative(Integer value) {
+        return value != null && value < 0;
+    }
+
+    private boolean negative(Long value) {
         return value != null && value < 0;
     }
 

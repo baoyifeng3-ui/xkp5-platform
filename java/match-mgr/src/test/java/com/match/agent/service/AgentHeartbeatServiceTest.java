@@ -91,6 +91,20 @@ public class AgentHeartbeatServiceTest {
         throw new AssertionError("expected invalid heartbeat");
     }
 
+    @Test
+    public void rejectsNegativeByteMetric() {
+        AgentHeartbeatRequest request = heartbeat(1);
+        request.getMetrics().setWorkspaceDiskUsedBytes(-1L);
+
+        try {
+            service.accept(agent, request);
+        } catch (AgentProtocolException exception) {
+            assertEquals("INVALID_HEARTBEAT", exception.getCode());
+            return;
+        }
+        throw new AssertionError("expected invalid heartbeat");
+    }
+
     private AgentHeartbeatRequest heartbeat(long sequence) {
         AgentMetricSnapshot metrics = new AgentMetricSnapshot();
         metrics.setCpuPercent(new BigDecimal("25.50"));
