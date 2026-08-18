@@ -1,8 +1,8 @@
 # XKP5.0平台
 
 本仓库是 XKP5.0 管理服务器的独立代码库，复用原竞赛平台的 Vue 2 与 Spring
-Boot 基线，但后续提交、版本和部署均与原 `competition` 仓库分离。处理服务器、
-Docker 容器编排、CUDA MPS 和离线授权将在后续阶段通过 Agent 接入。
+Boot 基线，但后续提交、版本和部署均与原 `competition` 仓库分离。离线授权已经
+接入；处理服务器、Docker 容器编排和 CUDA MPS 将在后续阶段通过 Agent 接入。
 
 当前第一阶段已经提供三类独立工作区：
 
@@ -162,12 +162,19 @@ python/b/annotations.xml
 
 ## Ubuntu 22.04 部署
 
-服务器安装 Docker 与 Compose，创建生产配置并填写强密码：
+服务器安装 Docker 与 Compose，创建生产配置，填写强密码和注册码工具生成的
+Ed25519 公钥，然后初始化主机身份：
 
 ```bash
 cp .env.prod.example .env
+sudo ./deploy/host-identity.sh
 make prod-up
 ```
+
+生产环境缺少 `XKP_LICENSE_PUBLIC_KEYS` 或主机身份文件时会拒绝启动。平台不保存
+任何授权私钥。平台首次运行后，普通管理员在“平台授权”下载平台信息，将文件交给
+授权运营方，收到注册码文件后在同一页面导入。详细流程见
+`docs/licensing/operator-guide.md` 和 `docs/licensing/administrator-guide.md`。
 
 访问 `http://服务器局域网IP:19140`。后端端口为 19141，MySQL 宿主端口为
 3307。生产前应将本地备份 SQL 恢复到服务器，而不是复制 MySQL 数据目录。
