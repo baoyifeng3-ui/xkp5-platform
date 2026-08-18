@@ -5,11 +5,11 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.match.dto.PasswordChangeRequest;
 import com.match.entity.User;
+import com.match.security.UserRole;
 import com.match.service.impl.UserServiceImpl;
 import com.match.service.impl.ParticipantLoginGate;
 import com.match.util.result.Response;
 import com.match.util.result.ResponseResult;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -24,14 +24,11 @@ import java.util.Map;
 public class UserController {
     private final UserServiceImpl userService;
     private final ParticipantLoginGate participantLoginGate;
-    private final String adminUserName;
 
     public UserController(UserServiceImpl userService,
-                          ParticipantLoginGate participantLoginGate,
-                          @Value("${match.admin-user-name:admin}") String adminUserName) {
+                          ParticipantLoginGate participantLoginGate) {
         this.userService = userService;
         this.participantLoginGate = participantLoginGate;
-        this.adminUserName = adminUserName;
     }
 
     @PostMapping("login")
@@ -101,11 +98,16 @@ public class UserController {
         data.put("userId", user.getUserId());
         data.put("userName", user.getUserName());
         data.put("admin", isAdmin(user));
+        data.put("role", roleOf(user).name());
         data.put("mustChangePassword", Boolean.TRUE.equals(user.getMustChangePassword()));
         return data;
     }
 
     private boolean isAdmin(User user) {
-        return Boolean.TRUE.equals(user.getIsAdmin()) || adminUserName.equalsIgnoreCase(user.getUserName());
+        return roleOf(user) != UserRole.USER;
+    }
+
+    private UserRole roleOf(User user) {
+        return UserRole.resolve(user.getRole(), user.getIsAdmin(), user.getUserName());
     }
 }
