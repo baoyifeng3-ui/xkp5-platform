@@ -128,15 +128,6 @@ public class AdminUserManagementServiceTest {
     public void hidesAdministratorsFromCompetitionAccounts() {
         User admin = user(1, "admin", "admin");
         when(userMapper.selectList(any())).thenReturn(Collections.singletonList(admin));
-        TeamsUser link = new TeamsUser();
-        link.setUserId(1);
-        link.setTeamsId(7);
-        when(teamsUserMapper.selectList(any())).thenReturn(Collections.singletonList(link));
-        Teams team = new Teams();
-        team.setTeamsId(7);
-        team.setTeamsName("示例学校");
-        team.setTeamsTeacher("王老师|李同学");
-        when(teamsMapper.selectBatchIds(any())).thenReturn(Collections.singletonList(team));
 
         assertTrue(service.listUsers().isEmpty());
     }

@@ -86,7 +86,8 @@ public class AdministratorManagementServiceTest {
 
         service.resetPassword(2, request(null, "newpass"));
 
-        assertEquals("newpass", manager.getPassword());
+        assertEquals("{bcrypt}encoded", manager.getPassword());
+        verify(passwordCodec).encode("newpass");
         assertTrue(manager.getMustChangePassword());
     }
 
