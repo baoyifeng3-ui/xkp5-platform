@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public interface ProcessingAgentCommandMapper extends BaseMapper<ProcessingAgentCommandRecord> {
     @Select("SELECT * FROM processing_agent_command WHERE agent_id = #{agentId} "
@@ -68,4 +69,27 @@ public interface ProcessingAgentCommandMapper extends BaseMapper<ProcessingAgent
                      @Param("resultCode") String resultCode,
                      @Param("resultMessage") String resultMessage,
                      @Param("resultJson") String resultJson);
+
+    @Select("SELECT c.command_id, c.started_at, a.last_seen_at "
+            + "FROM processing_agent_command c "
+            + "LEFT JOIN processing_agent a ON a.agent_id = c.agent_id "
+            + "WHERE c.command_type = 'SHUTDOWN_SERVER' AND c.state = 'RUNNING' "
+            + "ORDER BY c.started_at, c.command_id LIMIT #{limit}")
+    List<RunningShutdownCandidate> selectRunningShutdowns(@Param("limit") int limit);
+
+    @Update("UPDATE processing_agent_command SET state = 'SUCCEEDED', active_dedup_key = NULL, "
+            + "completed_at = #{completedAt}, result_code = 'OFFLINE_CONFIRMED', "
+            + "result_message = 'Agent heartbeat stopped after shutdown started', updated_at = #{completedAt} "
+            + "WHERE command_id = #{commandId} AND state = 'RUNNING' "
+            + "AND command_type = 'SHUTDOWN_SERVER'")
+    int confirmShutdownOffline(@Param("commandId") String commandId,
+                               @Param("completedAt") LocalDateTime completedAt);
+
+    @Update("UPDATE processing_agent_command SET state = 'FAILED', active_dedup_key = NULL, "
+            + "completed_at = #{completedAt}, result_code = 'SHUTDOWN_NOT_CONFIRMED', "
+            + "result_message = 'Agent remained online after shutdown confirmation deadline', "
+            + "updated_at = #{completedAt} WHERE command_id = #{commandId} AND state = 'RUNNING' "
+            + "AND command_type = 'SHUTDOWN_SERVER'")
+    int failShutdownConfirmation(@Param("commandId") String commandId,
+                                 @Param("completedAt") LocalDateTime completedAt);
 }
