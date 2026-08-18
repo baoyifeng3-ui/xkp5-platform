@@ -1,0 +1,1 @@
+<template><section class="module-page"><header class="module-heading"><h1>实训管理</h1><p>组织课程实训，并查看用户当前启用的实训环境。</p></header><section class="module-empty"><div class="module-empty-inner"><i class="el-icon-monitor" /><strong>等待处理服务器接入</strong><p>一键上课、环境选择和容器还原将在 Agent 管理能力完成后开放。</p></div></section></section></template>

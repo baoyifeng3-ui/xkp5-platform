@@ -1,0 +1,1 @@
+<template><section class="module-page"><header class="module-heading"><h1>实训环境</h1><p>选择课程环境并进入图像标注与代码编辑工作区。</p></header><section class="module-empty"><div class="module-empty-inner"><i class="el-icon-monitor" /><strong>暂无可启动环境</strong><p>环境由管理员分配，系统同一时间只运行一套当前实训环境。</p></div></section></section></template>

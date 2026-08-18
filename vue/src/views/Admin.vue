@@ -240,7 +240,7 @@
         </el-tab-pane>
 
         <el-tab-pane name="grading">
-          <span slot="label" class="admin-tab-label" title="试卷判分"><i class="el-icon-finished" /><span>试卷判分</span></span>
+          <span slot="label" class="admin-tab-label" title="试卷评分"><i class="el-icon-finished" /><span>试卷评分</span></span>
           <admin-grading :active-paper="activePaper" :competition-finished="competitionFinished" />
         </el-tab-pane>
 
@@ -292,15 +292,15 @@
         </el-tab-pane>
 
         <el-tab-pane name="training">
-          <span slot="label" class="admin-tab-label" title="训练环境"><i class="el-icon-monitor" /><span>训练环境</span></span>
+          <span slot="label" class="admin-tab-label" title="比赛设备"><i class="el-icon-monitor" /><span>比赛设备</span></span>
           <section class="workspace-page training-panel">
-            <header class="workspace-heading"><div><h1>训练环境</h1><p>服务器、节点与账号端口</p></div><el-button type="primary" icon="el-icon-plus" @click="newServer">新增服务器</el-button></header>
+            <header class="workspace-heading"><div><h1>比赛设备</h1><p>查看比赛服务器、节点与端口运行状态</p></div><el-button v-if="canManageCompetitionDevices" type="primary" icon="el-icon-plus" @click="newServer">新增服务器</el-button></header>
             <div class="summary-band" aria-label="训练环境概览">
               <div class="summary-item"><span class="summary-icon"><i class="el-icon-monitor" /></span><div><small>训练服务器</small><strong>{{ servers.length }}</strong></div></div>
               <div class="summary-item"><span class="summary-icon"><i class="el-icon-connection" /></span><div><small>训练节点</small><strong>{{ trainingNodeCount }}</strong></div></div>
               <div class="summary-item"><span class="summary-icon summary-icon-success"><i class="el-icon-user" /></span><div><small>已分配端口</small><strong>{{ occupiedPortCount }} / {{ totalPortCount }}</strong></div></div>
             </div>
-            <div class="assignment-bar">
+            <div v-if="canManageCompetitionDevices" class="assignment-bar">
               <div class="assignment-heading"><span class="panel-icon"><i class="el-icon-connection" /></span><div><strong>分配端口</strong><small>每个账号只能分配三个端口</small></div></div>
               <div class="assignment-controls">
                 <el-select v-model="assignment.userId" placeholder="选择账号" filterable><el-option v-for="user in participantUsers" :key="user.userId" :label="user.userName" :value="user.userId" /></el-select>
@@ -312,7 +312,7 @@
               <section v-for="server in servers" :key="server.trainingServerId" class="server-panel">
                 <header class="server-heading">
                   <button type="button" class="server-toggle" :aria-expanded="String(isServerExpanded(server))" @click="toggleServer(server)"><i :class="isServerExpanded(server) ? 'el-icon-arrow-down' : 'el-icon-arrow-right'" /><span :class="['server-status-dot', serverRuntimeClass(server)]" /><strong>{{ server.serverName }}</strong><span class="server-state">{{ serverRuntimeLabel(server) }}</span><span class="server-node-count">{{ (server.nodes || []).length }} 个节点</span></button>
-                  <div class="server-heading-actions"><el-tooltip content="编辑服务器" placement="top"><el-button class="table-action" icon="el-icon-edit-outline" circle aria-label="编辑服务器" @click="editServer(server)" /></el-tooltip><el-tooltip content="删除服务器" placement="top"><el-button class="table-action is-danger" icon="el-icon-delete" circle :loading="serverDeletingId === server.trainingServerId" :disabled="serverDeletingId !== null" aria-label="删除服务器" @click="deleteServer(server)" /></el-tooltip></div>
+                  <div v-if="canManageCompetitionDevices" class="server-heading-actions"><el-tooltip content="编辑服务器" placement="top"><el-button class="table-action" icon="el-icon-edit-outline" circle aria-label="编辑服务器" @click="editServer(server)" /></el-tooltip><el-tooltip content="删除服务器" placement="top"><el-button class="table-action is-danger" icon="el-icon-delete" circle :loading="serverDeletingId === server.trainingServerId" :disabled="serverDeletingId !== null" aria-label="删除服务器" @click="deleteServer(server)" /></el-tooltip></div>
                 </header>
                 <el-table v-if="isServerExpanded(server)" :data="server.nodes || []" empty-text="暂无训练节点" class="admin-table server-table">
                   <el-table-column label="节点" width="96"><template slot-scope="scope"><strong>节点 {{ scope.row.nodeNo }}</strong></template></el-table-column>
@@ -322,7 +322,7 @@
                     <template slot-scope="scope">
                       <div :class="['port-state', { 'is-occupied': portAssignment(scope.row, port.slotNo).userId }]">
                         <div class="port-copy"><strong>{{ serverPort(server, scope.row, port.field) || '未配置' }}</strong><span>{{ portAssignment(scope.row, port.slotNo).userName || '空闲' }}</span></div>
-                        <el-tooltip v-if="portAssignment(scope.row, port.slotNo).userId" content="取消分配" placement="top"><el-button type="text" icon="el-icon-close" :loading="unassigningUserId === portAssignment(scope.row, port.slotNo).userId" aria-label="取消分配" @click="unassign(portAssignment(scope.row, port.slotNo).userId)" /></el-tooltip>
+                        <el-tooltip v-if="canManageCompetitionDevices && portAssignment(scope.row, port.slotNo).userId" content="取消分配" placement="top"><el-button type="text" icon="el-icon-close" :loading="unassigningUserId === portAssignment(scope.row, port.slotNo).userId" aria-label="取消分配" @click="unassign(portAssignment(scope.row, port.slotNo).userId)" /></el-tooltip>
                       </div>
                     </template>
                   </el-table-column>
@@ -624,7 +624,7 @@ import {
   getClearTime,
   gradingExportStatusApi
 } from '@/api/Match'
-import { setUserInfo } from '@/utils/auth'
+import { setUserInfo, hasRole } from '@/utils/auth'
 import AdminGrading from '@/components/AdminGrading'
 import {
   competitionContentTabs,
@@ -837,6 +837,9 @@ export default {
     }
   },
   computed: {
+    canManageCompetitionDevices () {
+      return hasRole('SUPER_ADMIN')
+    },
     mustChangePassword () {
       return this.$store.state.Match.mustChangePassword
     },
@@ -845,9 +848,9 @@ export default {
         timer: '比赛控制',
         rules: '赛规赛程编辑',
         subjects: '试卷题目',
-        grading: '试卷判分',
+        grading: '试卷评分',
         users: '比赛账号',
-        training: '训练环境',
+        training: '比赛设备',
         settings: '平台设置'
       }[this.activeTab] || '管理中心'
     },

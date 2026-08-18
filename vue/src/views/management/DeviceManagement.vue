@@ -1,0 +1,1 @@
+<template><section class="module-page"><header class="module-heading"><h1>设备管理</h1><p>普通管理员可查看处理服务器状态，并执行授权范围内的开关机与容器还原。</p></header><section class="module-empty"><div class="module-empty-inner"><i class="el-icon-cpu" /><strong>等待处理服务器接入</strong><p>当前阶段不提供服务器添加、修改或删除操作。</p></div></section></section></template>

@@ -1,0 +1,1 @@
+<template><section class="module-page"><header class="module-heading"><h1>管理员账号</h1><p>普通管理员账号维护入口。</p></header><section class="module-empty"><div class="module-empty-inner"><i class="el-icon-user" /><strong>账号服务准备中</strong><p>页面将在本阶段接入新建、停用和重置密码功能。</p></div></section></section></template>

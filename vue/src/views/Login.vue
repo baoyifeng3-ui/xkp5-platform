@@ -33,6 +33,7 @@
 
 <script>
 import { competitionApi } from '@/api/Match'
+const roleNavigation = require('@/navigation/roleNavigation')
 
 export default {
     data () {
@@ -67,9 +68,9 @@ export default {
                         if (!res) return;
                         const state = this.$store.state.Match;
                         if (state.mustChangePassword) {
-                            this.$router.push({ path: "/Admin" }).catch(() => { });
+                            this.$router.push({ path: "/change-password" }).catch(() => { });
                         } else {
-                            this.$router.push({ path: "/Publicity" }).catch(() => { });
+                            this.$router.push(roleNavigation.landingRoute(res.role)).catch(() => { });
                         }
                     } catch (error) {
                         // The shared request interceptor displays the login error.

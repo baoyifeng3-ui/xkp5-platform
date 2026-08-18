@@ -1,0 +1,1 @@
+<template><section class="module-page"><header class="module-heading"><h1>用户管理</h1><p>管理平台普通用户，不包含比赛专用账号。</p></header><section class="module-empty"><div class="module-empty-inner"><i class="el-icon-user" /><strong>暂无平台用户数据</strong><p>用户组织、课程权限和使用状态将在后续阶段接入。</p></div></section></section></template>

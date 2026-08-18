@@ -1,0 +1,1 @@
+<template><section class="module-page"><header class="module-heading"><h1>运维主页</h1><p>超级管理员专用的系统级工作区。</p></header><section class="module-empty"><div class="module-empty-inner"><i class="el-icon-setting" /><strong>第一阶段运维入口</strong><p>当前仅开放普通管理员账号维护。服务器、容器、远程终端和授权导入将在对应阶段接入。</p></div></section></section></template>
