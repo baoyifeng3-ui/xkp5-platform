@@ -22,6 +22,8 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.Objects;
+import java.util.List;
+import java.util.stream.Collectors;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -80,6 +82,16 @@ public class AgentCommandService {
             }
             throw collision;
         }
+    }
+
+    @Transactional(readOnly = true)
+    public List<AgentCommandView> recent(String agentId) {
+        if (agentId == null || agentId.trim().isEmpty()) {
+            throw new IllegalArgumentException("Agent identity is required");
+        }
+        return mapper.selectRecent(agentId, 50).stream()
+                .map(this::toView)
+                .collect(Collectors.toList());
     }
 
     @Transactional

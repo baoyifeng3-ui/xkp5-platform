@@ -2,6 +2,7 @@ package com.match.agent.web;
 
 import com.match.agent.service.AgentQueryService;
 import com.match.agent.service.AgentPowerService;
+import com.match.agent.service.AgentCommandService;
 import com.match.entity.User;
 import com.match.security.RoleGuard;
 import com.match.util.result.Response;
@@ -22,12 +23,14 @@ public class AdminAgentController {
     private final RoleGuard roleGuard;
     private final AgentQueryService queryService;
     private final AgentPowerService powerService;
+    private final AgentCommandService commandService;
 
     public AdminAgentController(RoleGuard roleGuard, AgentQueryService queryService,
-                                AgentPowerService powerService) {
+                                AgentPowerService powerService, AgentCommandService commandService) {
         this.roleGuard = roleGuard;
         this.queryService = queryService;
         this.powerService = powerService;
+        this.commandService = commandService;
     }
 
     @GetMapping
@@ -48,6 +51,12 @@ public class AdminAgentController {
                                           @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to) {
         roleGuard.requireAnyAdmin();
         return Response.makeOKRsp(queryService.history(agentId, from, to));
+    }
+
+    @GetMapping("/{agentId}/commands")
+    public ResponseResult<Object> commands(@PathVariable String agentId) {
+        roleGuard.requireAnyAdmin();
+        return Response.makeOKRsp(commandService.recent(agentId));
     }
 
     @PostMapping("/{agentId}/wake")

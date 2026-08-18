@@ -18,6 +18,8 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.Collections;
+import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -194,6 +196,22 @@ public class AgentCommandServiceTest {
     public void resultMessageCannotExceedBound() {
         service.finish(agent, "22222222-2222-4222-8222-222222222222",
                 result(false, "SHUTDOWN_FAILED", repeat('x', 513)));
+    }
+
+    @Test
+    public void recentHistoryReturnsPublicViewsOnly() {
+        ProcessingAgentCommandRecord completed = command("SUCCEEDED");
+        completed.setLeaseToken("secret-lease-token");
+        completed.setResultCode("OFFLINE_CONFIRMED");
+        when(mapper.selectRecent(agent.getAgentId(), 50)).thenReturn(Collections.singletonList(completed));
+
+        List<AgentCommandView> history = service.recent(agent.getAgentId());
+
+        assertEquals(1, history.size());
+        assertEquals(completed.getCommandId(), history.get(0).getCommandId());
+        assertEquals("OFFLINE_CONFIRMED", history.get(0).getResultCode());
+        assertFalse(history.get(0).toString().contains("secret-lease-token"));
+        verify(mapper).selectRecent(agent.getAgentId(), 50);
     }
 
     private ProcessingAgentCommandRecord command(String state) {

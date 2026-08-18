@@ -3,6 +3,7 @@ package com.match.agent.web;
 import com.match.agent.service.AgentAdministrationService;
 import com.match.agent.service.AgentQueryService;
 import com.match.agent.service.AgentPowerService;
+import com.match.agent.service.AgentCommandService;
 import com.match.agent.service.RegistrationTokenService;
 import com.match.entity.User;
 import com.match.security.RoleGuard;
@@ -24,11 +25,14 @@ public class AgentRoleBoundaryTest {
         normalAdmin.setUserId(8);
         when(guard.requireAnyAdmin()).thenReturn(normalAdmin);
         when(guard.roleOf(normalAdmin)).thenReturn(UserRole.ADMIN);
-        AdminAgentController admin = new AdminAgentController(guard, queries, power);
+        AgentCommandService commands = mock(AgentCommandService.class);
+        AdminAgentController admin = new AdminAgentController(guard, queries, power, commands);
         admin.list();
         admin.wake("agent-id");
-        verify(guard, times(2)).requireAnyAdmin();
+        admin.commands("agent-id");
+        verify(guard, times(3)).requireAnyAdmin();
         verify(power).wake("agent-id", normalAdmin, UserRole.ADMIN);
+        verify(commands).recent("agent-id");
 
         User actor = new User();
         actor.setUserId(9);

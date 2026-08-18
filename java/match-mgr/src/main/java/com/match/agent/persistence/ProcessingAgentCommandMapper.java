@@ -15,6 +15,11 @@ public interface ProcessingAgentCommandMapper extends BaseMapper<ProcessingAgent
                                                @Param("commandType") String commandType);
 
     @Select("SELECT * FROM processing_agent_command WHERE agent_id = #{agentId} "
+            + "ORDER BY requested_at DESC, command_id DESC LIMIT #{limit}")
+    List<ProcessingAgentCommandRecord> selectRecent(@Param("agentId") String agentId,
+                                                     @Param("limit") int limit);
+
+    @Select("SELECT * FROM processing_agent_command WHERE agent_id = #{agentId} "
             + "AND state = 'PENDING' AND available_at <= #{now} "
             + "ORDER BY requested_at, command_id LIMIT 1 FOR UPDATE SKIP LOCKED")
     ProcessingAgentCommandRecord selectNextForLease(@Param("agentId") String agentId,
