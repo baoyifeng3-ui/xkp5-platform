@@ -9,6 +9,7 @@ const state = {
     token: getToken("satoken"),
     userName: getUserName("userName"),
     userInfo: getUserInfo(),
+    role: getUserInfo().role || 'USER',
     isAdmin: getUserInfo().admin === true,
     mustChangePassword: getUserInfo().mustChangePassword === true,
     platformName: DEFAULT_PLATFORM_NAME,
@@ -46,6 +47,7 @@ const mutations = {
     SET_USER_INFO (state, userInfo) {
         setUserInfo(userInfo)
         state.userInfo = userInfo
+        state.role = userInfo.role || (userInfo.admin === true ? 'ADMIN' : 'USER')
         state.isAdmin = userInfo.admin === true
         state.mustChangePassword = userInfo.mustChangePassword === true
     },
@@ -81,6 +83,7 @@ const mutations = {
         state.token = ''
         state.userName = ''
         state.userInfo = {}
+        state.role = 'USER'
         state.isAdmin = false
         state.mustChangePassword = false
         state.platformName = DEFAULT_PLATFORM_NAME

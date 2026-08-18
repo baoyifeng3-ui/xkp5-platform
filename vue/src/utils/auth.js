@@ -3,6 +3,7 @@ const PlanKey = 'Plan'
 const UserNameKey = 'UserName'
 const UserInfoKey = 'UserInfo'
 const CompetitionAccessPhaseKey = 'CompetitionAccessPhase'
+const roleNavigation = require('@/navigation/roleNavigation')
 
 export function getToken () {
     return sessionStorage.getItem(TokenKey)
@@ -50,7 +51,21 @@ export function getUserInfo () {
 }
 
 export function isAdmin () {
-    return getUserInfo().admin === true
+    return [roleNavigation.ADMIN, roleNavigation.SUPER_ADMIN].includes(getRole())
+}
+
+export function getRole () {
+    const info = getUserInfo()
+    if (info.role) return String(info.role).toUpperCase()
+    return info.admin === true ? roleNavigation.ADMIN : roleNavigation.USER
+}
+
+export function hasRole (role) {
+    return getRole() === role
+}
+
+export function landingRoute () {
+    return roleNavigation.landingRoute(getRole())
 }
 
 export function mustChangePassword () {
