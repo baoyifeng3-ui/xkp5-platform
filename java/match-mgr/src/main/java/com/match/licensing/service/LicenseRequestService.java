@@ -12,6 +12,8 @@ import com.match.licensing.persistence.LicenseRequestRecord;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronizationAdapter;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.security.SecureRandom;
 import java.time.Clock;
@@ -20,10 +22,13 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 @Service
 public class LicenseRequestService {
     public static final String CONTENT_TYPE = "application/json;charset=UTF-8";
+    private static final int MAX_PENDING_DOWNLOADS = 1000;
 
     private final InstallationService installationService;
     private final HostIdentityProvider identityProvider;
@@ -33,6 +38,7 @@ public class LicenseRequestService {
     private final SecureRandom secureRandom;
     private final Clock clock;
     private final String platformVersion;
+    private final ConcurrentMap<String, byte[]> pendingDownloads = new ConcurrentHashMap<>();
 
     public LicenseRequestService(InstallationService installationService,
                                  HostIdentityProvider identityProvider,
@@ -53,7 +59,10 @@ public class LicenseRequestService {
     }
 
     @Transactional
-    public PlatformRequest create(String organization, int actorUserId) {
+    public synchronized PlatformRequest create(String organization, int actorUserId) {
+        if (pendingDownloads.size() >= MAX_PENDING_DOWNLOADS) {
+            throw new IllegalStateException("待下载的平台信息文件过多，请先完成下载");
+        }
         String normalizedOrganization = normalizeOrganization(organization);
         HostIdentity identity = identityProvider.load();
         String installationId = installationService.installationId();
@@ -76,8 +85,10 @@ public class LicenseRequestService {
         requestMapper.insert(record);
         auditService.recordSuccess("REQUEST_CREATED", actorUserId, requestId, null);
 
-        return new PlatformRequest(1, requestId, installationId, challenge, identity.getFingerprint(),
+        PlatformRequest request = new PlatformRequest(1, requestId, installationId, challenge, identity.getFingerprint(),
                 identity.getEnvironment(), normalizedOrganization, platformVersion, now.toString());
+        cacheAfterCommit(requestId, write(request));
+        return request;
     }
 
     public byte[] write(PlatformRequest request) {
@@ -97,7 +108,36 @@ public class LicenseRequestService {
     }
 
     public String filename(PlatformRequest request) {
-        return "xkp-platform-" + request.getRequestId() + ".xkpreq";
+        return filenameFor(request.getRequestId());
+    }
+
+    public String filenameFor(String requestId) {
+        if (requestId == null || !requestId.matches("^[A-Za-z0-9-]{1,64}$")) {
+            throw new IllegalArgumentException("授权请求编号无效");
+        }
+        return "xkp-platform-" + requestId + ".xkpreq";
+    }
+
+    public byte[] takeDownload(String requestId) {
+        filenameFor(requestId);
+        byte[] content = pendingDownloads.remove(requestId);
+        if (content == null) {
+            throw new IllegalArgumentException("平台信息文件不存在或已下载");
+        }
+        return content;
+    }
+
+    private void cacheAfterCommit(final String requestId, final byte[] content) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            pendingDownloads.put(requestId, content);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronizationAdapter() {
+            @Override
+            public void afterCommit() {
+                pendingDownloads.put(requestId, content);
+            }
+        });
     }
 
     private String normalizeOrganization(String organization) {
