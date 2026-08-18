@@ -9,7 +9,7 @@
 export default {
   data: () => ({ activePath: '/Publicity', frameKey: 0, destinations: [{ label: '首页', path: '/Publicity' }, { label: '赛程赛规', path: '/Home' }, { label: '当前赛卷', path: '/Question' }, { label: '成果验证', path: '/Detect' }] }),
   computed: {
-    frameUrl () { return `${window.location.origin}${window.location.pathname}#${this.activePath}` },
+    frameUrl () { return `${window.location.origin}${window.location.pathname}#${this.activePath}?preview=1` },
     activeLabel () { const item = this.destinations.find(item => item.path === this.activePath); return item ? item.label : '比赛页面' }
   },
   methods: { reload () { this.frameKey += 1 } }

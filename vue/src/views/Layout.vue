@@ -26,25 +26,25 @@
             <el-menu-item index="verification" title="成果验证" @click="doRouter(4)">
               <i class="el-icon-circle-check" /><span class="menu-label">成果验证</span>
             </el-menu-item>
-            <el-menu-item v-if="isAdmin" index="admin-timer" class="menu-admin-start" title="比赛控制" @click="openAdmin('timer')">
+            <el-menu-item v-if="showAdminNavigation" index="admin-timer" class="menu-admin-start" title="比赛控制" @click="openAdmin('timer')">
               <i class="el-icon-odometer" /><span class="menu-label">比赛控制</span>
             </el-menu-item>
-            <el-menu-item v-if="isAdmin" index="admin-rules" title="赛规赛程编辑" @click="openAdmin('rules')">
+            <el-menu-item v-if="showAdminNavigation" index="admin-rules" title="赛规赛程编辑" @click="openAdmin('rules')">
               <i class="el-icon-edit-outline" /><span class="menu-label">赛规赛程编辑</span>
             </el-menu-item>
-            <el-menu-item v-if="isAdmin" index="admin-subjects" title="试卷题目" @click="openAdmin('subjects')">
+            <el-menu-item v-if="showAdminNavigation" index="admin-subjects" title="试卷题目" @click="openAdmin('subjects')">
               <i class="el-icon-reading" /><span class="menu-label">试卷题目</span>
             </el-menu-item>
-            <el-menu-item v-if="isAdmin" index="admin-grading" title="试卷判分" @click="openAdmin('grading')">
+            <el-menu-item v-if="showAdminNavigation" index="admin-grading" title="试卷判分" @click="openAdmin('grading')">
               <i class="el-icon-finished" /><span class="menu-label">试卷判分</span>
             </el-menu-item>
-            <el-menu-item v-if="isAdmin" index="admin-users" title="比赛账号" @click="openAdmin('users')">
+            <el-menu-item v-if="showAdminNavigation" index="admin-users" title="比赛账号" @click="openAdmin('users')">
               <i class="el-icon-user" /><span class="menu-label">比赛账号</span>
             </el-menu-item>
-            <el-menu-item v-if="isAdmin" index="admin-training" title="训练环境" @click="openAdmin('training')">
+            <el-menu-item v-if="showAdminNavigation" index="admin-training" title="训练环境" @click="openAdmin('training')">
               <i class="el-icon-monitor" /><span class="menu-label">训练环境</span>
             </el-menu-item>
-            <el-menu-item v-if="isAdmin" index="admin-settings" title="平台设置" @click="openAdmin('settings')">
+            <el-menu-item v-if="showAdminNavigation" index="admin-settings" title="平台设置" @click="openAdmin('settings')">
               <i class="el-icon-setting" /><span class="menu-label">平台设置</span>
             </el-menu-item>
           </el-menu>
@@ -81,6 +81,9 @@ export default {
     ...mapState('Match', ['isAdmin', 'platformName']),
     isAdminRoute () {
       return this.$route.path === '/Admin'
+    },
+    showAdminNavigation () {
+      return this.isAdmin && this.$route.query.preview !== '1'
     },
     preStartLocked () {
       return !this.isAdmin && this.countdownSnapshot && this.countdownSnapshot.accessPhase === 'PRE_START'
