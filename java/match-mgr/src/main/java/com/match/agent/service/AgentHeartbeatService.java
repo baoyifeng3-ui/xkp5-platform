@@ -10,6 +10,7 @@ import com.match.agent.persistence.AgentMetricMinuteRecord;
 import com.match.agent.persistence.ProcessingAgentMapper;
 import com.match.agent.persistence.ProcessingAgentRecord;
 import com.match.agent.web.AgentProtocolException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -31,6 +32,7 @@ public class AgentHeartbeatService {
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
+    @Autowired
     public AgentHeartbeatService(ProcessingAgentMapper agentMapper,
                                  AgentMetricMinuteMapper metricMapper,
                                  ObjectMapper objectMapper) {

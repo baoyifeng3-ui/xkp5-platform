@@ -12,7 +12,9 @@ import com.match.agent.web.AgentProtocolException;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.annotation.Autowired;
 
+import java.lang.reflect.Constructor;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -45,6 +47,15 @@ public class AgentHeartbeatServiceTest {
                 Clock.fixed(NOW, ZoneOffset.UTC));
         agent = new ProcessingAgentRecord();
         agent.setAgentId("agent-id");
+    }
+
+    @Test
+    public void productionConstructorIsTheExplicitSpringInjectionPoint() throws Exception {
+        Constructor<AgentHeartbeatService> constructor = AgentHeartbeatService.class.getConstructor(
+                ProcessingAgentMapper.class, AgentMetricMinuteMapper.class, ObjectMapper.class);
+
+        assertTrue("multiple constructors require an explicit Spring injection point",
+                constructor.isAnnotationPresent(Autowired.class));
     }
 
     @Test

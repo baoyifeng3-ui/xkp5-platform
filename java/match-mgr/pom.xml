@@ -224,6 +224,12 @@
                 <configuration>
                     <!-- Spring Boot 2.1's CGLIB needs this access when running on JDK 17+. -->
                     <jvmArguments>--add-opens=java.base/java.lang=ALL-UNNAMED</jvmArguments>
+                    <requiresUnpack>
+                        <dependency>
+                            <groupId>org.bouncycastle</groupId>
+                            <artifactId>bcprov-jdk15on</artifactId>
+                        </dependency>
+                    </requiresUnpack>
                 </configuration>
             </plugin>
         </plugins>
