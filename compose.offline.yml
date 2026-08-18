@@ -94,8 +94,10 @@ services:
       TZ: Asia/Shanghai
     ports:
       - "${MATCH_FRONTEND_PORT:-19140}:19090"
+      - "${XKP_AGENT_PORT:-19443}:19443"
     volumes:
       - ./runtime/dataset:/data/dataset:ro
+      - ${XKP_AGENT_TLS_DIR:-/etc/xkp/agent-tls}:/etc/xkp/agent-tls:ro
     depends_on:
       - java
 

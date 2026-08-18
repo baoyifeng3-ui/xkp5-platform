@@ -50,6 +50,10 @@ for compose_file in "$REPO_ROOT/compose.prod.yml" "$REPO_ROOT/compose.offline.ym
     || fail "Production Compose must configure the host identity path: $compose_file"
   grep -q '/etc/xkp/host-identity.json:/etc/xkp/host-identity.json:ro' "$compose_file" \
     || fail "Production Compose must mount the host identity read-only: $compose_file"
+  grep -q '\${XKP_AGENT_PORT:-19443}:19443' "$compose_file" \
+    || fail "Production Compose must expose the Agent TLS listener: $compose_file"
+  grep -q '/etc/xkp/agent-tls:ro' "$compose_file" \
+    || fail "Production Compose must mount Agent TLS files read-only: $compose_file"
   if grep -q 'XKP_LICENSE_TEST_PUBLIC_KEY\|XKP_DEVELOPMENT_IDENTITY' "$compose_file"; then
     fail "Production Compose must not contain development licensing settings: $compose_file"
   fi
@@ -59,6 +63,8 @@ for compose_file in "$REPO_ROOT/compose.prod.yml" "$REPO_ROOT/compose.offline.ym
 done
 grep -q 'host-identity.sh' "$OFFLINE_DIR/build-release.sh" \
   || fail "Release build must include host-identity.sh"
+grep -q 'agent-ca.sh' "$OFFLINE_DIR/build-release.sh" \
+  || fail "Release build must include agent-ca.sh"
 grep -q 'host-identity.sh' "$OFFLINE_DIR/install.sh" \
   || fail "Offline install must initialize the host identity"
 

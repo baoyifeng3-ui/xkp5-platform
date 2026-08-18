@@ -163,6 +163,7 @@ install -m 0644 "$REPO_ROOT/compose.offline.yml" "$stage_dir/compose.offline.yml
 install -m 0644 "$SCRIPT_DIR/.env.example" "$stage_dir/.env.example"
 install -m 0644 "$SCRIPT_DIR/README.md" "$stage_dir/README.md"
 install -m 0755 "$REPO_ROOT/deploy/host-identity.sh" "$stage_dir/host-identity.sh"
+install -m 0755 "$REPO_ROOT/deploy/agent-ca.sh" "$stage_dir/agent-ca.sh"
 for script_name in _common.sh install.sh upgrade.sh reset-from-snapshot.sh verify.sh uninstall.sh; do
   install -m 0755 "$SCRIPT_DIR/$script_name" "$stage_dir/$script_name"
 done
