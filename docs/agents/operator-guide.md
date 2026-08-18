@@ -8,8 +8,9 @@
 ## 当前功能边界
 
 当前阶段提供注册、身份认证、5 秒心跳、CPU/内存/磁盘、RTX 2080/NVML、Docker 状态、
-30 天分钟级历史、在线判定和启用/禁用/移除。命令轮询当前固定返回空列表，不执行关机、
-容器创建、删除、启动、停止或还原；这些操作会在后续阶段接入同一认证通道。
+30 天分钟级历史、在线判定、启用/禁用/移除、Wake-on-LAN 和安全关机。关机命令通过
+持久化队列租约交付，Agent 只接受固定版本的 `SHUTDOWN_SERVER`，不会执行服务端传入的
+shell 文本。容器创建、删除、启动、停止和还原将在后续阶段接入同一认证通道。
 
 ## 初始化内部 CA
 
@@ -60,6 +61,11 @@ sudo ./deploy/agent-ca.sh \
 - Agent 最后一次被接受的心跳不超过 15 秒时显示在线；网络恢复后下一次成功心跳自动
   重新上线。
 - 平台授权到期不会删除监控历史，但后续容器启动命令会被管理端和 Agent 双重拒绝。
+- 普通管理员在授权有效时可以开关机；超级管理员可在授权异常时执行维护开关机。
+- WOL 需要 BIOS/UEFI 和网卡启用网络唤醒，并由同一局域网的管理服务器向 UDP 9 端口
+  发送广播包。接口成功只表示发包完成，不保证硬件已启动。
+- Agent systemd 服务通过安装器部署的最小 polkit 规则执行 `/usr/bin/loginctl poweroff`。关机发起后，管理端以
+  心跳停止确认完成；90 秒后仍在线会记录 `SHUTDOWN_NOT_CONFIRMED`。
 
 常用诊断命令：
 
@@ -84,6 +90,8 @@ openssl s_client -connect 192.168.1.10:19443 -CAfile ./ca.crt </dev/null
 | GPU 指标为 `--` | 检查 NVIDIA 驱动、`/dev/nvidia*` 权限和 NVML；其他指标应继续上报。 |
 | Docker 指标不可用 | 检查 Docker 服务、Agent 用户的 docker 组和 `/var/run/docker.sock`。 |
 | 工作目录磁盘不可用 | 检查 `workspacePath` 是否存在/已挂载；CPU、内存和系统盘仍会保留。 |
+| 唤醒包已发送但设备未上线 | 检查 BIOS/UEFI WOL、网卡 WOL、MAC 地址、交换机广播策略和 UDP 9。 |
+| 关机一直等待或失败 | 检查命令记录、Agent 日志、systemd 权限；不要通过开放远程 shell 绕过。 |
 
 Windows 只作为开发机。生产 Agent 的 systemd、Docker、NVML、证书文件权限和 RTX 2080
 数据必须在真实 Ubuntu 处理服务器上完成验收。

@@ -15,6 +15,7 @@ public class AgentAuditRecord {
     private Integer actorUserId;
     private String agentId;
     private String tokenId;
+    private String commandId;
     private String action;
     private String result;
     private String reasonCode;

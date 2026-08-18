@@ -37,16 +37,19 @@ public class AgentCommandServiceTest {
     private static final Instant NOW = Instant.parse("2026-08-19T12:00:00Z");
     private ProcessingAgentCommandMapper mapper;
     private AgentCommandService service;
+    private AgentAuditService audit;
     private ProcessingAgentRecord agent;
 
     @Before
     public void setUp() {
         mapper = mock(ProcessingAgentCommandMapper.class);
+        audit = mock(AgentAuditService.class);
         service = new AgentCommandService(mapper, new ObjectMapper().findAndRegisterModules(),
-                Clock.fixed(NOW, ZoneOffset.UTC));
+                audit, Clock.fixed(NOW, ZoneOffset.UTC));
         agent = new ProcessingAgentRecord();
         agent.setAgentId("11111111-1111-4111-8111-111111111111");
         agent.setEnabled(true);
+        when(mapper.selectEnabledAgentForUpdate(agent.getAgentId())).thenReturn(agent.getAgentId());
     }
 
     @Test
@@ -80,6 +83,13 @@ public class AgentCommandServiceTest {
         verify(mapper, never()).insert(any(ProcessingAgentCommandRecord.class));
     }
 
+    @Test(expected = IllegalArgumentException.class)
+    public void shutdownRequestRechecksEnabledAgentInsideTransaction() {
+        when(mapper.selectEnabledAgentForUpdate(agent.getAgentId())).thenReturn(null);
+
+        service.requestShutdown(agent, 7, "ADMIN");
+    }
+
     @Test
     public void leasesAtMostOnePendingCommandWithFreshToken() {
         ProcessingAgentCommandRecord pending = command("PENDING");
@@ -97,6 +107,7 @@ public class AgentCommandServiceTest {
         assertEquals(Integer.valueOf(1), leased.get().getVersion());
         assertEquals(NOW.plusSeconds(30), leased.get().getLeaseExpiresAt());
         assertTrue(leased.get().getPayload().isObject());
+        verify(audit).recordCommandSuccess("COMMAND_LEASED", null, agent.getAgentId(), pending.getCommandId());
     }
 
     @Test
@@ -110,14 +121,15 @@ public class AgentCommandServiceTest {
     }
 
     @Test
-    public void eachLeaseAttemptRecoversExpiredAndExhaustedCommandsFirst() {
+    public void leaseDoesNotRequireTheAgentToRecoverExpiredCommands() {
         when(mapper.selectNextForLease(eq(agent.getAgentId()), any(LocalDateTime.class))).thenReturn(null);
 
         assertFalse(service.lease(agent).isPresent());
 
-        LocalDateTime now = LocalDateTime.ofInstant(NOW, ZoneOffset.UTC);
-        verify(mapper).failExpiredLeases(agent.getAgentId(), now, 5, now);
-        verify(mapper).requeueExpiredLeases(agent.getAgentId(), now, 5, now);
+        verify(mapper, never()).failExpiredLeases(eq(agent.getAgentId()), any(LocalDateTime.class),
+                eq(5), any(LocalDateTime.class));
+        verify(mapper, never()).requeueExpiredLeases(eq(agent.getAgentId()), any(LocalDateTime.class),
+                eq(5), any(LocalDateTime.class));
     }
 
     @Test
@@ -131,6 +143,7 @@ public class AgentCommandServiceTest {
 
         assertEquals("RUNNING", view.getState());
         assertEquals(LocalDateTime.ofInstant(NOW, ZoneOffset.UTC), view.getStartedAt());
+        verify(audit).recordCommandSuccess("COMMAND_STARTED", null, agent.getAgentId(), leased.getCommandId());
     }
 
     @Test
@@ -156,20 +169,24 @@ public class AgentCommandServiceTest {
     public void runningCommandAcceptsSuccessfulResult() {
         ProcessingAgentCommandRecord running = leasedCommand("RUNNING");
         AgentCommandResultRequest result = result(true, "SHUTDOWN_ACCEPTED", "systemd accepted poweroff");
-        when(mapper.markTerminal(eq(running.getCommandId()), eq(agent.getAgentId()),
-                eq(running.getLeaseToken()), eq("SUCCEEDED"), any(LocalDateTime.class),
+        when(mapper.recordShutdownAccepted(eq(running.getCommandId()), eq(agent.getAgentId()),
+                eq(running.getLeaseToken()), any(LocalDateTime.class),
                 eq("SHUTDOWN_ACCEPTED"), eq("systemd accepted poweroff"), eq(null))).thenReturn(1);
 
         AgentCommandView view = service.finish(agent, running.getCommandId(), result);
 
-        assertEquals("SUCCEEDED", view.getState());
+        assertEquals("RUNNING", view.getState());
         assertEquals("SHUTDOWN_ACCEPTED", view.getResultCode());
-        assertNotNull(view.getCompletedAt());
+        assertEquals(null, view.getCompletedAt());
+        verify(mapper, never()).markTerminal(eq(running.getCommandId()), eq(agent.getAgentId()),
+                eq(running.getLeaseToken()), eq("SUCCEEDED"), any(LocalDateTime.class),
+                any(String.class), any(String.class), any(String.class));
+        verify(audit).recordCommandSuccess("SHUTDOWN_ACCEPTED", null, agent.getAgentId(), running.getCommandId());
     }
 
     @Test
     public void duplicateIdenticalTerminalResultIsIdempotent() {
-        ProcessingAgentCommandRecord completed = leasedCommand("SUCCEEDED");
+        ProcessingAgentCommandRecord completed = leasedCommand("RUNNING");
         completed.setResultCode("SHUTDOWN_ACCEPTED");
         completed.setResultMessage("systemd accepted poweroff");
         completed.setCompletedAt(LocalDateTime.ofInstant(NOW.minusSeconds(1), ZoneOffset.UTC));
@@ -178,7 +195,23 @@ public class AgentCommandServiceTest {
         AgentCommandView view = service.finish(agent, completed.getCommandId(),
                 result(true, "SHUTDOWN_ACCEPTED", "systemd accepted poweroff"));
 
+        assertEquals("RUNNING", view.getState());
+    }
+
+    @Test
+    public void recoveredAgentCanAcknowledgeAlreadyOfflineConfirmedShutdown() {
+        ProcessingAgentCommandRecord completed = leasedCommand("SUCCEEDED");
+        completed.setResultCode("OFFLINE_CONFIRMED");
+        completed.setResultMessage("Agent heartbeat stopped after shutdown started");
+        completed.setCompletedAt(LocalDateTime.ofInstant(NOW.minusSeconds(1), ZoneOffset.UTC));
+        when(mapper.selectById(completed.getCommandId())).thenReturn(completed);
+
+        AgentCommandView view = service.finish(agent, completed.getCommandId(),
+                result(false, "EXECUTION_OUTCOME_UNKNOWN",
+                        "Agent restarted before command outcome was recorded"));
+
         assertEquals("SUCCEEDED", view.getState());
+        assertEquals("OFFLINE_CONFIRMED", view.getResultCode());
     }
 
     @Test

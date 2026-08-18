@@ -26,7 +26,7 @@ public class AgentAuditService {
 
     @Transactional
     public void recordSuccess(String action, Integer actorUserId, String agentId, String tokenId) {
-        insert(action, "SUCCESS", null, actorUserId, agentId, tokenId);
+        insert(action, "SUCCESS", null, actorUserId, agentId, tokenId, null);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -34,11 +34,25 @@ public class AgentAuditService {
                               String agentId, String tokenId) {
         String safeReason = reasonCode != null && SAFE_CODE.matcher(reasonCode).matches()
                 ? reasonCode : "UNKNOWN";
-        insert(action, "FAILURE", safeReason, actorUserId, agentId, tokenId);
+        insert(action, "FAILURE", safeReason, actorUserId, agentId, tokenId, null);
+    }
+
+    @Transactional
+    public void recordCommandSuccess(String action, Integer actorUserId, String agentId,
+                                     String commandId) {
+        insert(action, "SUCCESS", null, actorUserId, agentId, null, commandId);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordCommandFailure(String action, String reasonCode, Integer actorUserId,
+                                     String agentId, String commandId) {
+        String safeReason = reasonCode != null && SAFE_CODE.matcher(reasonCode).matches()
+                ? reasonCode : "UNKNOWN";
+        insert(action, "FAILURE", safeReason, actorUserId, agentId, null, commandId);
     }
 
     private void insert(String action, String result, String reasonCode, Integer actorUserId,
-                        String agentId, String tokenId) {
+                        String agentId, String tokenId, String commandId) {
         if (action == null || !SAFE_CODE.matcher(action).matches()) {
             throw new IllegalArgumentException("Agent 审计操作代码无效");
         }
@@ -46,6 +60,7 @@ public class AgentAuditService {
         record.setActorUserId(actorUserId);
         record.setAgentId(agentId);
         record.setTokenId(tokenId);
+        record.setCommandId(commandId);
         record.setAction(action);
         record.setResult(result);
         record.setReasonCode(reasonCode);

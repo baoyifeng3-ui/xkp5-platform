@@ -39,11 +39,14 @@ public class AgentCommandService {
 
     private final ProcessingAgentCommandMapper mapper;
     private final ObjectMapper objectMapper;
+    private final AgentAuditService auditService;
     private final Clock clock;
 
-    public AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper, Clock clock) {
+    public AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper,
+                               AgentAuditService auditService, Clock clock) {
         this.mapper = mapper;
         this.objectMapper = objectMapper;
+        this.auditService = auditService;
         this.clock = clock;
     }
 
@@ -51,6 +54,9 @@ public class AgentCommandService {
     public AgentCommandView requestShutdown(ProcessingAgentRecord agent, Integer requesterUserId,
                                             String requesterRole) {
         String agentId = requireAgentId(agent);
+        if (mapper.selectEnabledAgentForUpdate(agentId) == null) {
+            throw new IllegalArgumentException("Processing server is disabled");
+        }
         ProcessingAgentCommandRecord existing = mapper.selectActive(agentId, SHUTDOWN_SERVER);
         if (existing != null) {
             return toView(existing);
@@ -98,8 +104,6 @@ public class AgentCommandService {
     public Optional<AgentCommandEnvelope> lease(ProcessingAgentRecord agent) {
         String agentId = requireAgentId(agent);
         LocalDateTime now = utcNow();
-        mapper.failExpiredLeases(agentId, now, MAX_DELIVERY_ATTEMPTS, now);
-        mapper.requeueExpiredLeases(agentId, now, MAX_DELIVERY_ATTEMPTS, now);
         ProcessingAgentCommandRecord pending = mapper.selectNextForLease(agentId, now);
         if (pending == null) {
             return Optional.empty();
@@ -114,6 +118,7 @@ public class AgentCommandService {
         pending.setLeaseExpiresAt(leaseExpiresAt);
         pending.setDeliveredAt(now);
         pending.setAttemptCount(pending.getAttemptCount() == null ? 1 : pending.getAttemptCount() + 1);
+        auditService.recordCommandSuccess("COMMAND_LEASED", null, agentId, pending.getCommandId());
         return Optional.of(toEnvelope(pending));
     }
 
@@ -129,6 +134,7 @@ public class AgentCommandService {
             started.setAgentId(agentId);
             started.setState("RUNNING");
             started.setStartedAt(now);
+            auditService.recordCommandSuccess("COMMAND_STARTED", null, agentId, commandId);
             return toView(started);
         }
         ProcessingAgentCommandRecord current = mapper.selectById(commandId);
@@ -145,6 +151,34 @@ public class AgentCommandService {
         String agentId = requireAgentId(agent);
         ValidatedResult result = validateResult(request);
         LocalDateTime now = utcNow();
+        if (result.success) {
+            if (mapper.recordShutdownAccepted(commandId, agentId, result.leaseToken, now,
+                    result.code, result.message, result.json) == 1) {
+                ProcessingAgentCommandRecord accepted = new ProcessingAgentCommandRecord();
+                accepted.setCommandId(commandId);
+                accepted.setAgentId(agentId);
+                accepted.setState("RUNNING");
+                accepted.setResultCode(result.code);
+                accepted.setResultMessage(result.message);
+                accepted.setResultJson(result.json);
+                auditService.recordCommandSuccess("SHUTDOWN_ACCEPTED", null, agentId, commandId);
+                return toView(accepted);
+            }
+            ProcessingAgentCommandRecord current = mapper.selectById(commandId);
+            if (sameLease(current, agentId, result.leaseToken)
+                    && "RUNNING".equals(current.getState())
+                    && Objects.equals(current.getResultCode(), result.code)
+                    && Objects.equals(current.getResultMessage(), result.message)
+                    && Objects.equals(current.getResultJson(), result.json)) {
+                return toView(current);
+            }
+            if (sameLease(current, agentId, result.leaseToken)
+                    && "SUCCEEDED".equals(current.getState())
+                    && "OFFLINE_CONFIRMED".equals(current.getResultCode())) {
+                return toView(current);
+            }
+            throw leaseConflict();
+        }
         if (mapper.markTerminal(commandId, agentId, result.leaseToken, result.state, now,
                 result.code, result.message, result.json) == 1) {
             ProcessingAgentCommandRecord completed = new ProcessingAgentCommandRecord();
@@ -155,9 +189,15 @@ public class AgentCommandService {
             completed.setResultCode(result.code);
             completed.setResultMessage(result.message);
             completed.setResultJson(result.json);
+            auditService.recordCommandFailure("COMMAND_RESULT", result.code, null, agentId, commandId);
             return toView(completed);
         }
         ProcessingAgentCommandRecord current = mapper.selectById(commandId);
+        if (sameLease(current, agentId, result.leaseToken)
+                && "SUCCEEDED".equals(current.getState())
+                && "OFFLINE_CONFIRMED".equals(current.getResultCode())) {
+            return toView(current);
+        }
         if (sameLease(current, agentId, result.leaseToken) && isTerminal(current.getState())
                 && Objects.equals(current.getState(), result.state)
                 && Objects.equals(current.getResultCode(), result.code)
@@ -242,7 +282,7 @@ public class AgentCommandService {
                 throw new IllegalArgumentException("Command result details are too large");
             }
         }
-        return new ValidatedResult(leaseToken, request.getSuccess() ? "SUCCEEDED" : "FAILED",
+        return new ValidatedResult(leaseToken, request.getSuccess(), request.getSuccess() ? "RUNNING" : "FAILED",
                 code, message, json);
     }
 
@@ -275,13 +315,15 @@ public class AgentCommandService {
 
     private static class ValidatedResult {
         private final String leaseToken;
+        private final boolean success;
         private final String state;
         private final String code;
         private final String message;
         private final String json;
 
-        private ValidatedResult(String leaseToken, String state, String code, String message, String json) {
+        private ValidatedResult(String leaseToken, boolean success, String state, String code, String message, String json) {
             this.leaseToken = leaseToken;
+            this.success = success;
             this.state = state;
             this.code = code;
             this.message = message;
