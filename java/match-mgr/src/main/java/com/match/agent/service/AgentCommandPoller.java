@@ -3,6 +3,7 @@ package com.match.agent.service;
 import com.match.agent.model.AgentCommandEnvelope;
 import com.match.agent.model.AgentCommandPollResponse;
 import com.match.agent.persistence.ProcessingAgentRecord;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.Collections;
@@ -18,6 +19,7 @@ public class AgentCommandPoller {
     private final LongSupplier nanoTime;
     private final Sleeper sleeper;
 
+    @Autowired
     public AgentCommandPoller(AgentCommandService commandService) {
         this(commandService, System::nanoTime, Thread::sleep);
     }

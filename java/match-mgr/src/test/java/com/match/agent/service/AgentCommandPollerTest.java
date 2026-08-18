@@ -4,7 +4,9 @@ import com.match.agent.model.AgentCommandEnvelope;
 import com.match.agent.model.AgentCommandPollResponse;
 import com.match.agent.persistence.ProcessingAgentRecord;
 import org.junit.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 
+import java.lang.reflect.Constructor;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -18,6 +20,15 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 public class AgentCommandPollerTest {
+    @Test
+    public void productionConstructorIsTheExplicitSpringInjectionPoint() throws Exception {
+        Constructor<AgentCommandPoller> constructor = AgentCommandPoller.class.getConstructor(
+                AgentCommandService.class);
+
+        org.junit.Assert.assertTrue("multiple constructors require an explicit Spring injection point",
+                constructor.isAnnotationPresent(Autowired.class));
+    }
+
     @Test
     public void zeroWaitStillAttemptsOneLease() {
         AgentCommandService commands = mock(AgentCommandService.class);
