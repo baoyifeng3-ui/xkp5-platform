@@ -5,7 +5,8 @@
   "scripts": {
     "serve": "node scripts/vue-cli.js serve",
     "build": "node scripts/vue-cli.js build",
-    "test:navigation": "node scripts/test-role-navigation.js"
+    "test:navigation": "node scripts/test-role-navigation.js",
+    "test:license": "node scripts/test-license-navigation.js"
   },
   "engines": {
     "node": ">=16 <23"

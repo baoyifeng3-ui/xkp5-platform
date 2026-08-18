@@ -23,6 +23,7 @@ import ResourceManagement from '@/views/management/ResourceManagement.vue'
 import TrainingManagement from '@/views/management/TrainingManagement.vue'
 import UserManagement from '@/views/management/UserManagement.vue'
 import DeviceManagement from '@/views/management/DeviceManagement.vue'
+import PlatformLicense from '@/views/management/PlatformLicense.vue'
 import CompetitionPreview from '@/views/management/CompetitionPreview.vue'
 import CoursePlatform from '@/views/user/CoursePlatform.vue'
 import ResourceCenter from '@/views/user/ResourceCenter.vue'
@@ -53,6 +54,7 @@ const routes = [
       { path: 'training', name: 'TrainingManagement', component: TrainingManagement },
       { path: 'users', name: 'UserManagement', component: UserManagement },
       { path: 'devices', name: 'DeviceManagement', component: DeviceManagement },
+      { path: 'license', name: 'PlatformLicense', component: PlatformLicense },
       { path: '/competition-preview', name: 'CompetitionPreview', component: CompetitionPreview },
       { path: '/Admin', name: 'Admin', component: Admin }
     ]
