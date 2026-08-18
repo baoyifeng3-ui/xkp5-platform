@@ -46,4 +46,26 @@ public interface ProcessingAgentCommandMapper extends BaseMapper<ProcessingAgent
                              @Param("now") LocalDateTime now,
                              @Param("maxAttempts") int maxAttempts,
                              @Param("updatedAt") LocalDateTime updatedAt);
+
+    @Update("UPDATE processing_agent_command SET state = 'RUNNING', started_at = #{startedAt}, "
+            + "updated_at = #{startedAt} WHERE command_id = #{commandId} AND agent_id = #{agentId} "
+            + "AND state = 'LEASED' AND lease_token = #{leaseToken}")
+    int markRunning(@Param("commandId") String commandId,
+                    @Param("agentId") String agentId,
+                    @Param("leaseToken") String leaseToken,
+                    @Param("startedAt") LocalDateTime startedAt);
+
+    @Update("UPDATE processing_agent_command SET state = #{terminalState}, active_dedup_key = NULL, "
+            + "completed_at = #{completedAt}, result_code = #{resultCode}, "
+            + "result_message = #{resultMessage}, result_json = #{resultJson}, updated_at = #{completedAt} "
+            + "WHERE command_id = #{commandId} AND agent_id = #{agentId} "
+            + "AND state = 'RUNNING' AND lease_token = #{leaseToken}")
+    int markTerminal(@Param("commandId") String commandId,
+                     @Param("agentId") String agentId,
+                     @Param("leaseToken") String leaseToken,
+                     @Param("terminalState") String terminalState,
+                     @Param("completedAt") LocalDateTime completedAt,
+                     @Param("resultCode") String resultCode,
+                     @Param("resultMessage") String resultMessage,
+                     @Param("resultJson") String resultJson);
 }

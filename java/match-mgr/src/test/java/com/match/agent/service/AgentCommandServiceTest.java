@@ -2,10 +2,13 @@ package com.match.agent.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.match.agent.model.AgentCommandEnvelope;
+import com.match.agent.model.AgentCommandResultRequest;
+import com.match.agent.model.AgentCommandStartRequest;
 import com.match.agent.model.AgentCommandView;
 import com.match.agent.persistence.ProcessingAgentCommandMapper;
 import com.match.agent.persistence.ProcessingAgentCommandRecord;
 import com.match.agent.persistence.ProcessingAgentRecord;
+import com.match.agent.web.AgentProtocolException;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -115,6 +118,84 @@ public class AgentCommandServiceTest {
         verify(mapper).requeueExpiredLeases(agent.getAgentId(), now, 5, now);
     }
 
+    @Test
+    public void matchingLeaseStartsCommand() {
+        ProcessingAgentCommandRecord leased = leasedCommand("LEASED");
+        when(mapper.markRunning(leased.getCommandId(), agent.getAgentId(), leased.getLeaseToken(),
+                LocalDateTime.ofInstant(NOW, ZoneOffset.UTC))).thenReturn(1);
+
+        AgentCommandView view = service.start(agent, leased.getCommandId(),
+                new AgentCommandStartRequest(leased.getLeaseToken()));
+
+        assertEquals("RUNNING", view.getState());
+        assertEquals(LocalDateTime.ofInstant(NOW, ZoneOffset.UTC), view.getStartedAt());
+    }
+
+    @Test
+    public void staleLeaseCannotStartCommand() {
+        ProcessingAgentCommandRecord leased = leasedCommand("LEASED");
+        when(mapper.selectById(leased.getCommandId())).thenReturn(leased);
+
+        expectConflict(() -> service.start(agent, leased.getCommandId(),
+                new AgentCommandStartRequest("44444444-4444-4444-8444-444444444444")));
+    }
+
+    @Test
+    public void foreignAgentCannotStartCommand() {
+        ProcessingAgentCommandRecord leased = leasedCommand("LEASED");
+        leased.setAgentId("55555555-5555-4555-8555-555555555555");
+        when(mapper.selectById(leased.getCommandId())).thenReturn(leased);
+
+        expectConflict(() -> service.start(agent, leased.getCommandId(),
+                new AgentCommandStartRequest(leased.getLeaseToken())));
+    }
+
+    @Test
+    public void runningCommandAcceptsSuccessfulResult() {
+        ProcessingAgentCommandRecord running = leasedCommand("RUNNING");
+        AgentCommandResultRequest result = result(true, "SHUTDOWN_ACCEPTED", "systemd accepted poweroff");
+        when(mapper.markTerminal(eq(running.getCommandId()), eq(agent.getAgentId()),
+                eq(running.getLeaseToken()), eq("SUCCEEDED"), any(LocalDateTime.class),
+                eq("SHUTDOWN_ACCEPTED"), eq("systemd accepted poweroff"), eq(null))).thenReturn(1);
+
+        AgentCommandView view = service.finish(agent, running.getCommandId(), result);
+
+        assertEquals("SUCCEEDED", view.getState());
+        assertEquals("SHUTDOWN_ACCEPTED", view.getResultCode());
+        assertNotNull(view.getCompletedAt());
+    }
+
+    @Test
+    public void duplicateIdenticalTerminalResultIsIdempotent() {
+        ProcessingAgentCommandRecord completed = leasedCommand("SUCCEEDED");
+        completed.setResultCode("SHUTDOWN_ACCEPTED");
+        completed.setResultMessage("systemd accepted poweroff");
+        completed.setCompletedAt(LocalDateTime.ofInstant(NOW.minusSeconds(1), ZoneOffset.UTC));
+        when(mapper.selectById(completed.getCommandId())).thenReturn(completed);
+
+        AgentCommandView view = service.finish(agent, completed.getCommandId(),
+                result(true, "SHUTDOWN_ACCEPTED", "systemd accepted poweroff"));
+
+        assertEquals("SUCCEEDED", view.getState());
+    }
+
+    @Test
+    public void conflictingTerminalResultIsRejected() {
+        ProcessingAgentCommandRecord completed = leasedCommand("FAILED");
+        completed.setResultCode("SHUTDOWN_FAILED");
+        completed.setResultMessage("permission denied");
+        when(mapper.selectById(completed.getCommandId())).thenReturn(completed);
+
+        expectConflict(() -> service.finish(agent, completed.getCommandId(),
+                result(true, "SHUTDOWN_ACCEPTED", "systemd accepted poweroff")));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void resultMessageCannotExceedBound() {
+        service.finish(agent, "22222222-2222-4222-8222-222222222222",
+                result(false, "SHUTDOWN_FAILED", repeat('x', 513)));
+    }
+
     private ProcessingAgentCommandRecord command(String state) {
         ProcessingAgentCommandRecord record = new ProcessingAgentCommandRecord();
         record.setCommandId("22222222-2222-4222-8222-222222222222");
@@ -130,5 +211,41 @@ public class AgentCommandServiceTest {
         record.setAttemptCount(0);
         record.setUpdatedAt(record.getRequestedAt());
         return record;
+    }
+
+    private ProcessingAgentCommandRecord leasedCommand(String state) {
+        ProcessingAgentCommandRecord record = command(state);
+        record.setLeaseToken("66666666-6666-4666-8666-666666666666");
+        record.setLeaseExpiresAt(LocalDateTime.ofInstant(NOW.plusSeconds(30), ZoneOffset.UTC));
+        record.setDeliveredAt(LocalDateTime.ofInstant(NOW.minusSeconds(1), ZoneOffset.UTC));
+        record.setAttemptCount(1);
+        return record;
+    }
+
+    private AgentCommandResultRequest result(boolean success, String code, String message) {
+        AgentCommandResultRequest request = new AgentCommandResultRequest();
+        request.setLeaseToken("66666666-6666-4666-8666-666666666666");
+        request.setSuccess(success);
+        request.setCode(code);
+        request.setMessage(message);
+        return request;
+    }
+
+    private void expectConflict(Runnable action) {
+        try {
+            action.run();
+        } catch (AgentProtocolException exception) {
+            assertEquals("COMMAND_LEASE_CONFLICT", exception.getCode());
+            return;
+        }
+        throw new AssertionError("expected command lease conflict");
+    }
+
+    private String repeat(char value, int count) {
+        StringBuilder result = new StringBuilder(count);
+        for (int index = 0; index < count; index++) {
+            result.append(value);
+        }
+        return result.toString();
     }
 }
