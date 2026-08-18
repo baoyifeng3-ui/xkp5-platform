@@ -5,6 +5,8 @@ import com.match.service.TeamsService;
 import com.match.service.impl.PaperResourceService;
 import com.match.service.impl.ScoreServiceImpl;
 import com.match.service.impl.SystemSettingService;
+import com.match.security.ParticipantAccessGuard;
+import com.match.security.CompetitionAccessException;
 import com.match.util.result.ResponseResult;
 import org.junit.Before;
 import org.junit.Test;
@@ -14,6 +16,7 @@ import org.mockito.junit.MockitoJUnitRunner;
 
 import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -31,6 +34,9 @@ public class ScoreControllerTest {
     @Mock
     private TeamsService teamsService;
 
+    @Mock
+    private ParticipantAccessGuard participantAccessGuard;
+
     private ScoreController controller;
 
     @Before
@@ -40,6 +46,7 @@ public class ScoreControllerTest {
         controller.systemSettingService = systemSettingService;
         controller.paperResourceService = paperResourceService;
         controller.teamsService = teamsService;
+        controller.participantAccessGuard = participantAccessGuard;
     }
 
     @Test
@@ -65,5 +72,13 @@ public class ScoreControllerTest {
         verify(paperResourceService).requireReady("C");
         verify(scoreService).excPy("{}", "C");
         verify(scoreService).saveScore(88.0);
+    }
+
+    @Test(expected = CompetitionAccessException.class)
+    public void administratorPreviewCannotPersistScore() {
+        doThrow(new CompetitionAccessException("管理员只能预览试卷，不能保存或提交"))
+                .when(participantAccessGuard).requireParticipant();
+
+        controller.save("{}", "A");
     }
 }

@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.match.dto.PasswordChangeRequest;
 import com.match.entity.User;
 import com.match.security.UserRole;
+import com.match.security.PasswordCodec;
 import com.match.service.impl.UserServiceImpl;
 import com.match.service.impl.ParticipantLoginGate;
 import com.match.util.result.Response;
@@ -24,11 +25,14 @@ import java.util.Map;
 public class UserController {
     private final UserServiceImpl userService;
     private final ParticipantLoginGate participantLoginGate;
+    private final PasswordCodec passwordCodec;
 
     public UserController(UserServiceImpl userService,
-                          ParticipantLoginGate participantLoginGate) {
+                          ParticipantLoginGate participantLoginGate,
+                          PasswordCodec passwordCodec) {
         this.userService = userService;
         this.participantLoginGate = participantLoginGate;
+        this.passwordCodec = passwordCodec;
     }
 
     @PostMapping("login")
@@ -37,9 +41,8 @@ public class UserController {
             return Response.makeRsp(400, "请输入用户名和密码");
         }
         User user = userService.getOne(Wrappers.<User>lambdaQuery()
-                .eq(User::getUserName, input.getUserName())
-                .eq(User::getPassword, input.getPassword()));
-        if (user == null) {
+                .eq(User::getUserName, input.getUserName()));
+        if (user == null || !passwordCodec.matches(input.getPassword(), user.getPassword())) {
             return Response.makeRsp(400, "用户名或密码错误");
         }
         if (!Boolean.TRUE.equals(user.getEnabled())) {
@@ -48,6 +51,11 @@ public class UserController {
         String deniedMessage = participantLoginGate.deniedMessage(isAdmin(user));
         if (deniedMessage != null) {
             return Response.makeRsp(403, deniedMessage);
+        }
+
+        if (isAdmin(user) && !passwordCodec.isEncoded(user.getPassword())) {
+            user.setPassword(passwordCodec.encode(input.getPassword()));
+            userService.updateById(user);
         }
 
         StpUtil.login(user.getUserId());
@@ -72,7 +80,7 @@ public class UserController {
     @PostMapping("change-password")
     public ResponseResult<Object> changePassword(@RequestBody PasswordChangeRequest request) {
         User user = userService.getById(StpUtil.getLoginIdAsInt());
-        if (request.getCurrentPassword() == null || !request.getCurrentPassword().equals(user.getPassword())) {
+        if (request.getCurrentPassword() == null || !passwordCodec.matches(request.getCurrentPassword(), user.getPassword())) {
             return Response.makeRsp(400, "当前密码错误");
         }
         if (request.getNewPassword() == null || request.getNewPassword().trim().length() < 6) {
@@ -81,7 +89,7 @@ public class UserController {
         if (request.getNewPassword().equals(request.getCurrentPassword())) {
             return Response.makeRsp(400, "新密码不能与当前密码相同");
         }
-        user.setPassword(request.getNewPassword());
+        user.setPassword(isAdmin(user) ? passwordCodec.encode(request.getNewPassword()) : request.getNewPassword());
         user.setMustChangePassword(false);
         userService.updateById(user);
         return Response.makeOKRsp("密码修改成功");

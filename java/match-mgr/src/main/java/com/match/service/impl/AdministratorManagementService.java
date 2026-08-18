@@ -6,6 +6,7 @@ import com.match.dto.AdministratorView;
 import com.match.entity.User;
 import com.match.mapper.UserMapper;
 import com.match.security.UserRole;
+import com.match.security.PasswordCodec;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,9 +17,11 @@ import java.util.stream.Collectors;
 @Service
 public class AdministratorManagementService {
     private final UserMapper userMapper;
+    private final PasswordCodec passwordCodec;
 
-    public AdministratorManagementService(UserMapper userMapper) {
+    public AdministratorManagementService(UserMapper userMapper, PasswordCodec passwordCodec) {
         this.userMapper = userMapper;
+        this.passwordCodec = passwordCodec;
     }
 
     public List<AdministratorView> list() {
@@ -34,7 +37,7 @@ public class AdministratorManagementService {
         validate(request, true);
         User user = new User();
         user.setUserName(request.getUserName().trim());
-        user.setPassword(request.getPassword());
+        user.setPassword(passwordCodec.encode(request.getPassword()));
         user.setEnabled(true);
         user.setMustChangePassword(true);
         user.setIsAdmin(true);
@@ -67,7 +70,7 @@ public class AdministratorManagementService {
         if (request == null || request.getPassword() == null || request.getPassword().length() < 6) {
             throw new IllegalArgumentException("新密码至少需要 6 个字符");
         }
-        user.setPassword(request.getPassword());
+        user.setPassword(passwordCodec.encode(request.getPassword()));
         user.setMustChangePassword(true);
         userMapper.updateById(user);
         return toView(user);

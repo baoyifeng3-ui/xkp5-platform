@@ -5,6 +5,7 @@ import com.alibaba.fastjson.JSONArray;
 import com.match.entity.Score;
 import com.match.service.TeamsService;
 import com.match.service.impl.ScoreServiceImpl;
+import com.match.security.ParticipantAccessGuard;
 import com.match.util.result.Response;
 import com.match.util.result.ResponseResult;
 import io.swagger.annotations.Api;
@@ -47,8 +48,12 @@ public class ScoreController {
     @Autowired
     TeamsService teamsService;
 
+    @Autowired
+    ParticipantAccessGuard participantAccessGuard;
+
     @PutMapping()
     public ResponseResult<Object> save(String anotation, String paperType) {
+        participantAccessGuard.requireParticipant();
         try {
             String activePaper = systemSettingService.getActivePaper();
             if (activePaper.isEmpty()) {

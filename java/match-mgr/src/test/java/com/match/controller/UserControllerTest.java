@@ -3,6 +3,7 @@ package com.match.controller;
 import com.match.entity.User;
 import com.match.service.impl.ParticipantLoginGate;
 import com.match.service.impl.UserServiceImpl;
+import com.match.security.PasswordCodec;
 import org.junit.Test;
 
 import java.lang.reflect.Method;
@@ -17,7 +18,8 @@ public class UserControllerTest {
     public void currentUserDataIncludesCanonicalRole() throws Exception {
         UserController controller = new UserController(
                 mock(UserServiceImpl.class),
-                mock(ParticipantLoginGate.class));
+                mock(ParticipantLoginGate.class),
+                mock(PasswordCodec.class));
         User user = new User();
         user.setUserId(9);
         user.setUserName("manager");

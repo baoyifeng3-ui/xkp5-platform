@@ -4,6 +4,7 @@ import com.match.dto.AdministratorRequest;
 import com.match.dto.AdministratorView;
 import com.match.entity.User;
 import com.match.mapper.UserMapper;
+import com.match.security.PasswordCodec;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -24,12 +25,15 @@ import static org.mockito.Mockito.when;
 
 public class AdministratorManagementServiceTest {
     private UserMapper userMapper;
+    private PasswordCodec passwordCodec;
     private AdministratorManagementService service;
 
     @Before
     public void setUp() {
         userMapper = mock(UserMapper.class);
-        service = new AdministratorManagementService(userMapper);
+        passwordCodec = mock(PasswordCodec.class);
+        when(passwordCodec.encode(any(String.class))).thenReturn("{bcrypt}encoded");
+        service = new AdministratorManagementService(userMapper, passwordCodec);
     }
 
     @Test
@@ -45,6 +49,7 @@ public class AdministratorManagementServiceTest {
         verify(userMapper).insert(captor.capture());
 
         assertEquals("ADMIN", captor.getValue().getRole());
+        assertEquals("{bcrypt}encoded", captor.getValue().getPassword());
         assertTrue(captor.getValue().getIsAdmin());
         assertTrue(view.getMustChangePassword());
     }

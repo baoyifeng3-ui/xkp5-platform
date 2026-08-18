@@ -7,13 +7,14 @@
     <div v-if="!paperStatusReady" class="no-plan">
       <i class="el-icon-loading" />{{ paperSyncFailed ? '当前赛卷同步失败，请刷新重试' : '正在同步当前赛卷' }}
     </div>
-    <div v-else-if="activePaper === 'B'" class="block">
+    <div v-if="previewOnly" class="preview-notice"><i class="el-icon-view" />比赛预览为只读模式，检测与评分操作已停用。</div>
+    <div v-if="paperStatusReady && activePaper === 'B'" :class="['block', { 'is-preview': previewOnly }]">
       <DetectB />
     </div>
-    <div v-else-if="activePaper === 'A'" class="block">
+    <div v-else-if="paperStatusReady && activePaper === 'A'" :class="['block', { 'is-preview': previewOnly }]">
       <DetectA />
     </div>
-    <div v-else class="no-plan">
+    <div v-else-if="paperStatusReady" class="no-plan">
       <i class="el-icon-warning-outline" />{{ activePaper ? `${activePaper} 卷尚未配置检测样例` : '请先选择赛卷' }}
     </div>
   </div>
@@ -36,6 +37,9 @@ export default {
   },
   computed: {
     ...mapState("Match", ["activePaper"]),
+    previewOnly () {
+      return this.$route.query.preview === '1';
+    },
   },
   async created () {
     try {
@@ -51,4 +55,7 @@ export default {
 
 <style scoped>
 @import url(../assets/style/detect.css);
+.preview-notice { margin-bottom: 14px; padding: 12px 16px; color: #536875; background: #edf4f1; border: 1px solid #cfe1da; }
+.preview-notice i { margin-right: 8px; color: #2b7b60; }
+.block.is-preview { pointer-events: none; opacity: .72; }
 </style>
