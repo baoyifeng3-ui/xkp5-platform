@@ -36,3 +36,8 @@ match:
   admin-user-name: admin
   participant-login-gate-enabled: ${MATCH_PARTICIPANT_LOGIN_GATE_ENABLED:true}
   allowed-origins: ${MATCH_ALLOWED_ORIGINS:http://localhost:19140,http://127.0.0.1:19140,http://127.0.0.1:19146,http://172.16.33.154:19140,http://172.16.33.158:19140}
+
+xkp:
+  license:
+    public-keys: ${XKP_LICENSE_PUBLIC_KEYS:}
+    test-public-key: ${XKP_LICENSE_TEST_PUBLIC_KEY:}
