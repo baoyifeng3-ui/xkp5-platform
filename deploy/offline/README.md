@@ -15,6 +15,9 @@ sudo ./install.sh \
 ```
 
 安装脚本发现已有容器、MySQL volume 或运行数据时会拒绝执行。
+安装时会从 Ubuntu 的 machine-id、DMI product UUID 和根文件系统 UUID 中读取至少两项，生成只读的 `/etc/xkp/host-identity.json`。日志不会输出这些标识值。
+
+`XKP_LICENSE_PUBLIC_KEYS` 只填写注册码工具生成的公开密钥，格式为 `keyId=base64X509PublicKey`，轮换时可用英文逗号配置多个。私钥禁止复制到管理服务器或发布包。
 
 ## 验证
 

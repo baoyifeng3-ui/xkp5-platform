@@ -56,7 +56,7 @@ require_package() {
   local package_dir=$1
   local required
   for required in \
-    SHA256SUMS MANIFEST.txt release.env compose.offline.yml \
+    SHA256SUMS MANIFEST.txt release.env compose.offline.yml host-identity.sh \
     images/match-v2-images.tar.gz data/mysql.sql.gz \
     data/fastdfs-tracker.tar.gz data/fastdfs-storage.tar.gz \
     data/dataset.tar.gz data/scoring.tar.gz; do
@@ -142,6 +142,7 @@ install_control_files() {
   install -m 0755 "$package_dir/_common.sh" "$install_dir/_common.sh"
   install -m 0755 "$package_dir/verify.sh" "$install_dir/verify.sh"
   install -m 0755 "$package_dir/uninstall.sh" "$install_dir/uninstall.sh"
+  install -m 0755 "$package_dir/host-identity.sh" "$install_dir/host-identity.sh"
 }
 
 restore_file_archives() {

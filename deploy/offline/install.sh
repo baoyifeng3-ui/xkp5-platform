@@ -38,6 +38,9 @@ verify_package "$PACKAGE_DIR"
 load_release_env "$PACKAGE_DIR/release.env"
 check_runtime_empty "$install_dir"
 
+log "Initializing the Ubuntu host identity"
+"$PACKAGE_DIR/host-identity.sh"
+
 mkdir -p "$(dirname "$install_dir")"
 available_kb=$(df -Pk "$(dirname "$install_dir")" | awk 'NR == 2 {print $4}')
 package_kb=$(du -sk "$PACKAGE_DIR" | awk '{print $1}')

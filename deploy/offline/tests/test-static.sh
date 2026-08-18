@@ -43,6 +43,24 @@ grep -q 'image: match-v2_java:latest' "$REPO_ROOT/compose.prod.yml" \
   || fail "Production Java image name must be stable"
 grep -q 'image: match-v2_vue:latest' "$REPO_ROOT/compose.prod.yml" \
   || fail "Production Vue image name must be stable"
+for compose_file in "$REPO_ROOT/compose.prod.yml" "$REPO_ROOT/compose.offline.yml"; do
+  grep -q 'XKP_LICENSE_PUBLIC_KEYS:' "$compose_file" \
+    || fail "Production Compose must configure the license public keys: $compose_file"
+  grep -q 'XKP_HOST_IDENTITY_FILE: /etc/xkp/host-identity.json' "$compose_file" \
+    || fail "Production Compose must configure the host identity path: $compose_file"
+  grep -q '/etc/xkp/host-identity.json:/etc/xkp/host-identity.json:ro' "$compose_file" \
+    || fail "Production Compose must mount the host identity read-only: $compose_file"
+  if grep -q 'XKP_LICENSE_TEST_PUBLIC_KEY\|XKP_DEVELOPMENT_IDENTITY' "$compose_file"; then
+    fail "Production Compose must not contain development licensing settings: $compose_file"
+  fi
+  if grep -qi 'private.key\|private_key\|PRIVATE_KEY' "$compose_file"; then
+    fail "Production Compose must never contain a license private key: $compose_file"
+  fi
+done
+grep -q 'host-identity.sh' "$OFFLINE_DIR/build-release.sh" \
+  || fail "Release build must include host-identity.sh"
+grep -q 'host-identity.sh' "$OFFLINE_DIR/install.sh" \
+  || fail "Offline install must initialize the host identity"
 
 temp_dir=$(mktemp -d)
 trap 'rm -rf "$temp_dir"' EXIT
