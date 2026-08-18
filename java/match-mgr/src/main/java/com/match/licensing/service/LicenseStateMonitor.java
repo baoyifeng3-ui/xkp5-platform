@@ -24,7 +24,8 @@ public class LicenseStateMonitor {
     public synchronized void tick() {
         LicenseStatus status = statusService.currentStatus();
         LicenseState current = status.getState();
-        if (previousState != null && previousState != current) {
+        if ((previousState == null && !status.isUsable())
+                || (previousState != null && previousState != current)) {
             events.publishEvent(new LicenseStateChangedEvent(previousState, current, status.getLicenseId()));
             auditService.recordSuccess("LICENSE_STATE_CHANGED", null, null, status.getLicenseId());
         }

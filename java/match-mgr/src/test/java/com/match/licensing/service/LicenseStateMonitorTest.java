@@ -14,6 +14,21 @@ import static org.mockito.Mockito.when;
 
 public class LicenseStateMonitorTest {
     @Test
+    public void publishesColdStartFailureSoAgentsCanStopContainers() {
+        LicenseStatusService statusService = mock(LicenseStatusService.class);
+        ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
+        LicenseAuditService audit = mock(LicenseAuditService.class);
+        when(statusService.currentStatus()).thenReturn(
+                new LicenseStatus(LicenseState.EXPIRED, "license-1", "Fixture", null, 4));
+        LicenseStateMonitor monitor = new LicenseStateMonitor(statusService, events, audit);
+
+        monitor.tick();
+
+        verify(events).publishEvent(any(LicenseStateChangedEvent.class));
+        verify(audit).recordSuccess("LICENSE_STATE_CHANGED", null, null, "license-1");
+    }
+
+    @Test
     public void publishesAndAuditsOnlyActualStateTransitions() {
         LicenseStatusService statusService = mock(LicenseStatusService.class);
         ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);

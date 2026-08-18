@@ -42,10 +42,6 @@ public class LicenseStatusService {
         if (isClockRollback(installation, now)) {
             return status(LicenseState.CLOCK_ROLLBACK, licenseMapper.selectActive());
         }
-        if (installation.getMaxTrustedTime() == null
-                || now.isAfter(installation.getMaxTrustedTime().toInstant(ZoneOffset.UTC))) {
-            installationService.updateMaxTrustedTime(LocalDateTime.ofInstant(now, ZoneOffset.UTC));
-        }
         PlatformLicenseRecord license = licenseMapper.selectActive();
         if (license == null) {
             return status(LicenseState.NOT_ACTIVATED, null);
@@ -70,6 +66,7 @@ public class LicenseStatusService {
         if (!now.isBefore(expiresAt)) {
             return status(LicenseState.EXPIRED, license);
         }
+        installationService.updateMaxTrustedTime(LocalDateTime.ofInstant(now, ZoneOffset.UTC));
         if (!expiresAt.isAfter(now.plus(EXPIRING_WINDOW))) {
             return status(LicenseState.EXPIRING, license);
         }

@@ -55,9 +55,8 @@ public class InstallationService {
 
     @Transactional
     public void updateMaxTrustedTime(LocalDateTime trustedTime) {
-        PlatformInstallation installation = installation();
-        installation.setMaxTrustedTime(trustedTime);
-        installation.setUpdatedAt(LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC));
-        mapper.updateById(installation);
+        installation();
+        mapper.advanceMaxTrustedTime(trustedTime,
+                LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC));
     }
 }

@@ -20,6 +20,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -42,6 +43,7 @@ public class LicenseStatusServiceTest {
     @Test
     public void reportsNotActivatedWithoutLicense() {
         assertEquals(LicenseState.NOT_ACTIVATED, service().currentStatus().getState());
+        verify(installationService, never()).updateMaxTrustedTime(any(LocalDateTime.class));
     }
 
     @Test
@@ -60,6 +62,7 @@ public class LicenseStatusServiceTest {
     public void reportsExpiredAndInvalidHostBinding() {
         when(licenseMapper.selectActive()).thenReturn(licenseAt("2026-08-18T00:00:00Z"));
         assertEquals(LicenseState.EXPIRED, service().currentStatus().getState());
+        verify(installationService, never()).updateMaxTrustedTime(any(LocalDateTime.class));
 
         PlatformLicenseRecord wrongHost = licenseAt("2027-08-18T00:00:00Z");
         wrongHost.setFingerprintDigest("sha256:other");
