@@ -2,7 +2,8 @@
 
 本仓库是 XKP5.0 管理服务器的独立代码库，复用原竞赛平台的 Vue 2 与 Spring
 Boot 基线，但后续提交、版本和部署均与原 `competition` 仓库分离。离线授权已经
-接入；处理服务器、Docker 容器编排和 CUDA MPS 将在后续阶段通过 Agent 接入。
+接入；处理服务器监控已通过独立的 Ubuntu Agent 接入，Docker 容器编排、远程电源
+控制和 CUDA MPS 调度将在后续阶段沿用同一条认证命令通道实现。
 
 当前第一阶段已经提供三类独立工作区：
 
@@ -27,6 +28,7 @@ Boot 基线，但后续提交、版本和部署均与原 `competition` 仓库分
 | 健康检查 | http://localhost:19141/health |
 | MySQL | localhost:3307 |
 | FastDFS | 22122 / 23000 / 8888 |
+| 处理 Agent TLS | https://管理服务器固定IP:19443 |
 
 ## 第一次配置
 
@@ -175,6 +177,11 @@ make prod-up
 任何授权私钥。平台首次运行后，普通管理员在“平台授权”下载平台信息，将文件交给
 授权运营方，收到注册码文件后在同一页面导入。详细流程见
 `docs/licensing/operator-guide.md` 和 `docs/licensing/administrator-guide.md`。
+
+处理服务器接入前，由超级管理员生成内部 CA 和服务器证书，再在“处理服务器”页面
+生成十分钟有效的一次性注册码。Ubuntu Agent 只主动连接管理服务器，不对局域网暴露
+Docker TCP。详细步骤见 `docs/agents/operator-guide.md`；普通管理员查看在线状态、资源
+占用和告警的方法见 `docs/agents/administrator-guide.md`。
 
 访问 `http://服务器局域网IP:19140`。后端端口为 19141，MySQL 宿主端口为
 3307。生产前应将本地备份 SQL 恢复到服务器，而不是复制 MySQL 数据目录。
