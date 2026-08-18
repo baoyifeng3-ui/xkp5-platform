@@ -17,6 +17,7 @@ import com.match.mapper.TeamsUserMapper;
 import com.match.mapper.TrainUrlMapper;
 import com.match.mapper.UserMapper;
 import com.match.mapper.UserTrainingAssignmentMapper;
+import com.match.security.UserRole;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -89,7 +90,9 @@ public class AdminUserManagementService {
 
     public List<AdminUserView> listUsers() {
         List<User> users = userMapper.selectList(
-                Wrappers.<User>lambdaQuery().orderByAsc(User::getUserId));
+                Wrappers.<User>lambdaQuery().orderByAsc(User::getUserId)).stream()
+                .filter(user -> roleOf(user) == UserRole.USER)
+                .collect(Collectors.toList());
         if (users.isEmpty()) {
             return Collections.emptyList();
         }
@@ -139,6 +142,7 @@ public class AdminUserManagementService {
             user.setEnabled(true);
             user.setMustChangePassword(false);
             user.setIsAdmin(false);
+            user.setRole(UserRole.USER.name());
             userMapper.insert(user);
             Teams team = createTeam(user.getUserId(), "", "", "");
             created.add(toView(user, team));
@@ -172,8 +176,8 @@ public class AdminUserManagementService {
     public AdminUserView update(Integer userId, AdminUserRequest request) {
         User user = userMapper.selectById(userId);
         if (user == null) throw new IllegalArgumentException("账号不存在");
-        if ("admin".equalsIgnoreCase(user.getUserName())) {
-            throw new IllegalArgumentException("管理员账号请在修改密码页面维护");
+        if (roleOf(user) != UserRole.USER) {
+            throw new IllegalArgumentException("平台管理员账号不能在比赛账号中维护");
         }
         validate(request, false);
         applyUser(user, request, false);
@@ -200,7 +204,7 @@ public class AdminUserManagementService {
     @Transactional
     public int clearParticipants() {
         List<Integer> userIds = userMapper.selectList(Wrappers.<User>lambdaQuery()).stream()
-                .filter(user -> !"admin".equalsIgnoreCase(user.getUserName()))
+                .filter(user -> roleOf(user) == UserRole.USER)
                 .map(User::getUserId)
                 .collect(Collectors.toList());
         if (userIds.isEmpty()) {
@@ -263,6 +267,9 @@ public class AdminUserManagementService {
         if (request.getPassword() != null && !request.getPassword().isEmpty() && request.getPassword().length() < 4) {
             throw new IllegalArgumentException("密码至少需要 4 个字符");
         }
+        if (Boolean.TRUE.equals(request.getAdmin())) {
+            throw new IllegalArgumentException("比赛账号不能授予平台管理员权限");
+        }
         normalizeProfile(request.getSchoolName());
         normalizeProfile(request.getContestantName());
         normalizeProfile(request.getTeacherName());
@@ -276,10 +283,10 @@ public class AdminUserManagementService {
         if (creating) {
             user.setEnabled(request.getEnabled() == null || request.getEnabled());
             user.setMustChangePassword(false);
-            user.setIsAdmin(Boolean.TRUE.equals(request.getAdmin()));
+            user.setIsAdmin(false);
+            user.setRole(UserRole.USER.name());
         } else {
             if (request.getEnabled() != null) user.setEnabled(request.getEnabled());
-            if (request.getAdmin() != null) user.setIsAdmin(request.getAdmin());
         }
     }
 
@@ -290,7 +297,11 @@ public class AdminUserManagementService {
     }
 
     private boolean isAdmin(User user) {
-        return Boolean.TRUE.equals(user.getIsAdmin()) || "admin".equalsIgnoreCase(user.getUserName());
+        return roleOf(user) != UserRole.USER;
+    }
+
+    private UserRole roleOf(User user) {
+        return UserRole.resolve(user.getRole(), user.getIsAdmin(), user.getUserName());
     }
 
     String generatePassword() {

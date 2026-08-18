@@ -3,6 +3,7 @@ package com.match.service.impl;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.match.dto.AdminUserView;
+import com.match.dto.AdminUserRequest;
 import com.match.entity.AnswerSheet;
 import com.match.entity.Score;
 import com.match.entity.Teams;
@@ -124,7 +125,7 @@ public class AdminUserManagementServiceTest {
     }
 
     @Test
-    public void returnsPlaceholdersForAdminEvenWithTeam() {
+    public void hidesAdministratorsFromCompetitionAccounts() {
         User admin = user(1, "admin", "admin");
         when(userMapper.selectList(any())).thenReturn(Collections.singletonList(admin));
         TeamsUser link = new TeamsUser();
@@ -137,11 +138,7 @@ public class AdminUserManagementServiceTest {
         team.setTeamsTeacher("王老师|李同学");
         when(teamsMapper.selectBatchIds(any())).thenReturn(Collections.singletonList(team));
 
-        AdminUserView view = service.listUsers().get(0);
-
-        assertEquals("--", view.getSchoolName());
-        assertEquals("--", view.getContestantName());
-        assertEquals("--", view.getTeacherName());
+        assertTrue(service.listUsers().isEmpty());
     }
 
     @Test
@@ -166,13 +163,29 @@ public class AdminUserManagementServiceTest {
 
         int deleted = service.clearParticipants();
 
-        assertEquals(2, deleted);
+        assertEquals(1, deleted);
         verify(userTrainingAssignmentMapper).delete(any());
         verify(answerSheetMapper).delete(any());
         verify(scoreMapper).delete(any());
         verify(teamsUserMapper).delete(any());
         verify(trainUrlMapper).delete(any());
-        verify(userMapper).deleteBatchIds(Arrays.asList(2, 3));
+        verify(userMapper).deleteBatchIds(Collections.singletonList(2));
+    }
+
+    @Test
+    public void rejectsGrantingPlatformAdminThroughCompetitionAccounts() {
+        AdminUserRequest request = new AdminUserRequest();
+        request.setUserName("judge");
+        request.setPassword("Ab1!xy");
+        request.setAdmin(true);
+
+        try {
+            service.create(request);
+            fail("competition account endpoint must not grant platform administration");
+        } catch (IllegalArgumentException expected) {
+            assertEquals("比赛账号不能授予平台管理员权限", expected.getMessage());
+        }
+        verify(userMapper, never()).insert(any(User.class));
     }
 
     private User user(int id, String name, String password) {
