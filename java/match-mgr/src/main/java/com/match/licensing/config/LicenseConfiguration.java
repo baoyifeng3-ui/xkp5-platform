@@ -7,6 +7,9 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.security.SecureRandom;
+import java.time.Clock;
+
 @Configuration
 @EnableConfigurationProperties(LicenseProperties.class)
 public class LicenseConfiguration {
@@ -23,5 +26,15 @@ public class LicenseConfiguration {
     @Bean
     public LicenseSignatureVerifier licenseSignatureVerifier(StrictJson strictJson, CanonicalJson canonicalJson) {
         return new LicenseSignatureVerifier(strictJson, canonicalJson);
+    }
+
+    @Bean
+    public Clock licensingClock() {
+        return Clock.systemUTC();
+    }
+
+    @Bean
+    public SecureRandom licensingSecureRandom() {
+        return new SecureRandom();
     }
 }
