@@ -30,6 +30,7 @@ import ResourceCenter from '@/views/user/ResourceCenter.vue'
 import TrainingEnvironment from '@/views/user/TrainingEnvironment.vue'
 import OperationsHome from '@/views/operations/OperationsHome.vue'
 import AdministratorManagement from '@/views/operations/AdministratorManagement.vue'
+import LicenseDiagnostics from '@/views/operations/LicenseDiagnostics.vue'
 import ChangePassword from '@/views/ChangePassword.vue'
 import { getToken, mustChangePassword, getRole, landingRoute, getCompetitionAccessPhase } from '@/utils/auth'
 
@@ -42,7 +43,8 @@ const routes = [
     path: '/operations', component: OperationsShell, meta: { roles: ['SUPER_ADMIN'] },
     children: [
       { path: '', name: 'OperationsHome', component: OperationsHome },
-      { path: 'administrators', name: 'AdministratorManagement', component: AdministratorManagement }
+      { path: 'administrators', name: 'AdministratorManagement', component: AdministratorManagement },
+      { path: 'license', name: 'LicenseDiagnostics', component: LicenseDiagnostics }
     ]
   },
   {

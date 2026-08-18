@@ -31,7 +31,8 @@ const managementItems = [
 
 const operationsItems = [
   { key: 'home', label: '运维主页', icon: 'el-icon-odometer', route: '/operations' },
-  { key: 'administrators', label: '管理员账号', icon: 'el-icon-user', route: '/operations/administrators' }
+  { key: 'administrators', label: '管理员账号', icon: 'el-icon-user', route: '/operations/administrators' },
+  { key: 'license', label: '授权诊断', icon: 'el-icon-key', route: '/operations/license' }
 ]
 
 const previewDestinations = ['/Publicity', '/Home', '/Question', '/Detect']
