@@ -384,13 +384,19 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
                 throw exception;
             }
             if (decision == ConditionalCloseDecision.KEEP_OPEN) {
+                if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                    registerTransactionalCompletion(sessionId, relay, wasActive, traffic,
+                            false, trafficResult == TrafficPersistence.SUCCESS);
+                    return ConditionalCloseResult.KEPT_OPEN;
+                }
                 restoreRelay(relay, wasActive, traffic,
                         trafficResult == TrafficPersistence.SUCCESS);
                 return ConditionalCloseResult.KEPT_OPEN;
             }
             if (decision == ConditionalCloseDecision.PERSISTED
                     && TransactionSynchronizationManager.isSynchronizationActive()) {
-                registerTransactionalClose(sessionId, relay, wasActive, traffic);
+                registerTransactionalCompletion(sessionId, relay, wasActive, traffic,
+                        true, false);
                 return ConditionalCloseResult.PERSISTED;
             }
             terminateLocalRelay(sessionId, relay);
@@ -398,8 +404,9 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
         }
     }
 
-    private void registerTransactionalClose(String sessionId, Relay relay, boolean wasActive,
-                                            TrafficBatch traffic) {
+    private void registerTransactionalCompletion(String sessionId, Relay relay, boolean wasActive,
+                                                  TrafficBatch traffic, boolean closeAfterCommit,
+                                                  boolean acknowledgeTrafficAfterCommit) {
         Object token = new Object();
         synchronized (relay) {
             relay.transactionalCloseToken = token;
@@ -409,15 +416,16 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
                     new TransactionSynchronizationAdapter() {
                         @Override
                         public void afterCommit() {
-                            completeTransactionalClose(sessionId, relay, token, true,
-                                    wasActive, traffic);
+                            completeTransactionalClose(sessionId, relay, token, true, wasActive,
+                                    traffic, closeAfterCommit, acknowledgeTrafficAfterCommit);
                         }
 
                         @Override
                         public void afterCompletion(int status) {
                             if (status != TransactionSynchronization.STATUS_COMMITTED) {
                                 completeTransactionalClose(sessionId, relay, token, false,
-                                        wasActive, traffic);
+                                        wasActive, traffic, closeAfterCommit,
+                                        acknowledgeTrafficAfterCommit);
                             }
                         }
                     });
@@ -434,7 +442,8 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
 
     private void completeTransactionalClose(String sessionId, Relay relay, Object token,
                                             boolean committed, boolean wasActive,
-                                            TrafficBatch traffic) {
+                                            TrafficBatch traffic, boolean closeAfterCommit,
+                                            boolean acknowledgeTrafficAfterCommit) {
         synchronized (relay.closeExecutionLock) {
             synchronized (relay) {
                 if (relay.transactionalCloseToken != token) {
@@ -442,10 +451,11 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
                 }
                 relay.transactionalCloseToken = null;
             }
-            if (committed) {
+            if (committed && closeAfterCommit) {
                 terminateLocalRelay(sessionId, relay);
             } else if (relays.get(sessionId) == relay) {
-                restoreRelay(relay, wasActive, traffic, false);
+                restoreRelay(relay, wasActive, traffic,
+                        committed && acknowledgeTrafficAfterCommit);
             }
         }
     }
