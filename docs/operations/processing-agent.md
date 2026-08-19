@@ -54,3 +54,27 @@ Agent 在断网或重启后先重传本地结果，再继续长轮询；同一�
 处理服务器执行一次物理验收：设备完全关机后能被唤醒；在线设备能安全关机；错误 MAC
 不会影响其他设备；网络中断恢复后 Agent 能重新上线。还需验证两个容器使用同一共享目录、
 启动与停止保持成对、还原后测试文件仍存在、代码容器能调用 RTX 2080。
+
+## 本地端到端回归
+
+`deploy/tests/fake-agent-training-environment-flow.ps1` 只允许连接本机地址，并会替换当前
+授权、创建随机 Agent、模板和环境记录，因此只能对一次性开发数据库执行。运行前准备一名
+普通管理员、一名超级管理员、一个已存在的普通用户和课程，以及与当前平台信息匹配的有效
+测试授权文件：
+
+```powershell
+$env:XKP_TEST_ALLOW_LICENSE_REPLACE = "YES"
+$env:XKP_TEST_LICENSE_FILE = "C:\temp\development.xkplic"
+$env:XKP_TEST_ADMIN_USERNAME = "test-admin"
+$env:XKP_TEST_ADMIN_PASSWORD = "change-me"
+$env:XKP_TEST_SUPER_ADMIN_USERNAME = "test-super-admin"
+$env:XKP_TEST_SUPER_ADMIN_PASSWORD = "change-me"
+$env:XKP_TEST_USER_ID = "101"
+$env:XKP_TEST_COURSE_ID = "201"
+
+.\deploy\tests\fake-agent-training-environment-flow.ps1
+```
+
+脚本依次验证双容器创建、重复启动幂等、成对停止、保留共享目录的还原、重复结果上报，
+以及单组件失败后的 `DEGRADED` 状态和组件明细。测试通过不代表真实 Docker Runtime、
+NVIDIA GPU 或物理开关机已经验收；这些项目仍须在 Ubuntu 处理服务器执行。
