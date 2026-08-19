@@ -98,19 +98,23 @@ public class TerminalSessionSchemaTest {
                 "absolute_expires_at > #{now}", "state = 'WAITING_BROWSER'");
 
         String issueBrowser = sql(assertMethod(mapper, "issueBrowserTicket", 4, Update.class));
-        assertContainsAll(issueBrowser, "state IN ('WAITING_AGENT', 'WAITING_BROWSER')",
+        assertContainsAll(issueBrowser, "state = 'WAITING_BROWSER'",
                 "browser_ticket_digest = #{digest}", "browser_ticket_consumed_at = NULL",
                 "absolute_expires_at > #{now}");
+        assertFalse(issueBrowser.contains("WAITING_AGENT"));
 
         String consumeBrowser = sql(assertMethod(mapper, "consumeBrowserTicket", 3, Update.class));
-        assertContainsAll(consumeBrowser, "state IN ('WAITING_AGENT', 'WAITING_BROWSER')",
+        assertContainsAll(consumeBrowser, "state = 'WAITING_BROWSER'",
                 "browser_ticket_digest = #{digest}", "browser_ticket_consumed_at IS NULL",
                 "browser_ticket_expires_at > #{now}", "absolute_expires_at > #{now}");
+        assertFalse(consumeBrowser.contains("WAITING_AGENT"));
 
         String markActive = sql(assertMethod(mapper, "markActive", 2, Update.class));
-        assertContainsAll(markActive, "state IN ('WAITING_AGENT', 'WAITING_BROWSER')",
+        assertContainsAll(markActive, "state = 'WAITING_BROWSER'",
+                "agent_connected_at IS NOT NULL", "browser_connected_at IS NOT NULL",
                 "agent_ticket_consumed_at IS NOT NULL", "browser_ticket_consumed_at IS NOT NULL",
                 "absolute_expires_at > #{now}");
+        assertFalse(markActive.contains("WAITING_AGENT"));
 
         String addTraffic = sql(assertMethod(mapper, "addTraffic", 4, Update.class));
         assertContainsAll(addTraffic, "state = 'ACTIVE'", "browser_to_agent_bytes + #{browserToAgent}",
@@ -119,7 +123,8 @@ public class TerminalSessionSchemaTest {
         String close = sql(assertMethod(mapper, "close", 5, Update.class));
         assertContainsAll(close, "active_agent_id = NULL",
                 "state IN ('WAITING_AGENT', 'WAITING_BROWSER', 'ACTIVE')",
-                "#{state} IN ('CLOSED', 'FAILED', 'EXPIRED')");
+                "#{state} IN ('CLOSED', 'FAILED')");
+        assertFalse(close.contains("'EXPIRED'"));
 
         String expired = sql(assertMethod(mapper, "selectExpired", 3, Select.class));
         assertContainsAll(expired, "state IN ('WAITING_AGENT', 'WAITING_BROWSER', 'ACTIVE')",

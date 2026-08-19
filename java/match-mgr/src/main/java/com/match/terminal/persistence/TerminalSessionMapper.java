@@ -65,7 +65,7 @@ public interface TerminalSessionMapper extends BaseMapper<TerminalSessionRecord>
     @Update("UPDATE processing_agent_terminal_session SET browser_ticket_digest = #{digest}, "
             + "browser_ticket_expires_at = #{expiresAt}, browser_ticket_consumed_at = NULL, "
             + "updated_at = #{now} WHERE session_id = #{sessionId} "
-            + "AND state IN ('WAITING_AGENT', 'WAITING_BROWSER') AND absolute_expires_at > #{now} "
+            + "AND state = 'WAITING_BROWSER' AND absolute_expires_at > #{now} "
             + "AND #{expiresAt} > #{now} AND #{expiresAt} <= absolute_expires_at")
     int issueBrowserTicket(@Param("sessionId") String sessionId,
                            @Param("digest") String digest,
@@ -74,7 +74,7 @@ public interface TerminalSessionMapper extends BaseMapper<TerminalSessionRecord>
 
     @Update("UPDATE processing_agent_terminal_session SET browser_ticket_consumed_at = #{now}, "
             + "browser_connected_at = #{now}, updated_at = #{now} WHERE session_id = #{sessionId} "
-            + "AND state IN ('WAITING_AGENT', 'WAITING_BROWSER') AND browser_ticket_digest = #{digest} "
+            + "AND state = 'WAITING_BROWSER' AND browser_ticket_digest = #{digest} "
             + "AND browser_ticket_consumed_at IS NULL AND browser_ticket_expires_at > #{now} "
             + "AND absolute_expires_at > #{now}")
     int consumeBrowserTicket(@Param("sessionId") String sessionId,
@@ -83,7 +83,8 @@ public interface TerminalSessionMapper extends BaseMapper<TerminalSessionRecord>
 
     @Update("UPDATE processing_agent_terminal_session SET state = 'ACTIVE', active_at = #{now}, "
             + "last_io_at = #{now}, updated_at = #{now} WHERE session_id = #{sessionId} "
-            + "AND state IN ('WAITING_AGENT', 'WAITING_BROWSER') "
+            + "AND state = 'WAITING_BROWSER' "
+            + "AND agent_connected_at IS NOT NULL AND browser_connected_at IS NOT NULL "
             + "AND agent_ticket_consumed_at IS NOT NULL AND browser_ticket_consumed_at IS NOT NULL "
             + "AND absolute_expires_at > #{now}")
     int markActive(@Param("sessionId") String sessionId,
@@ -105,7 +106,7 @@ public interface TerminalSessionMapper extends BaseMapper<TerminalSessionRecord>
             + "end_reason = #{reason}, end_message = #{message}, updated_at = #{now} "
             + "WHERE session_id = #{sessionId} "
             + "AND state IN ('WAITING_AGENT', 'WAITING_BROWSER', 'ACTIVE') "
-            + "AND #{state} IN ('CLOSED', 'FAILED', 'EXPIRED')")
+            + "AND #{state} IN ('CLOSED', 'FAILED')")
     int close(@Param("sessionId") String sessionId,
               @Param("state") String state,
               @Param("reason") String reason,
