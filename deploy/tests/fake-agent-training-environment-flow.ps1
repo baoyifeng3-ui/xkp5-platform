@@ -182,14 +182,14 @@ try {
     $annotation = Assert-ApiOk (Invoke-JsonRequest -Method Post `
         -Uri "$ManagementBaseUrl/super-admin/container-templates" -Headers $superHeaders -Body @{
             templateName = "Fake Annotation $templateSuffix"; componentType = "ANNOTATION"
-            imageReference = "zy-anno:latest"; runtimeName = "sysbox-runc"; restartPolicy = "always"
+            imageReference = "zy-anno:flow-$templateSuffix"; runtimeName = "sysbox-runc"; restartPolicy = "always"
             ports = @(@{ containerPort = 8080; protocol = "tcp" }); mountTarget = "/root/data"
             cpuLimitMillis = 2000; memoryLimitBytes = 2147483648; gpuEnabled = $false
         }) "Publish annotation template"
     $editor = Assert-ApiOk (Invoke-JsonRequest -Method Post `
         -Uri "$ManagementBaseUrl/super-admin/container-templates" -Headers $superHeaders -Body @{
             templateName = "Fake Editor $templateSuffix"; componentType = "EDITOR"
-            imageReference = "zy-contestv2:latest"; runtimeName = "nvidia"; restartPolicy = "always"
+            imageReference = "zy-contestv2:flow-$templateSuffix"; runtimeName = "nvidia"; restartPolicy = "always"
             ports = @(
                 @{ containerPort = 9090; protocol = "tcp" },
                 @{ containerPort = 8887; protocol = "tcp" },
