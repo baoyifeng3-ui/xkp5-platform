@@ -38,7 +38,8 @@ function Invoke-JsonRequest {
 }
 
 function Assert-ApiOk([object]$Response, [string]$Action) {
-    Assert-True ($null -ne $Response -and $Response.code -eq 200) "$Action failed"
+    $message = if ($null -ne $Response) { $Response.msg } else { "empty response" }
+    Assert-True ($null -ne $Response -and $Response.code -eq 200) "$Action failed: $message"
     return $Response.data
 }
 
@@ -53,11 +54,20 @@ function Login([string]$Username, [string]$Password) {
 
 function Import-TestLicense([hashtable]$Headers) {
     Assert-True (Test-Path -LiteralPath $LicenseFile -PathType Leaf) "Test license file does not exist"
-    $raw = & curl.exe --silent --show-error --fail -X POST `
+    $expected = Get-Content -Raw -LiteralPath $LicenseFile | ConvertFrom-Json
+    $statusResponse = Invoke-JsonRequest -Method Get -Uri "$ManagementBaseUrl/admin/license/status" `
+        -Headers $Headers
+    $status = Assert-ApiOk $statusResponse "Read current license status"
+    if ($status.licenseId -eq $expected.payload.licenseId -and
+            $status.state -in @("ACTIVE", "EXPIRING")) {
+        Write-Host "matching active test license is already installed"
+        return
+    }
+    $raw = & curl.exe --silent --show-error -X POST `
         -H "satoken: $($Headers.satoken)" -F "file=@$LicenseFile" `
         "$ManagementBaseUrl/admin/license/import"
     if ($LASTEXITCODE -ne 0) {
-        throw "Test license import failed"
+        throw "Test license import transport failed"
     }
     Assert-ApiOk ($raw | ConvertFrom-Json) "Test license import" | Out-Null
 }

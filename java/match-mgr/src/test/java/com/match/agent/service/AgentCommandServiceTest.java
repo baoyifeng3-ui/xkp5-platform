@@ -261,6 +261,27 @@ public class AgentCommandServiceTest {
     }
 
     @Test
+    public void duplicateEnvironmentResultIgnoresJsonObjectFieldOrder() throws Exception {
+        ProcessingAgentCommandRecord completed = leasedCommand("SUCCEEDED");
+        completed.setCommandType("START_TRAINING_ENVIRONMENT");
+        completed.setResultCode("ENVIRONMENT_STARTED");
+        completed.setResultMessage("environment operation completed");
+        completed.setResultJson("{\"pair\":{\"annotation\":{\"state\":\"RUNNING\"},"
+                + "\"editor\":{\"state\":\"RUNNING\"}},\"sentinelPresent\":true}");
+        completed.setCompletedAt(LocalDateTime.ofInstant(NOW.minusSeconds(1), ZoneOffset.UTC));
+        when(mapper.selectById(completed.getCommandId())).thenReturn(completed);
+        AgentCommandResultRequest replay = result(true, "ENVIRONMENT_STARTED",
+                "environment operation completed");
+        replay.setDetails(new ObjectMapper().readTree("{\"sentinelPresent\":true,\"pair\":{"
+                + "\"editor\":{\"state\":\"RUNNING\"},"
+                + "\"annotation\":{\"state\":\"RUNNING\"}}}"));
+
+        AgentCommandView view = service.finish(agent, completed.getCommandId(), replay);
+
+        assertEquals("SUCCEEDED", view.getState());
+    }
+
+    @Test
     public void recoveredAgentCanAcknowledgeAlreadyOfflineConfirmedShutdown() {
         ProcessingAgentCommandRecord completed = leasedCommand("SUCCEEDED");
         completed.setResultCode("OFFLINE_CONFIRMED");

@@ -234,7 +234,7 @@ public class AgentCommandService {
                     && "RUNNING".equals(current.getState())
                     && Objects.equals(current.getResultCode(), result.code)
                     && Objects.equals(current.getResultMessage(), result.message)
-                    && Objects.equals(current.getResultJson(), result.json)) {
+                    && sameResultJson(current.getResultJson(), result.json)) {
                 return toView(current);
             }
             if (sameLease(current, agentId, result.leaseToken)
@@ -278,10 +278,24 @@ public class AgentCommandService {
                 && Objects.equals(current.getState(), terminalState)
                 && Objects.equals(current.getResultCode(), result.code)
                 && Objects.equals(current.getResultMessage(), result.message)
-                && Objects.equals(current.getResultJson(), result.json)) {
+                && sameResultJson(current.getResultJson(), result.json)) {
             return toView(current);
         }
         throw leaseConflict();
+    }
+
+    private boolean sameResultJson(String stored, String received) {
+        if (Objects.equals(stored, received)) {
+            return true;
+        }
+        if (stored == null || received == null) {
+            return false;
+        }
+        try {
+            return objectMapper.readTree(stored).equals(objectMapper.readTree(received));
+        } catch (IOException exception) {
+            return false;
+        }
     }
 
     private AgentCommandEnvelope toEnvelope(ProcessingAgentCommandRecord record) {
