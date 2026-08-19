@@ -33,13 +33,14 @@ not be modified or receive commits.
 
 - Create: `java/match-mgr/src/main/resources/db/migration/V22__training_environment_lifecycle.sql`
 - Create: `java/match-mgr/src/test/java/com/match/environment/persistence/TrainingEnvironmentSchemaTest.java`
+- Create: `java/match-mgr/src/main/java/com/match/environment/persistence/ProcessingEnvironmentSlotRecord.java`
 - Create: `java/match-mgr/src/main/java/com/match/environment/persistence/ContainerTemplateRecord.java`
 - Create: `java/match-mgr/src/main/java/com/match/environment/persistence/TrainingEnvironmentRecord.java`
 - Create: `java/match-mgr/src/main/java/com/match/environment/persistence/EnvironmentPortAllocationRecord.java`
 - Create: `java/match-mgr/src/main/java/com/match/environment/persistence/EnvironmentOperationRecord.java`
 - Create: matching MyBatis mapper interfaces in the same package
 
-- [ ] Write a failing schema test that requires template, environment, port-allocation, and operation tables; immutable template versions; unique Agent/slot and Agent/port constraints; environment optimistic version; and operation-to-command correlation.
+- [ ] Write a failing schema test that requires slot, template, environment, port-allocation, and operation tables; immutable template versions; unique Agent/slot, Agent/user, and Agent/port constraints; environment optimistic version; and operation-to-command correlation.
 - [ ] Run `TrainingEnvironmentSchemaTest` in the Java Docker test image and confirm the missing migration failure.
 - [ ] Add V22 with bounded enum-like strings, UTC timestamps, JSON only for immutable component details/results, and indexes for Agent state, user/course assignment, and pending operations.
 - [ ] Add records and mappers with explicit SQL for row locking and compare-and-set state updates.

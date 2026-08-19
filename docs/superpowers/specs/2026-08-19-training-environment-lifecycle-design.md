@@ -75,6 +75,16 @@ LAN.
 
 ## 5. Data Model
 
+### `processing_environment_slot`
+
+- `slot_id`, `agent_id`, `slot_number`, and assigned `user_id`
+- unique server/slot number and unique server/user assignment
+- creation actor and timestamps
+
+A slot belongs to a user on one processing server. Multiple course training
+environments for that user reuse the same slot and host-port allocation, while
+the one-active-environment rule prevents simultaneous port use.
+
 ### `container_template`
 
 One row describes one component template:
@@ -99,12 +109,13 @@ version so existing environments remain reproducible.
 - current operation identifier and optimistic-lock version
 - creation/update actor and timestamps
 
-The database prevents duplicate `(agent_id, slot_number)` assignments and
-duplicate environment identity for a user/course assignment.
+The database prevents duplicate environment identity for a user/course
+assignment. Slot ownership is enforced by `processing_environment_slot` rather
+than limiting a user to one course environment.
 
 ### `environment_port_allocation`
 
-- environment, component, container port, host port, and protocol
+- slot, Agent, component, container port, host port, and protocol
 - unique `(agent_id, host_port, protocol)` allocation
 
 ### `environment_operation`
