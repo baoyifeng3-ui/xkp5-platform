@@ -14,6 +14,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.http.HttpStatus;
 import com.match.agent.web.AgentProtocolException;
+import com.match.environment.service.EnvironmentOperationReconciler;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -43,13 +45,22 @@ public class AgentCommandService {
     private final ObjectMapper objectMapper;
     private final AgentAuditService auditService;
     private final Clock clock;
+    private final EnvironmentOperationReconciler environmentReconciler;
 
     public AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper,
                                AgentAuditService auditService, Clock clock) {
+        this(mapper, objectMapper, auditService, clock, null);
+    }
+
+    @Autowired
+    public AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper,
+                               AgentAuditService auditService, Clock clock,
+                               EnvironmentOperationReconciler environmentReconciler) {
         this.mapper = mapper;
         this.objectMapper = objectMapper;
         this.auditService = auditService;
         this.clock = clock;
+        this.environmentReconciler = environmentReconciler;
     }
 
     @Transactional
@@ -250,6 +261,10 @@ public class AgentCommandService {
                 auditService.recordCommandSuccess("COMMAND_RESULT", null, agentId, commandId);
             } else {
                 auditService.recordCommandFailure("COMMAND_RESULT", result.code, null, agentId, commandId);
+            }
+            if (environmentReconciler != null) {
+                environmentReconciler.reconcile(commandId, result.success, result.code,
+                        result.message, result.json);
             }
             return toView(completed);
         }

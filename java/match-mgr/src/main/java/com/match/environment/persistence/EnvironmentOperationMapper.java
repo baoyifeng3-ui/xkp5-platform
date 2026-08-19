@@ -16,6 +16,9 @@ public interface EnvironmentOperationMapper extends BaseMapper<EnvironmentOperat
     @Select("SELECT * FROM environment_operation WHERE operation_id = #{operationId} FOR UPDATE")
     EnvironmentOperationRecord selectForUpdate(@Param("operationId") String operationId);
 
+    @Select("SELECT * FROM environment_operation WHERE command_id = #{commandId} FOR UPDATE")
+    EnvironmentOperationRecord selectByCommandForUpdate(@Param("commandId") String commandId);
+
     @Select("SELECT * FROM environment_operation WHERE environment_id = #{environmentId} "
             + "ORDER BY requested_at DESC, operation_id DESC LIMIT #{limit}")
     List<EnvironmentOperationRecord> selectRecent(@Param("environmentId") String environmentId,

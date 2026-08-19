@@ -34,4 +34,15 @@ public interface TrainingEnvironmentMapper extends BaseMapper<TrainingEnvironmen
                            @Param("operationId") String operationId,
                            @Param("updatedBy") int updatedBy,
                            @Param("updatedAt") LocalDateTime updatedAt);
+
+    @Update("UPDATE training_environment SET actual_state = #{actualState}, "
+            + "annotation_container_state = #{annotationState}, editor_container_state = #{editorState}, "
+            + "current_operation_id = NULL, updated_at = #{updatedAt}, lock_version = lock_version + 1 "
+            + "WHERE environment_id = #{environmentId} AND current_operation_id = #{operationId}")
+    int reconcileOperation(@Param("environmentId") String environmentId,
+                           @Param("operationId") String operationId,
+                           @Param("actualState") String actualState,
+                           @Param("annotationState") String annotationState,
+                           @Param("editorState") String editorState,
+                           @Param("updatedAt") LocalDateTime updatedAt);
 }
