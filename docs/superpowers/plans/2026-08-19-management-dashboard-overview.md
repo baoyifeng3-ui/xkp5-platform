@@ -1,6 +1,6 @@
 # Management Dashboard Overview Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Replace the normal-administrator home placeholders with a tested aggregate platform overview and five-minute active-user count.
 
@@ -18,11 +18,11 @@
 - Create: `java/match-mgr/src/main/java/com/match/dashboard/persistence/UserSessionActivityMapper.java`
 - Create: `java/match-mgr/src/test/java/com/match/dashboard/persistence/UserSessionActivitySchemaTest.java`
 
-- [ ] Write a schema test requiring `session_digest`, `user_id`, `login_at`, `last_activity_at`, `expires_at`, a unique digest, and indexes beginning with `expires_at` and `(user_id, expires_at)`.
-- [ ] Run `UserSessionActivitySchemaTest` through `.xkp5-test-runtime/java-test.Dockerfile`; verify it fails because V23 is missing.
-- [ ] Add V23 using `CHAR(64)` for the SHA-256 session digest and UTC `DATETIME(3)` fields.
-- [ ] Add a record plus mapper methods `upsertActivity`, `deleteSession`, `countDistinctActiveUsers`, and bounded `deleteExpired`.
-- [ ] Re-run the schema test and commit `feat: track authenticated user activity`.
+- [x] Write a schema test requiring `session_digest`, `user_id`, `login_at`, `last_activity_at`, `expires_at`, a unique digest, and indexes beginning with `expires_at` and `(user_id, expires_at)`.
+- [x] Run `UserSessionActivitySchemaTest` through `.xkp5-test-runtime/java-test.Dockerfile`; verify it fails because V23 is missing.
+- [x] Add V23 using `CHAR(64)` for the SHA-256 session digest and UTC `DATETIME(3)` fields.
+- [x] Add a record plus mapper methods `upsertActivity`, `deleteSession`, `countDistinctActiveUsers`, and bounded `deleteExpired`.
+- [x] Re-run the schema test and commit `feat: track authenticated user activity`.
 
 The mapper contract is:
 
@@ -42,12 +42,12 @@ int deleteExpired(LocalDateTime cutoff, int limit);
 - Modify: `java/match-mgr/src/main/java/com/match/controller/UserController.java`
 - Modify: `java/match-mgr/src/test/java/com/match/controller/UserControllerTest.java`
 
-- [ ] Write service tests with a fixed `Clock` proving token values are SHA-256 digested, login/touch set a five-minute expiry, distinct sessions remain separate, logout deletes only the current digest, and empty tokens are rejected.
-- [ ] Run the tests and verify failure because the service does not exist.
-- [ ] Implement `recordLogin`, `touch`, `logout`, and `onlineUserCount`; never persist or log the raw token.
-- [ ] Write controller tests requiring successful login to record activity, `POST /user/activity` to touch only an authenticated session, and logout to clear activity before `StpUtil.logout()`.
-- [ ] Implement the controller integration and re-run targeted tests.
-- [ ] Commit `feat: record online user activity`.
+- [x] Write service tests with a fixed `Clock` proving token values are SHA-256 digested, login/touch set a five-minute expiry, distinct sessions remain separate, logout deletes only the current digest, and empty tokens are rejected.
+- [x] Run the tests and verify failure because the service does not exist.
+- [x] Implement `recordLogin`, `touch`, `logout`, and `onlineUserCount`; never persist or log the raw token.
+- [x] Write controller tests requiring successful login to record activity, `POST /user/activity` to touch only an authenticated session, and logout to clear activity before `StpUtil.logout()`.
+- [x] Implement the controller integration and re-run targeted tests.
+- [x] Commit `feat: record online user activity`.
 
 The controller endpoint remains intentionally small:
 
@@ -71,13 +71,13 @@ public ResponseResult<Object> activity() {
 - Create: `java/match-mgr/src/test/java/com/match/dashboard/service/DashboardOverviewServiceTest.java`
 - Create: `java/match-mgr/src/test/java/com/match/dashboard/web/AdminDashboardControllerTest.java`
 
-- [ ] Write service tests for enabled/online/offline Agents using the existing 15-second heartbeat window; environment `RUNNING`, transitional, `DEGRADED`, and `ERROR` counts; pending/failed operations and commands; distinct online users; and license unusable/expiring categories.
-- [ ] Write resource tests that parse each online Agent's `latest_metrics`, average only non-null values, report sample counts, and return `null` rather than zero when no sample exists.
-- [ ] Run the tests and verify failure because the overview service is missing.
-- [ ] Implement bounded aggregate mapper queries and pure snapshot assembly using an injected `Clock`, `ObjectMapper`, `UserActivityService`, and `LicenseStatusService`.
-- [ ] Write controller tests proving only `ADMIN` can call `GET /admin/dashboard/overview`; `USER` and `SUPER_ADMIN` receive forbidden responses.
-- [ ] Implement the controller through `AdminGuard.requireAdmin()` and return `Response.makeOKRsp(overviewService.snapshot())`.
-- [ ] Re-run targeted dashboard tests and commit `feat: aggregate management dashboard overview`.
+- [x] Write service tests for enabled/online/offline Agents using the existing 15-second heartbeat window; environment `RUNNING`, transitional, `DEGRADED`, and `ERROR` counts; pending/failed operations and commands; distinct online users; and license unusable/expiring categories.
+- [x] Write resource tests that parse each online Agent's `latest_metrics`, average only non-null values, report sample counts, and return `null` rather than zero when no sample exists.
+- [x] Run the tests and verify failure because the overview service is missing.
+- [x] Implement bounded aggregate mapper queries and pure snapshot assembly using an injected `Clock`, `ObjectMapper`, `UserActivityService`, and `LicenseStatusService`.
+- [x] Write controller tests proving only `ADMIN` can call `GET /admin/dashboard/overview`; `USER` and `SUPER_ADMIN` receive forbidden responses.
+- [x] Implement the controller through `AdminGuard.requireAdmin()` and return `Response.makeOKRsp(overviewService.snapshot())`.
+- [x] Re-run targeted dashboard tests and commit `feat: aggregate management dashboard overview`.
 
 Resource output uses this shape:
 
@@ -100,13 +100,13 @@ Resource output uses this shape:
 - Modify: `vue/src/views/Layout.vue`
 - Modify: `vue/src/views/management/ManagementHome.vue`
 
-- [ ] Add a Node contract test requiring the overview API, four metric values, fixed-size resource rows, 15-second refresh, stale-data retention, no-data rendering, and teardown of timers/listeners.
-- [ ] Run `npm run test:dashboard` and verify it fails because the API and page contract are absent.
-- [ ] Add `getDashboardOverview()` and a user-activity helper that sends at most one touch per minute while an authenticated page is visible.
-- [ ] Start/stop the activity helper in the authenticated layout lifecycle without extending authentication expiry.
-- [ ] Replace placeholder metrics with the returned snapshot, add restrained CPU/GPU/memory/disk progress rows, keep old data on refresh failure, and label first-load failures as unavailable.
-- [ ] Re-run `npm run test:dashboard` and the existing navigation/license/Agent/template contract tests.
-- [ ] Run the production Vue build and commit `feat: connect management dashboard overview`.
+- [x] Add a Node contract test requiring the overview API, four metric values, fixed-size resource rows, 15-second refresh, stale-data retention, no-data rendering, and teardown of timers/listeners.
+- [x] Run `npm run test:dashboard` and verify it fails because the API and page contract are absent.
+- [x] Add `getDashboardOverview()` and a user-activity helper that sends at most one touch per minute while an authenticated page is visible.
+- [x] Start/stop the activity helper in the authenticated layout lifecycle without extending authentication expiry.
+- [x] Replace placeholder metrics with the returned snapshot, add restrained CPU/GPU/memory/disk progress rows, keep old data on refresh failure, and label first-load failures as unavailable.
+- [x] Re-run `npm run test:dashboard` and the existing navigation/license/Agent/template contract tests.
+- [x] Run the production Vue build and commit `feat: connect management dashboard overview`.
 
 The refresh lifecycle must remain bounded:
 
@@ -129,11 +129,11 @@ beforeDestroy () {
 - Modify: `docs/operations/processing-agent.md`
 - Modify: `docs/superpowers/plans/2026-08-19-management-dashboard-overview.md`
 
-- [ ] Document the five-minute online-user definition, 15-second Agent online window, resource averaging, missing-data behavior, and initial alert categories.
-- [ ] Run all Java tests with `TEST_PATTERN=*Test` using the Docker test image and require `Failures: 0, Errors: 0`.
-- [ ] Run all frontend contract tests and `npm run build`.
-- [ ] Run `git diff --check` and inspect `git status --short` for unintended files.
-- [ ] Mark completed plan checkboxes and commit `docs: document dashboard overview operations`.
+- [x] Document the five-minute online-user definition, 15-second Agent online window, resource averaging, missing-data behavior, and initial alert categories.
+- [x] Run all Java tests with `TEST_PATTERN=*Test` using the Docker test image and require `Failures: 0, Errors: 0`.
+- [x] Run all frontend contract tests and `npm run build`.
+- [x] Run `git diff --check` and inspect `git status --short` for unintended files.
+- [x] Mark completed plan checkboxes and commit `docs: document dashboard overview operations`.
 
 ## Acceptance Boundary
 
