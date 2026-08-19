@@ -58,7 +58,7 @@ public class TerminalWebSocketConfig implements WebSocketConfigurer {
             @Qualifier("terminalWriterExecutor") Executor executor,
             @Qualifier("terminalRelayScheduler") ScheduledExecutorService scheduler) {
         return new TerminalRelayCoordinator(sessions, executor, System::nanoTime,
-                task -> scheduler.scheduleAtFixedRate(task, 250, 250, TimeUnit.MILLISECONDS));
+                task -> scheduler.scheduleWithFixedDelay(task, 250, 250, TimeUnit.MILLISECONDS));
     }
 
     @Bean(name = "terminalRelayScheduler", destroyMethod = "shutdownNow")

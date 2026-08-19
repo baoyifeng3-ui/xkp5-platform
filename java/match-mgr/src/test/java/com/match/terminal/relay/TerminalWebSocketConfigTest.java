@@ -13,6 +13,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Executor;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
@@ -20,6 +21,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
 
 public class TerminalWebSocketConfigTest {
     @Test
@@ -89,5 +91,22 @@ public class TerminalWebSocketConfigTest {
         assertEquals(true, scheduler.awaitTermination(5, TimeUnit.SECONDS));
         assertEquals(true, scheduler.isShutdown());
         assertEquals(true, writers.getThreadPoolExecutor().isShutdown());
+    }
+
+    @Test
+    public void relayMaintenanceUsesFixedDelayWithoutCatchUpScheduling() {
+        TerminalWebSocketConfig config = new TerminalWebSocketConfig(
+                mock(TerminalSessionService.class), mock(AgentCredentialService.class),
+                "https://management.example");
+        ScheduledExecutorService scheduler = mock(ScheduledExecutorService.class);
+
+        config.terminalRelayCoordinator((Executor) Runnable::run, scheduler);
+
+        verify(scheduler).scheduleWithFixedDelay(any(Runnable.class),
+                org.mockito.ArgumentMatchers.eq(250L), org.mockito.ArgumentMatchers.eq(250L),
+                org.mockito.ArgumentMatchers.eq(TimeUnit.MILLISECONDS));
+        verify(scheduler, never()).scheduleAtFixedRate(any(Runnable.class),
+                org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong(),
+                any(TimeUnit.class));
     }
 }

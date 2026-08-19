@@ -41,8 +41,11 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
     public static final int MAX_BINARY_BYTES = 64 * 1024;
     public static final int MAX_TEXT_BYTES = 4 * 1024;
     public static final int MAX_RELAYS = 1024;
+    static final int MAX_CLOSE_RETRIES_PER_TICK = 8;
     private static final long TRAFFIC_FLUSH_BYTES = 256 * 1024;
     private static final long TRAFFIC_FLUSH_NANOS = 1_000_000_000L;
+    private static final long CLOSE_RETRY_INITIAL_NANOS = 1_000_000_000L;
+    private static final long CLOSE_RETRY_MAX_NANOS = 30_000_000_000L;
     private static final long RATE_BYTES_PER_SECOND = 2L * 1024 * 1024;
     private static final long RATE_BURST_BYTES = 8L * 1024 * 1024;
     private static final ObjectMapper CONTROL_JSON = new ObjectMapper()
@@ -53,6 +56,8 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
     private final LongSupplier ticker;
     private final ConcurrentHashMap<String, Relay> relays = new ConcurrentHashMap<>();
     private final Object lifecycleLock = new Object();
+    private final Object overflowCloseExecutionLock = new Object();
+    private PendingClose overflowPendingClose;
 
     public TerminalRelayCoordinator(TerminalSessionService sessions, Executor writerExecutor,
                                     LongSupplier ticker) {
@@ -72,45 +77,98 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
             return false;
         }
         Relay relay;
+        boolean rejected = false;
         synchronized (lifecycleLock) {
-            if (!sessions.isRelayAttachmentEligible(sessionId, peer.role().name(), peer.agentId())) {
-                peer.close(policyStatus(CloseReason.SESSION_REJECTED));
-                return false;
+            if (overflowPendingClose != null) {
+                relay = null;
+                rejected = true;
+            } else {
+                relay = relays.get(sessionId);
             }
-            relay = relays.get(sessionId);
-            if (relay == null) {
+            if (!rejected && relay == null) {
                 if (relays.size() >= MAX_RELAYS) {
-                    peer.close(policyStatus(CloseReason.SESSION_REJECTED));
-                    return false;
+                    rejected = true;
+                } else {
+                    relay = new Relay(sessionId, ticker.getAsLong());
+                    relays.put(sessionId, relay);
                 }
-                relay = new Relay(sessionId, ticker.getAsLong());
-                relays.put(sessionId, relay);
             }
-        }
-        boolean activationFailed = false;
-        synchronized (relay) {
-            if (relay.closed.get() || relay.peer(peer.role()) != null) {
-                peer.close(policyStatus(CloseReason.SESSION_REJECTED));
-                return false;
-            }
-            relay.setPeer(peer);
-            if (relay.browser != null && relay.agent != null) {
-                try {
-                    if (sessions.markRelayActive(sessionId)) {
-                        relay.active = true;
+            if (!rejected) {
+                synchronized (relay) {
+                if (relay.closed.get() || relay.peer(peer.role()) != null
+                        || relay.reserved(peer.role())) {
+                        rejected = true;
                     } else {
-                        activationFailed = true;
+                        relay.setReserved(peer.role(), true);
                     }
-                } catch (RuntimeException exception) {
-                    activationFailed = true;
                 }
             }
         }
-        if (activationFailed) {
-            close(relay, CloseReason.SESSION_REJECTED);
+        if (rejected) {
+            peer.close(policyStatus(CloseReason.SESSION_REJECTED));
             return false;
         }
-        return true;
+        boolean eligible;
+        try {
+            eligible = sessions.isRelayAttachmentEligible(
+                    sessionId, peer.role().name(), peer.agentId());
+        } catch (RuntimeException exception) {
+            eligible = false;
+        }
+        boolean activate = false;
+        rejected = false;
+        synchronized (lifecycleLock) {
+            synchronized (relay) {
+                relay.setReserved(peer.role(), false);
+                if (!eligible || overflowPendingClose != null
+                        || relays.get(sessionId) != relay || relay.closed.get()
+                        || relay.peer(peer.role()) != null) {
+                    if (relay.browser == null && relay.agent == null && !relay.closed.get()) {
+                        relays.remove(sessionId, relay);
+                    }
+                    rejected = true;
+                } else {
+                    relay.setPeer(peer);
+                    if (relay.browser != null && relay.agent != null && !relay.activating) {
+                        relay.activating = true;
+                        activate = true;
+                    }
+                }
+            }
+        }
+        if (rejected) {
+            peer.close(policyStatus(CloseReason.SESSION_REJECTED));
+            return false;
+        }
+        if (!activate) {
+            return true;
+        }
+        boolean activated;
+        try {
+            activated = sessions.markRelayActive(sessionId);
+        } catch (RuntimeException exception) {
+            activated = false;
+        }
+        synchronized (lifecycleLock) {
+            synchronized (relay) {
+                relay.activating = false;
+                if (activated && overflowPendingClose == null
+                        && relays.get(sessionId) == relay && !relay.closed.get()) {
+                    relay.active = true;
+                    return true;
+                }
+            }
+        }
+        if (!relay.closed.get()) {
+            close(relay, CloseReason.SESSION_REJECTED);
+        } else {
+            try {
+                peer.close(policyStatus(CloseReason.SESSION_REJECTED));
+            } catch (RuntimeException ignored) {
+                // Concurrent terminal close already owns teardown.
+            }
+        }
+        return false;
     }
 
     public void onBinary(TerminalPeer source, ByteBuffer payload) {
@@ -219,19 +277,57 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
 
     @Override
     public void closePersistedSession(String sessionId, Runnable persistenceClose) {
-        Relay relay;
-        synchronized (lifecycleLock) {
-            persistenceClose.run();
-            relay = relays.get(sessionId);
-            if (relay != null && !terminateRelay(relay)) {
-                relay = null;
-            } else if (relay != null) {
-                relays.remove(relay.sessionId, relay);
+        while (true) {
+            Relay relay;
+            boolean overflowClose;
+            synchronized (lifecycleLock) {
+                relay = relays.get(sessionId);
+                overflowClose = relay == null && relays.size() >= MAX_RELAYS;
+                if (relay == null && !overflowClose) {
+                    relay = new Relay(sessionId, ticker.getAsLong());
+                    relay.closed.set(true);
+                    relays.put(sessionId, relay);
+                }
             }
-        }
-        if (relay != null) {
-            closePeer(relay.browser, CloseReason.OPERATOR_CLOSED);
-            closePeer(relay.agent, CloseReason.OPERATOR_CLOSED);
+            if (overflowClose) {
+                closeOverflow(persistenceClose);
+                return;
+            }
+            synchronized (relay.closeExecutionLock) {
+                TrafficBatch traffic;
+                boolean pending;
+                synchronized (lifecycleLock) {
+                    if (relays.get(sessionId) != relay) {
+                        continue;
+                    }
+                    pending = relay.pendingClose != null;
+                    if (pending) {
+                        traffic = null;
+                    } else {
+                        traffic = gateRelayClosed(relay);
+                        relay.pendingClose = new PendingClose(persistenceClose, traffic);
+                    }
+                }
+                if (pending) {
+                    RuntimeException pendingFailure = attemptPendingClose(relay, false);
+                    synchronized (lifecycleLock) {
+                        if (relays.get(sessionId) == relay && relay.pendingClose != null) {
+                            if (pendingFailure != null) {
+                                throw pendingFailure;
+                            }
+                            throw new IllegalStateException("Terminal close persistence backlog");
+                        }
+                    }
+                    continue;
+                }
+                closePeer(relay.browser, CloseReason.OPERATOR_CLOSED);
+                closePeer(relay.agent, CloseReason.OPERATOR_CLOSED);
+                RuntimeException failure = attemptPendingClose(relay, true);
+                if (failure != null) {
+                    throw failure;
+                }
+                return;
+            }
         }
     }
 
@@ -258,34 +354,45 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
     }
 
     private void close(Relay relay, CloseReason reason) {
-        boolean terminated;
-        synchronized (lifecycleLock) {
-            terminated = terminateRelay(relay);
-            if (terminated) {
-                try {
-                    sessions.finishRelay(relay.sessionId, reason.operator, reason.name());
-                    relays.remove(relay.sessionId, relay);
-                } catch (RuntimeException ignored) {
-                    relay.pendingFinishReason = reason;
+        synchronized (relay.closeExecutionLock) {
+            synchronized (lifecycleLock) {
+                if (relay.closed.get()) {
+                    return;
                 }
+                TrafficBatch traffic = gateRelayClosed(relay);
+                relay.pendingClose = new PendingClose(
+                        () -> sessions.finishRelay(relay.sessionId, reason.operator, reason.name()),
+                        traffic);
             }
+            closePeer(relay.browser, reason);
+            closePeer(relay.agent, reason);
+            attemptPendingClose(relay, true);
         }
-        if (!terminated) {
-            return;
-        }
-        closePeer(relay.browser, reason);
-        closePeer(relay.agent, reason);
     }
 
-    private boolean terminateRelay(Relay relay) {
+    private TrafficBatch gateRelayClosed(Relay relay) {
         synchronized (relay) {
-            if (!relay.closed.compareAndSet(false, true)) {
-                return false;
-            }
+            relay.closed.set(true);
             relay.active = false;
-            flushTraffic(relay, ticker.getAsLong());
+            long browserBytes = relay.browserToAgent;
+            long agentBytes = relay.agentToBrowser;
+            relay.browserToAgent = 0;
+            relay.agentToBrowser = 0;
+            relay.lastTrafficFlushNanos = ticker.getAsLong();
+            return new TrafficBatch(relay.sessionId, browserBytes, agentBytes);
         }
-        return true;
+    }
+
+    private boolean persistTraffic(TrafficBatch traffic) {
+        if (traffic == null || traffic.browserBytes == 0 && traffic.agentBytes == 0) {
+            return true;
+        }
+        try {
+            return sessions.recordRelayTraffic(traffic.sessionId,
+                    traffic.browserBytes, traffic.agentBytes);
+        } catch (RuntimeException exception) {
+            return false;
+        }
     }
 
     private boolean flushTraffic(Relay relay, long now) {
@@ -294,11 +401,14 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
         if (browserBytes == 0 && agentBytes == 0) {
             return true;
         }
-        relay.browserToAgent = 0;
-        relay.agentToBrowser = 0;
-        relay.lastTrafficFlushNanos = now;
         try {
-            return sessions.recordRelayTraffic(relay.sessionId, browserBytes, agentBytes);
+            if (!sessions.recordRelayTraffic(relay.sessionId, browserBytes, agentBytes)) {
+                return false;
+            }
+            relay.browserToAgent = 0;
+            relay.agentToBrowser = 0;
+            relay.lastTrafficFlushNanos = now;
+            return true;
         } catch (RuntimeException exception) {
             return false;
         }
@@ -308,7 +418,6 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
         long now = ticker.getAsLong();
         for (Relay relay : relays.values()) {
             if (relay.closed.get()) {
-                retryPendingFinish(relay);
                 continue;
             }
             boolean recorded = true;
@@ -322,22 +431,136 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
                 close(relay, CloseReason.SESSION_REJECTED);
             }
         }
-    }
-
-    private void retryPendingFinish(Relay relay) {
-        synchronized (lifecycleLock) {
-            CloseReason reason = relay.pendingFinishReason;
-            if (reason == null || relays.get(relay.sessionId) != relay) {
-                return;
+        int retries = 0;
+        if (retryDueOverflow(now)) {
+            retries++;
+            attemptOverflowPending(false);
+        }
+        for (Relay relay : relays.values()) {
+            if (retries >= MAX_CLOSE_RETRIES_PER_TICK) {
+                break;
             }
-            try {
-                sessions.finishRelay(relay.sessionId, reason.operator, reason.name());
-                relay.pendingFinishReason = null;
-                relays.remove(relay.sessionId, relay);
-            } catch (RuntimeException ignored) {
-                // The bounded closed entry continues rejecting delayed attachment until retry.
+            if (relay.closed.get() && retryDue(relay, now)) {
+                retries++;
+                attemptPendingClose(relay, false);
             }
         }
+    }
+
+    private void closeOverflow(Runnable persistenceClose) {
+        synchronized (overflowCloseExecutionLock) {
+            synchronized (lifecycleLock) {
+                if (overflowPendingClose != null) {
+                    throw new IllegalStateException("Terminal close persistence backlog");
+                }
+                overflowPendingClose = new PendingClose(persistenceClose, null);
+            }
+            RuntimeException failure = attemptOverflowPending(true);
+            if (failure != null) {
+                throw failure;
+            }
+        }
+    }
+
+    private boolean retryDueOverflow(long now) {
+        synchronized (lifecycleLock) {
+            return overflowPendingClose != null && !overflowPendingClose.inFlight
+                    && now >= overflowPendingClose.nextRetryNanos;
+        }
+    }
+
+    private RuntimeException attemptOverflowPending(boolean immediate) {
+        synchronized (overflowCloseExecutionLock) {
+            PendingClose pending;
+            synchronized (lifecycleLock) {
+                pending = overflowPendingClose;
+                long now = ticker.getAsLong();
+                if (pending == null || pending.inFlight
+                        || !immediate && now < pending.nextRetryNanos) {
+                    return null;
+                }
+                pending.inFlight = true;
+            }
+            RuntimeException failure = null;
+            try {
+                pending.action.run();
+            } catch (RuntimeException exception) {
+                failure = exception;
+            }
+            synchronized (lifecycleLock) {
+                if (overflowPendingClose != pending) {
+                    return failure;
+                }
+                pending.inFlight = false;
+                if (failure == null) {
+                    overflowPendingClose = null;
+                } else {
+                    pending.failures++;
+                    pending.nextRetryNanos = ticker.getAsLong() + retryDelay(pending.failures);
+                }
+            }
+            return failure;
+        }
+    }
+
+    private boolean retryDue(Relay relay, long now) {
+        synchronized (lifecycleLock) {
+            PendingClose pending = relay.pendingClose;
+            return relays.get(relay.sessionId) == relay && pending != null
+                    && !pending.inFlight && now >= pending.nextRetryNanos;
+        }
+    }
+
+    private RuntimeException attemptPendingClose(Relay relay, boolean immediate) {
+        synchronized (relay.closeExecutionLock) {
+            PendingClose pending;
+            synchronized (lifecycleLock) {
+                pending = relay.pendingClose;
+                long now = ticker.getAsLong();
+                if (pending == null || pending.inFlight || relays.get(relay.sessionId) != relay
+                        || !immediate && now < pending.nextRetryNanos) {
+                    return null;
+                }
+                pending.inFlight = true;
+            }
+            RuntimeException failure = null;
+            if (pending.traffic != null) {
+                if (persistTraffic(pending.traffic)) {
+                    pending.traffic = null;
+                } else {
+                    failure = new IllegalStateException("Terminal traffic persistence failed");
+                }
+            }
+            if (failure == null) {
+                try {
+                    pending.action.run();
+                } catch (RuntimeException exception) {
+                    failure = exception;
+                }
+            }
+            synchronized (lifecycleLock) {
+                if (relay.pendingClose != pending || relays.get(relay.sessionId) != relay) {
+                    return failure;
+                }
+                pending.inFlight = false;
+                if (failure == null) {
+                    relay.pendingClose = null;
+                    relays.remove(relay.sessionId, relay);
+                } else {
+                    pending.failures++;
+                    pending.nextRetryNanos = ticker.getAsLong() + retryDelay(pending.failures);
+                }
+            }
+            return failure;
+        }
+    }
+
+    private long retryDelay(int failures) {
+        long delay = CLOSE_RETRY_INITIAL_NANOS;
+        for (int attempt = 1; attempt < failures && delay < CLOSE_RETRY_MAX_NANOS; attempt++) {
+            delay = Math.min(CLOSE_RETRY_MAX_NANOS, delay * 2);
+        }
+        return delay;
     }
 
     private void closePeer(TerminalPeer peer, CloseReason reason) {
@@ -415,18 +638,47 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
         }
     }
 
+    private static final class TrafficBatch {
+        private final String sessionId;
+        private final long browserBytes;
+        private final long agentBytes;
+
+        private TrafficBatch(String sessionId, long browserBytes, long agentBytes) {
+            this.sessionId = sessionId;
+            this.browserBytes = browserBytes;
+            this.agentBytes = agentBytes;
+        }
+    }
+
+    private static final class PendingClose {
+        private final Runnable action;
+        private TrafficBatch traffic;
+        private boolean inFlight;
+        private int failures;
+        private long nextRetryNanos;
+
+        private PendingClose(Runnable action, TrafficBatch traffic) {
+            this.action = action;
+            this.traffic = traffic;
+        }
+    }
+
     private static final class Relay {
         private final String sessionId;
         private final AtomicBoolean closed = new AtomicBoolean();
+        private final Object closeExecutionLock = new Object();
         private final TokenBucket browserRate;
         private final TokenBucket agentRate;
         private volatile TerminalPeer browser;
         private volatile TerminalPeer agent;
         private volatile boolean active;
+        private boolean browserReserved;
+        private boolean agentReserved;
+        private boolean activating;
         private long browserToAgent;
         private long agentToBrowser;
         private long lastTrafficFlushNanos;
-        private CloseReason pendingFinishReason;
+        private PendingClose pendingClose;
 
         private Relay(String sessionId, long now) {
             this.sessionId = sessionId;
@@ -444,6 +696,18 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
                 browser = peer;
             } else {
                 agent = peer;
+            }
+        }
+
+        private boolean reserved(TerminalPeer.Role role) {
+            return role == TerminalPeer.Role.BROWSER ? browserReserved : agentReserved;
+        }
+
+        private void setReserved(TerminalPeer.Role role, boolean reserved) {
+            if (role == TerminalPeer.Role.BROWSER) {
+                browserReserved = reserved;
+            } else {
+                agentReserved = reserved;
             }
         }
 
