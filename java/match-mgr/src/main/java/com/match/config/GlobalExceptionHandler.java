@@ -7,6 +7,7 @@ import com.match.licensing.crypto.InvalidLicenseException;
 import com.match.licensing.guard.LicenseAccessException;
 import com.match.licensing.web.LicenseImportException;
 import com.match.service.impl.SubmissionValidationException;
+import com.match.terminal.service.TerminalSessionException;
 import com.match.util.result.Response;
 import com.match.util.result.ResponseResult;
 import org.springframework.http.HttpStatus;
@@ -42,6 +43,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ResponseResult<Object>> handleBadRequest(IllegalArgumentException exception) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(Response.makeRsp(400, exception.getMessage()));
+    }
+
+    @ExceptionHandler(TerminalSessionException.class)
+    public ResponseEntity<ResponseResult<Object>> handleTerminalSession(TerminalSessionException exception) {
+        return ResponseEntity.status(exception.getStatus())
+                .body(Response.makeRsp(exception.getStatus().value(), exception.getMessage(),
+                        reason(exception.getCode())));
     }
 
     @ExceptionHandler(SubmissionValidationException.class)

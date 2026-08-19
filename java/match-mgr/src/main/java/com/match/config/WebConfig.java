@@ -30,6 +30,7 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addInterceptor(new SaRouteInterceptor((request, response, handler) -> {
             SaRouter.match("/**")
                     .notMatch("/user/login", "/competition", "/health", "/error", "/agent/v1/**",
+                            "/terminal/v1/**",
                             "/v2/api-docs/**", "/swagger-resources/**", "/swagger-ui.html")
                     .check(() -> StpUtil.checkLogin());
             SaRouter.match("/testPaper/**").check(participantAccessGuard::requireCompetitionStarted);

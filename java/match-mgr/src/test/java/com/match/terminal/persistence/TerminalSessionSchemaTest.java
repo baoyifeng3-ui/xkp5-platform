@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.match.Application;
+import com.match.agent.persistence.ProcessingAgentCommandMapper;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
@@ -161,6 +162,19 @@ public class TerminalSessionSchemaTest {
         String consumeBrowser = sql(assertMethod(mapper, "consumeBrowserTicket", 3, Update.class));
         assertContainsAll(consumeBrowser, "DATE_ADD(agent_connected_at, INTERVAL 60 SECOND) > #{now}",
                 "browser_ticket_expires_at > #{now}");
+    }
+
+    @Test
+    public void runningTerminalLeaseLookupUsesExactSecretAndIdentityMatching() {
+        String query = sql(assertMethod(ProcessingAgentCommandMapper.class,
+                "selectRunningTerminalLeaseForUpdate", 4, Select.class));
+
+        assertContainsAll(query, "state = 'RUNNING'", "command_type = 'OPEN_ROOT_TERMINAL'",
+                "BINARY command_id = BINARY #{commandId}",
+                "BINARY agent_id = BINARY #{agentId}",
+                "BINARY lease_token = BINARY #{leaseToken}",
+                "BINARY JSON_UNQUOTE(JSON_EXTRACT(payload_json, '$.sessionId')) = BINARY #{sessionId}",
+                "LIMIT 1 FOR UPDATE");
     }
 
     @Test

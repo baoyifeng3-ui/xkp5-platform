@@ -81,6 +81,17 @@ public class AgentCommandServiceTest {
     }
 
     @Test
+    public void validatesRunningTerminalLeaseThroughExactMapperContract() {
+        when(mapper.selectRunningTerminalLeaseForUpdate(
+                "command", agent.getAgentId(), "lease", "session")).thenReturn("command");
+
+        assertTrue(service.hasRunningTerminalLease("command", agent.getAgentId(), "lease", "session"));
+        assertFalse(service.hasRunningTerminalLease("command", agent.getAgentId(), null, "session"));
+        verify(mapper).selectRunningTerminalLeaseForUpdate(
+                "command", agent.getAgentId(), "lease", "session");
+    }
+
+    @Test
     public void secondShutdownReturnsExistingNonTerminalCommand() {
         ProcessingAgentCommandRecord existing = command("PENDING");
         when(mapper.selectActive(agent.getAgentId(), "SHUTDOWN_SERVER")).thenReturn(existing);

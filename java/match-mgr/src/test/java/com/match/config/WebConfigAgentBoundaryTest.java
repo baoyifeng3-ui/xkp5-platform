@@ -14,5 +14,6 @@ public class WebConfigAgentBoundaryTest {
         String source = new String(Files.readAllBytes(Paths.get(
                 "src/main/java/com/match/config/WebConfig.java")), StandardCharsets.UTF_8);
         assertTrue(source.contains("\"/agent/v1/**\""));
+        assertTrue(source.contains("\"/terminal/v1/**\""));
     }
 }

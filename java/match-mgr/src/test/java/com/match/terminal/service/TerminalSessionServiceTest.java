@@ -7,6 +7,7 @@ import com.match.agent.service.AgentCommandService;
 import com.match.agent.web.AgentProtocolException;
 import com.match.entity.User;
 import com.match.terminal.model.TerminalSessionView;
+import com.match.terminal.model.TerminalTicketView;
 import com.match.terminal.persistence.TerminalSessionMapper;
 import com.match.terminal.persistence.TerminalSessionRecord;
 import org.junit.Before;
@@ -22,10 +23,13 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.security.SecureRandom;
+import java.util.regex.Pattern;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -43,14 +47,16 @@ public class TerminalSessionServiceTest {
     private TerminalSessionService service;
     private ProcessingAgentRecord agent;
     private User actor;
+    private SecureRandom random;
 
     @Before
     public void setUp() {
         sessions = mock(TerminalSessionMapper.class);
         agents = mock(ProcessingAgentMapper.class);
         commands = mock(AgentCommandService.class);
+        random = new DeterministicSecureRandom();
         service = new TerminalSessionService(sessions, agents, commands,
-                Clock.fixed(NOW, ZoneOffset.UTC));
+                Clock.fixed(NOW, ZoneOffset.UTC), random);
         agent = new ProcessingAgentRecord();
         agent.setAgentId(AGENT_ID);
         agent.setEnabled(true);
@@ -188,6 +194,153 @@ public class TerminalSessionServiceTest {
         throw new AssertionError("unrelated Agent protocol failure was translated");
     }
 
+    @Test
+    public void issuesDigestOnlyAgentTicketCappedByAgentDeadline() {
+        TerminalSessionRecord record = waitingAgent(NOW.minusSeconds(70), NOW.plusSeconds(100));
+        when(sessions.selectById(record.getSessionId())).thenReturn(record);
+        when(commands.hasRunningTerminalLease(record.getCommandId(), AGENT_ID, "lease", record.getSessionId()))
+                .thenReturn(true);
+        when(sessions.issueAgentTicket(eq(record.getSessionId()), any(String.class),
+                eq(utc(NOW.plusSeconds(20))), eq(utc(NOW)))).thenReturn(1);
+
+        TerminalTicketView issued = service.issueAgentTicket(agent, record.getSessionId(),
+                record.getCommandId(), "lease");
+
+        assertEquals(43, issued.getTicket().length());
+        assertTrue(Pattern.matches("[A-Za-z0-9_-]{43}", issued.getTicket()));
+        assertEquals(NOW.plusSeconds(20), issued.getExpiresAt());
+        ArgumentCaptor<String> digest = ArgumentCaptor.forClass(String.class);
+        verify(sessions).issueAgentTicket(eq(record.getSessionId()), digest.capture(),
+                eq(utc(NOW.plusSeconds(20))), eq(utc(NOW)));
+        assertTrue(Pattern.matches("[0-9a-f]{64}", digest.getValue()));
+        assertFalse(digest.getValue().contains(issued.getTicket()));
+    }
+
+    @Test
+    public void refusesExpiredAgentPhaseAndWrongRelationshipOrLease() {
+        TerminalSessionRecord record = waitingAgent(NOW.minusSeconds(90), NOW.plusSeconds(100));
+        when(sessions.selectById(record.getSessionId())).thenReturn(record);
+        expectCode("TERMINAL_TICKET_UNAVAILABLE", () -> service.issueAgentTicket(
+                agent, record.getSessionId(), record.getCommandId(), "lease"));
+
+        record.setRequestedAt(utc(NOW.minusSeconds(1)));
+        ProcessingAgentRecord other = new ProcessingAgentRecord();
+        other.setAgentId("other-agent");
+        expectCode("TERMINAL_TICKET_UNAVAILABLE", () -> service.issueAgentTicket(
+                other, record.getSessionId(), record.getCommandId(), "lease"));
+        when(commands.hasRunningTerminalLease(record.getCommandId(), AGENT_ID, "lease", record.getSessionId()))
+                .thenReturn(false);
+        expectCode("TERMINAL_TICKET_UNAVAILABLE", () -> service.issueAgentTicket(
+                agent, record.getSessionId(), record.getCommandId(), "lease"));
+        verify(sessions, never()).issueAgentTicket(any(String.class), any(String.class),
+                any(LocalDateTime.class), any(LocalDateTime.class));
+    }
+
+    @Test
+    public void consumesAgentTicketAtomicallyAndRequiresAuthenticatedRelationship() {
+        TerminalSessionRecord record = waitingAgent(NOW.minusSeconds(1), NOW.plusSeconds(100));
+        when(sessions.selectById(record.getSessionId())).thenReturn(record);
+        when(sessions.consumeAgentTicket(eq(record.getSessionId()), any(String.class), eq(utc(NOW))))
+                .thenReturn(1, 0);
+
+        assertTrue(service.consumeAgentTicket(agent, record.getSessionId(), "secret"));
+        assertFalse(service.consumeAgentTicket(agent, record.getSessionId(), "secret"));
+        ProcessingAgentRecord other = new ProcessingAgentRecord();
+        other.setAgentId("other-agent");
+        assertFalse(service.consumeAgentTicket(other, record.getSessionId(), "secret"));
+        ArgumentCaptor<String> digest = ArgumentCaptor.forClass(String.class);
+        verify(sessions, org.mockito.Mockito.times(2)).consumeAgentTicket(
+                eq(record.getSessionId()), digest.capture(), eq(utc(NOW)));
+        assertTrue(Pattern.matches("[0-9a-f]{64}", digest.getValue()));
+    }
+
+    @Test
+    public void rotatesBrowserTicketAndCapsExpiryByBrowserDeadline() {
+        TerminalSessionRecord record = waitingBrowser(NOW.minusSeconds(45), NOW.plusSeconds(120));
+        when(sessions.selectById(record.getSessionId())).thenReturn(record);
+        when(sessions.issueBrowserTicket(eq(record.getSessionId()), any(String.class),
+                eq(utc(NOW.plusSeconds(15))), eq(utc(NOW)))).thenReturn(1);
+
+        TerminalTicketView first = service.issueBrowserTicket(record.getSessionId(), actor);
+        TerminalTicketView second = service.issueBrowserTicket(record.getSessionId(), actor);
+
+        assertEquals(NOW.plusSeconds(15), first.getExpiresAt());
+        assertEquals(43, second.getTicket().length());
+        verify(sessions, org.mockito.Mockito.times(2)).issueBrowserTicket(eq(record.getSessionId()),
+                any(String.class), eq(utc(NOW.plusSeconds(15))), eq(utc(NOW)));
+    }
+
+    @Test
+    public void capsBothTicketTypesByAbsoluteExpiry() {
+        TerminalSessionRecord agentRecord = waitingAgent(NOW.minusSeconds(1), NOW.plusSeconds(5));
+        when(sessions.selectById(agentRecord.getSessionId())).thenReturn(agentRecord);
+        when(commands.hasRunningTerminalLease(agentRecord.getCommandId(), AGENT_ID, "lease",
+                agentRecord.getSessionId())).thenReturn(true);
+        when(sessions.issueAgentTicket(eq(agentRecord.getSessionId()), any(String.class),
+                eq(utc(NOW.plusSeconds(5))), eq(utc(NOW)))).thenReturn(1);
+        assertEquals(NOW.plusSeconds(5), service.issueAgentTicket(agent, agentRecord.getSessionId(),
+                agentRecord.getCommandId(), "lease").getExpiresAt());
+
+        TerminalSessionRecord browserRecord = waitingBrowser(NOW.minusSeconds(1), NOW.plusSeconds(4));
+        when(sessions.selectById(browserRecord.getSessionId())).thenReturn(browserRecord);
+        when(sessions.issueBrowserTicket(eq(browserRecord.getSessionId()), any(String.class),
+                eq(utc(NOW.plusSeconds(4))), eq(utc(NOW)))).thenReturn(1);
+        assertEquals(NOW.plusSeconds(4),
+                service.issueBrowserTicket(browserRecord.getSessionId(), actor).getExpiresAt());
+    }
+
+    @Test
+    public void operatorApisIndependentlyRequireSuperAdminAndCloseIsIdempotent() {
+        TerminalSessionRecord record = waitingBrowser(NOW.minusSeconds(1), NOW.plusSeconds(120));
+        when(sessions.selectById(record.getSessionId())).thenReturn(record);
+        when(sessions.close(record.getSessionId(), "CLOSED", "OPERATOR_CLOSED",
+                "Terminal session closed by operator", utc(NOW))).thenReturn(1);
+        User admin = user(8, "admin", "ADMIN", true);
+        User user = user(9, "user", "USER", false);
+
+        for (User forbidden : new User[]{admin, user}) {
+            expectCode("TERMINAL_SUPER_ADMIN_REQUIRED", () -> service.view(record.getSessionId(), forbidden));
+            expectCode("TERMINAL_SUPER_ADMIN_REQUIRED", () -> service.issueBrowserTicket(record.getSessionId(), forbidden));
+            expectCode("TERMINAL_SUPER_ADMIN_REQUIRED", () -> service.close(record.getSessionId(), forbidden));
+        }
+        assertEquals(record.getSessionId(), service.view(record.getSessionId(), actor).getSessionId());
+        service.close(record.getSessionId(), actor);
+        record.setState("CLOSED");
+        service.close(record.getSessionId(), actor);
+        verify(sessions, org.mockito.Mockito.times(1)).close(record.getSessionId(), "CLOSED",
+                "OPERATOR_CLOSED", "Terminal session closed by operator", utc(NOW));
+    }
+
+    private TerminalSessionRecord waitingAgent(Instant requestedAt, Instant absoluteExpiry) {
+        TerminalSessionRecord record = baseRecord("WAITING_AGENT", absoluteExpiry);
+        record.setRequestedAt(utc(requestedAt));
+        return record;
+    }
+
+    private TerminalSessionRecord waitingBrowser(Instant agentConnectedAt, Instant absoluteExpiry) {
+        TerminalSessionRecord record = baseRecord("WAITING_BROWSER", absoluteExpiry);
+        record.setRequestedAt(utc(NOW.minusSeconds(30)));
+        record.setAgentConnectedAt(utc(agentConnectedAt));
+        return record;
+    }
+
+    private TerminalSessionRecord baseRecord(String state, Instant absoluteExpiry) {
+        TerminalSessionRecord record = new TerminalSessionRecord();
+        record.setSessionId("33333333-3333-4333-8333-333333333333");
+        record.setAgentId(AGENT_ID);
+        record.setActiveAgentId(AGENT_ID);
+        record.setRequesterUserId(actor.getUserId());
+        record.setRequesterRole("SUPER_ADMIN");
+        record.setState(state);
+        record.setCommandId("22222222-2222-4222-8222-222222222222");
+        record.setAbsoluteExpiresAt(utc(absoluteExpiry));
+        return record;
+    }
+
+    private LocalDateTime utc(Instant instant) {
+        return LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
+    }
+
     private TerminalSessionView create() {
         return service.create(AGENT_ID, actor, "OPEN_ROOT_TERMINAL");
     }
@@ -209,5 +362,17 @@ public class TerminalSessionServiceTest {
             return exception;
         }
         throw new AssertionError("expected terminal session exception " + code);
+    }
+
+    private static class DeterministicSecureRandom extends SecureRandom {
+        private int sequence;
+
+        @Override
+        public void nextBytes(byte[] bytes) {
+            sequence++;
+            for (int i = 0; i < bytes.length; i++) {
+                bytes[i] = (byte) (sequence + i);
+            }
+        }
     }
 }

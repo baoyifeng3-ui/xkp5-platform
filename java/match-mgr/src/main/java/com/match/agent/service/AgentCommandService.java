@@ -156,6 +156,15 @@ public class AgentCommandService {
         }
     }
 
+    public boolean hasRunningTerminalLease(String commandId, String agentId,
+                                           String leaseToken, String sessionId) {
+        if (commandId == null || agentId == null || leaseToken == null || sessionId == null) {
+            return false;
+        }
+        return commandId.equals(mapper.selectRunningTerminalLeaseForUpdate(
+                commandId, agentId, leaseToken, sessionId));
+    }
+
     @Transactional
     public AgentCommandView requestShutdown(ProcessingAgentRecord agent, Integer requesterUserId,
                                             String requesterRole) {
