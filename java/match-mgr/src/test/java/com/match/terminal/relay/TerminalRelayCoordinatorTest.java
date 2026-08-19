@@ -12,7 +12,10 @@ import org.springframework.web.socket.WebSocketSession;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -24,6 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.mockito.ArgumentCaptor;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -956,6 +960,119 @@ public class TerminalRelayCoordinatorTest {
     }
 
     @Test
+    public void transactionalConditionalCloseWaitsForCommitBeforePeerTeardown() throws Exception {
+        Fixture fixture = new Fixture();
+        TerminalPeer browser = fixture.peer(TerminalPeer.Role.BROWSER);
+        TerminalPeer agent = fixture.peer(TerminalPeer.Role.AGENT);
+        fixture.pair(browser, agent);
+        AtomicInteger persistenceCalls = new AtomicInteger();
+        org.springframework.transaction.support.TransactionSynchronizationManager
+                .initSynchronization();
+        try {
+            assertEquals(TerminalRelayLifecycle.ConditionalCloseResult.PERSISTED,
+                    fixture.coordinator.closePersistedSessionConditionally(SESSION_ID, () -> {
+                        persistenceCalls.incrementAndGet();
+                        return TerminalRelayLifecycle.ConditionalCloseDecision.PERSISTED;
+                    }));
+
+            assertEquals(1, persistenceCalls.get());
+            assertEquals(1, fixture.coordinator.relayCount());
+            assertTrue(browser.session().isOpen());
+            assertTrue(agent.session().isOpen());
+            fixture.coordinator.onBinary(browser, ByteBuffer.wrap(new byte[]{9}));
+            assertTrue(fixture.agentMessages.isEmpty());
+
+            java.util.List<org.springframework.transaction.support.TransactionSynchronization>
+                    synchronizations = org.springframework.transaction.support
+                    .TransactionSynchronizationManager.getSynchronizations();
+            assertEquals(1, synchronizations.size());
+            synchronizations.get(0).afterCommit();
+            synchronizations.get(0).afterCompletion(
+                    org.springframework.transaction.support.TransactionSynchronization.STATUS_COMMITTED);
+
+            assertEquals(0, fixture.coordinator.relayCount());
+            verify(browser.session()).close(any(CloseStatus.class));
+            verify(agent.session()).close(any(CloseStatus.class));
+        } finally {
+            org.springframework.transaction.support.TransactionSynchronizationManager
+                    .clearSynchronization();
+        }
+    }
+
+    @Test
+    public void transactionalConditionalCloseRollbackRestoresForwardingWithoutTombstone() {
+        Fixture fixture = new Fixture();
+        TerminalPeer browser = fixture.peer(TerminalPeer.Role.BROWSER);
+        TerminalPeer agent = fixture.peer(TerminalPeer.Role.AGENT);
+        fixture.pair(browser, agent);
+        AtomicInteger persistenceCalls = new AtomicInteger();
+        org.springframework.transaction.support.TransactionSynchronizationManager
+                .initSynchronization();
+        try {
+            assertEquals(TerminalRelayLifecycle.ConditionalCloseResult.PERSISTED,
+                    fixture.coordinator.closePersistedSessionConditionally(SESSION_ID, () -> {
+                        persistenceCalls.incrementAndGet();
+                        return TerminalRelayLifecycle.ConditionalCloseDecision.PERSISTED;
+                    }));
+            java.util.List<org.springframework.transaction.support.TransactionSynchronization>
+                    synchronizations = org.springframework.transaction.support
+                    .TransactionSynchronizationManager.getSynchronizations();
+
+            synchronizations.get(0).afterCompletion(
+                    org.springframework.transaction.support.TransactionSynchronization.STATUS_ROLLED_BACK);
+            fixture.coordinator.onBinary(browser, ByteBuffer.wrap(new byte[]{8}));
+
+            assertEquals(1, persistenceCalls.get());
+            assertEquals(1, fixture.coordinator.relayCount());
+            assertTrue(browser.session().isOpen());
+            assertTrue(agent.session().isOpen());
+            assertEquals(8, fixture.binaryAt(agent, 0)[0]);
+        } finally {
+            org.springframework.transaction.support.TransactionSynchronizationManager
+                    .clearSynchronization();
+        }
+    }
+
+    @Test
+    public void remoteTerminalizationWinsAgainstPendingTransactionalCloseRollback() throws Exception {
+        TerminalSessionService sessions = mock(TerminalSessionService.class);
+        allowAttachments(sessions);
+        AtomicLong ticker = new AtomicLong();
+        AtomicReference<Runnable> periodic = new AtomicReference<>();
+        TerminalRelayCoordinator coordinator = new TerminalRelayCoordinator(
+                sessions, Runnable::run, ticker::get, periodic::set);
+        TerminalPeer browser = peer(TerminalPeer.Role.BROWSER);
+        TerminalPeer agent = peer(TerminalPeer.Role.AGENT);
+        when(sessions.markRelayActive(SESSION_ID)).thenReturn(true);
+        assertTrue(coordinator.attach(SESSION_ID, browser));
+        assertTrue(coordinator.attach(SESSION_ID, agent));
+        org.springframework.transaction.support.TransactionSynchronizationManager
+                .initSynchronization();
+        try {
+            assertEquals(TerminalRelayLifecycle.ConditionalCloseResult.PERSISTED,
+                    coordinator.closePersistedSessionConditionally(SESSION_ID,
+                            () -> TerminalRelayLifecycle.ConditionalCloseDecision.PERSISTED));
+            java.util.List<org.springframework.transaction.support.TransactionSynchronization>
+                    synchronizations = org.springframework.transaction.support
+                    .TransactionSynchronizationManager.getSynchronizations();
+            org.mockito.Mockito.doReturn(Collections.emptySet()).when(sessions)
+                    .findOpenRelaySessionIds(any());
+
+            ticker.set(TimeUnit.SECONDS.toNanos(5));
+            periodic.get().run();
+            synchronizations.get(0).afterCompletion(
+                    org.springframework.transaction.support.TransactionSynchronization.STATUS_ROLLED_BACK);
+
+            assertEquals(0, coordinator.relayCount());
+            verify(browser.session()).close(any(CloseStatus.class));
+            verify(agent.session()).close(any(CloseStatus.class));
+        } finally {
+            org.springframework.transaction.support.TransactionSynchronizationManager
+                    .clearSynchronization();
+        }
+    }
+
+    @Test
     public void absoluteExpiryClosesWithOneUnflushedByteWhenTrafficTimestampIsRejected() {
         Fixture fixture = new Fixture();
         TerminalPeer browser = fixture.peer(TerminalPeer.Role.BROWSER);
@@ -1045,7 +1162,8 @@ public class TerminalRelayCoordinatorTest {
         when(sessions.markRelayActive(SESSION_ID)).thenReturn(true);
         assertTrue(coordinator.attach(SESSION_ID, browser));
         assertTrue(coordinator.attach(SESSION_ID, agent));
-        when(sessions.isRelayStillOpen(SESSION_ID)).thenReturn(false);
+        org.mockito.Mockito.doReturn(Collections.emptySet()).when(sessions)
+                .findOpenRelaySessionIds(any());
 
         ticker.set(TimeUnit.SECONDS.toNanos(5));
         periodic.get().run();
@@ -1054,6 +1172,56 @@ public class TerminalRelayCoordinatorTest {
         verify(browser.session()).close(any(CloseStatus.class));
         verify(agent.session()).close(any(CloseStatus.class));
         verify(sessions, never()).finishRelay(any(String.class), anyBoolean(), any(String.class));
+    }
+
+    @Test
+    public void maintenanceBulkChecksAllLocalRelaysWithinOneCycle() throws Exception {
+        TerminalSessionService sessions = mock(TerminalSessionService.class);
+        allowAttachments(sessions);
+        AtomicLong ticker = new AtomicLong();
+        AtomicReference<Runnable> periodic = new AtomicReference<>();
+        TerminalRelayCoordinator coordinator = new TerminalRelayCoordinator(
+                sessions, Runnable::run, ticker::get, periodic::set);
+        List<String> sessionIds = new ArrayList<>();
+        List<WebSocketSession> sockets = new ArrayList<>();
+        for (int index = 0; index < TerminalRelayCoordinator.MAX_RELAYS; index++) {
+            String sessionId = String.format("33333333-3333-4333-8333-%012d", index);
+            WebSocketSession socket = mock(WebSocketSession.class);
+            when(socket.isOpen()).thenReturn(true);
+            sessionIds.add(sessionId);
+            sockets.add(socket);
+            assertTrue(coordinator.attach(sessionId,
+                    new TerminalPeer(TerminalPeer.Role.BROWSER, null, socket)));
+        }
+        String missing = sessionIds.get(sessionIds.size() - 2);
+        String terminal = sessionIds.get(sessionIds.size() - 1);
+        doAnswer(invocation -> {
+            List<String> chunk = invocation.getArgument(0);
+            assertTrue(chunk.size() <= 200);
+            Set<String> open = new HashSet<>(chunk);
+            open.remove(missing);
+            open.remove(terminal);
+            return open;
+        }).when(sessions).findOpenRelaySessionIds(any());
+
+        ticker.set(TimeUnit.SECONDS.toNanos(5));
+        periodic.get().run();
+
+        assertEquals(TerminalRelayCoordinator.MAX_RELAYS - 2, coordinator.relayCount());
+        verify(sockets.get(0), never()).close(any(CloseStatus.class));
+        verify(sockets.get(sockets.size() - 2)).close(any(CloseStatus.class));
+        verify(sockets.get(sockets.size() - 1)).close(any(CloseStatus.class));
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<String>> chunks = ArgumentCaptor.forClass(List.class);
+        verify(sessions, times(6)).findOpenRelaySessionIds(chunks.capture());
+        List<String> queried = new ArrayList<>();
+        for (List<String> chunk : chunks.getAllValues()) {
+            assertTrue(chunk.size() <= 200);
+            queried.addAll(chunk);
+        }
+        Collections.sort(queried);
+        Collections.sort(sessionIds);
+        assertEquals(sessionIds, queried);
     }
 
     @Test
@@ -1069,11 +1237,11 @@ public class TerminalRelayCoordinatorTest {
 
         ticker.addAndGet(TimeUnit.SECONDS.toNanos(4));
         periodic.get().run();
-        verify(sessions, never()).isRelayStillOpen(any(String.class));
+        verify(sessions, never()).findOpenRelaySessionIds(any());
 
         ticker.addAndGet(TimeUnit.SECONDS.toNanos(1));
         periodic.get().run();
-        verify(sessions).isRelayStillOpen(SESSION_ID);
+        verify(sessions).findOpenRelaySessionIds(Collections.singletonList(SESSION_ID));
     }
 
     private TerminalPeer peer(TerminalPeer.Role role) {
@@ -1085,7 +1253,8 @@ public class TerminalRelayCoordinatorTest {
     private static void allowAttachments(TerminalSessionService sessions) {
         when(sessions.isRelayAttachmentEligible(any(String.class), any(String.class),
                 org.mockito.ArgumentMatchers.nullable(String.class))).thenReturn(true);
-        when(sessions.isRelayStillOpen(any(String.class))).thenReturn(true);
+        when(sessions.findOpenRelaySessionIds(any())).thenAnswer(invocation ->
+                new HashSet<>(invocation.<List<String>>getArgument(0)));
     }
 
     private static final class Fixture {

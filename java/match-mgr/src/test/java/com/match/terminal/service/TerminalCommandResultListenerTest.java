@@ -7,7 +7,6 @@ import com.match.agent.persistence.ProcessingAgentCommandRecord;
 import com.match.terminal.persistence.TerminalSessionMapper;
 import com.match.terminal.persistence.TerminalSessionRecord;
 import org.junit.Test;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
@@ -27,14 +26,58 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 
 public class TerminalCommandResultListenerTest {
     @Test
-    public void afterCommitReconciliationStartsANewTransaction() throws Exception {
+    public void afterCommitWrapperIsNonTransactional() throws Exception {
         Transactional transactional = TerminalCommandResultListener.class
                 .getMethod("onFinished", AgentCommandFinishedEvent.class)
                 .getAnnotation(Transactional.class);
-        assertEquals(Propagation.REQUIRES_NEW, transactional.propagation());
+        assertNull(transactional);
+    }
+
+    @Test
+    public void afterCommitWorkerFailureIsHiddenAndDurableScanRetriesInNewTransaction() {
+        TerminalSessionMapper mapper = mock(TerminalSessionMapper.class);
+        ProcessingAgentCommandMapper commands = mock(ProcessingAgentCommandMapper.class);
+        TerminalRelayLifecycle lifecycle = mock(TerminalRelayLifecycle.class);
+        AgentAuditService audit = mock(AgentAuditService.class);
+        TerminalSessionRecord row = row();
+        ProcessingAgentCommandRecord command = failedCommand(row);
+        when(mapper.selectCommandReconciliationCandidates(100))
+                .thenReturn(Collections.singletonList(row));
+        when(commands.selectById(row.getCommandId())).thenReturn(command);
+        when(mapper.selectByCommandId(row.getCommandId())).thenReturn(row);
+        when(mapper.closeCommandSession(eq(row.getSessionId()), eq(row.getCommandId()),
+                eq(row.getAgentId()), eq("FAILED"), eq("PTY_START_FAILED"),
+                eq("Terminal PTY command failed"), any())).thenReturn(1);
+        when(lifecycle.closePersistedSessionConditionally(eq(row.getSessionId()), any()))
+                .thenAnswer(TerminalCommandResultListenerTest::runConditional);
+        AtomicInteger transactions = new AtomicInteger();
+        TransactionOperations transactionOperations = new TransactionOperations() {
+            @Override
+            public <T> T execute(TransactionCallback<T> action) {
+                if (transactions.incrementAndGet() == 1) {
+                    throw new IllegalStateException("worker transaction rolled back");
+                }
+                return action.doInTransaction(mock(TransactionStatus.class));
+            }
+        };
+        TerminalCommandResultListener listener = new TerminalCommandResultListener(mapper, commands,
+                lifecycle, audit, Clock.fixed(Instant.parse("2026-08-19T12:00:00Z"), ZoneOffset.UTC),
+                transactionOperations);
+
+        listener.onFinished(new AgentCommandFinishedEvent(row.getCommandId(), row.getAgentId(),
+                "OPEN_ROOT_TERMINAL", false, "PTY_START_FAILED", "private result text"));
+        listener.reconcileMissed();
+
+        assertEquals(2, transactions.get());
+        verify(mapper).closeCommandSession(eq(row.getSessionId()), eq(row.getCommandId()),
+                eq(row.getAgentId()), eq("FAILED"), eq("PTY_START_FAILED"),
+                eq("Terminal PTY command failed"), any());
+        verify(audit).recordTerminal("TERMINAL_PTY_FAILURE", "FAILURE", "PTY_START_FAILED",
+                null, row.getAgentId(), row.getSessionId(), row.getCommandId());
     }
 
     @Test

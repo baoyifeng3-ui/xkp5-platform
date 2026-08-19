@@ -8,6 +8,9 @@ import com.match.terminal.service.TerminalRelayLifecycle;
 import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationAdapter;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -23,7 +26,6 @@ import java.util.function.LongSupplier;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
@@ -56,7 +58,7 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
     private static final long CLOSE_RETRY_INITIAL_NANOS = 1_000_000_000L;
     private static final long CLOSE_RETRY_MAX_NANOS = 30_000_000_000L;
     private static final long ELIGIBILITY_RECONCILE_NANOS = 5_000_000_000L;
-    private static final int ELIGIBILITY_RECONCILE_BATCH = 100;
+    private static final int ELIGIBILITY_QUERY_CHUNK = 200;
     private static final long RATE_BYTES_PER_SECOND = 2L * 1024 * 1024;
     private static final long RATE_BURST_BYTES = 8L * 1024 * 1024;
     private static final ObjectMapper CONTROL_JSON = new ObjectMapper()
@@ -71,7 +73,6 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
     private String overflowSessionId;
     private PendingClose overflowPendingClose;
     private long lastEligibilityReconcileNanos;
-    private String eligibilityReconcileCursor;
 
     public TerminalRelayCoordinator(TerminalSessionService sessions, Executor writerExecutor,
                                     LongSupplier ticker) {
@@ -387,8 +388,65 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
                         trafficResult == TrafficPersistence.SUCCESS);
                 return ConditionalCloseResult.KEPT_OPEN;
             }
+            if (decision == ConditionalCloseDecision.PERSISTED
+                    && TransactionSynchronizationManager.isSynchronizationActive()) {
+                registerTransactionalClose(sessionId, relay, wasActive, traffic);
+                return ConditionalCloseResult.PERSISTED;
+            }
             terminateLocalRelay(sessionId, relay);
             return result(decision);
+        }
+    }
+
+    private void registerTransactionalClose(String sessionId, Relay relay, boolean wasActive,
+                                            TrafficBatch traffic) {
+        Object token = new Object();
+        synchronized (relay) {
+            relay.transactionalCloseToken = token;
+        }
+        try {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronizationAdapter() {
+                        @Override
+                        public void afterCommit() {
+                            completeTransactionalClose(sessionId, relay, token, true,
+                                    wasActive, traffic);
+                        }
+
+                        @Override
+                        public void afterCompletion(int status) {
+                            if (status != TransactionSynchronization.STATUS_COMMITTED) {
+                                completeTransactionalClose(sessionId, relay, token, false,
+                                        wasActive, traffic);
+                            }
+                        }
+                    });
+        } catch (RuntimeException exception) {
+            synchronized (relay) {
+                if (relay.transactionalCloseToken == token) {
+                    relay.transactionalCloseToken = null;
+                }
+            }
+            terminateLocalRelay(sessionId, relay);
+            throw exception;
+        }
+    }
+
+    private void completeTransactionalClose(String sessionId, Relay relay, Object token,
+                                            boolean committed, boolean wasActive,
+                                            TrafficBatch traffic) {
+        synchronized (relay.closeExecutionLock) {
+            synchronized (relay) {
+                if (relay.transactionalCloseToken != token) {
+                    return;
+                }
+                relay.transactionalCloseToken = null;
+            }
+            if (committed) {
+                terminateLocalRelay(sessionId, relay);
+            } else if (relays.get(sessionId) == relay) {
+                restoreRelay(relay, wasActive, traffic, false);
+            }
         }
     }
 
@@ -550,46 +608,44 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
         lastEligibilityReconcileNanos = now;
         List<Relay> candidates = new ArrayList<>();
         for (Relay relay : relays.values()) {
-            if (!relay.closed.get()) {
+            if (!relay.closed.get() || relay.transactionalCloseToken != null) {
                 candidates.add(relay);
             }
         }
-        candidates.sort(Comparator.comparing(value -> value.sessionId));
         if (candidates.isEmpty()) {
-            eligibilityReconcileCursor = null;
             return;
         }
-        int start = 0;
-        if (eligibilityReconcileCursor != null) {
-            while (start < candidates.size()
-                    && candidates.get(start).sessionId.compareTo(eligibilityReconcileCursor) <= 0) {
-                start++;
+        for (int start = 0; start < candidates.size(); start += ELIGIBILITY_QUERY_CHUNK) {
+            List<Relay> chunk = candidates.subList(start,
+                    Math.min(start + ELIGIBILITY_QUERY_CHUNK, candidates.size()));
+            List<String> sessionIds = new ArrayList<>(chunk.size());
+            for (Relay relay : chunk) {
+                sessionIds.add(relay.sessionId);
             }
-            if (start == candidates.size()) {
-                start = 0;
-            }
-        }
-        int count = Math.min(ELIGIBILITY_RECONCILE_BATCH, candidates.size());
-        for (int index = 0; index < count; index++) {
-            Relay relay = candidates.get((start + index) % candidates.size());
-            eligibilityReconcileCursor = relay.sessionId;
-            boolean open;
+            Set<String> open;
             try {
-                open = sessions.isRelayStillOpen(relay.sessionId);
+                open = sessions.findOpenRelaySessionIds(sessionIds);
             } catch (RuntimeException exception) {
                 continue;
             }
-            if (!open) {
-                synchronized (relay.closeExecutionLock) {
-                    if (!relay.closed.get()) {
-                        gateRelayClosed(relay);
-                        terminateLocalRelay(relay.sessionId, relay);
+            for (Relay relay : chunk) {
+                if (!open.contains(relay.sessionId)) {
+                    synchronized (relay.closeExecutionLock) {
+                        boolean shouldClose;
+                        synchronized (relay) {
+                            shouldClose = !relay.closed.get()
+                                    || relay.transactionalCloseToken != null;
+                            relay.transactionalCloseToken = null;
+                        }
+                        if (shouldClose) {
+                            if (!relay.closed.get()) {
+                                gateRelayClosed(relay);
+                            }
+                            terminateLocalRelay(relay.sessionId, relay);
+                        }
                     }
                 }
             }
-        }
-        if (candidates.size() <= ELIGIBILITY_RECONCILE_BATCH) {
-            eligibilityReconcileCursor = null;
         }
     }
 
@@ -855,6 +911,7 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
         private long agentToBrowserAcknowledged;
         private long lastTrafficFlushNanos;
         private PendingClose pendingClose;
+        private volatile Object transactionalCloseToken;
 
         private Relay(String sessionId, long now) {
             this.sessionId = sessionId;

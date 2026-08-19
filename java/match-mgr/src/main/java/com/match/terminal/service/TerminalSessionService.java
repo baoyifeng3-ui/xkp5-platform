@@ -29,6 +29,10 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
@@ -302,6 +306,24 @@ public class TerminalSessionService {
         return record != null && !isTerminal(record.getState());
     }
 
+    public Set<String> findOpenRelaySessionIds(List<String> sessionIds) {
+        if (sessionIds == null || sessionIds.isEmpty()) {
+            return Collections.emptySet();
+        }
+        if (sessionIds.size() > 200) {
+            throw new IllegalArgumentException("Terminal relay state lookup exceeds batch limit");
+        }
+        Set<String> requested = new HashSet<>(sessionIds);
+        Set<String> open = new HashSet<>();
+        for (TerminalSessionRecord record : sessionMapper.selectStatesByIds(sessionIds)) {
+            if (record != null && requested.contains(record.getSessionId())
+                    && !isTerminal(record.getState())) {
+                open.add(record.getSessionId());
+            }
+        }
+        return open;
+    }
+
     @Transactional
     public void finishRelay(String sessionId, boolean operatorClosed, String reason) {
         String state = operatorClosed ? "CLOSED" : "FAILED";
@@ -328,10 +350,11 @@ public class TerminalSessionService {
         requireSuperAdmin(actor);
         TerminalSessionRecord record = requireSession(sessionId);
         if (isTerminal(record.getState())) {
-            relayLifecycle.closePersistedSession(sessionId, () -> { });
+            relayLifecycle.closePersistedSessionConditionally(sessionId,
+                    () -> TerminalRelayLifecycle.ConditionalCloseDecision.LOCAL_ONLY);
             return;
         }
-        relayLifecycle.closePersistedSession(sessionId, () -> {
+        relayLifecycle.closePersistedSessionConditionally(sessionId, () -> {
             Instant now = clock.instant();
             if (sessionMapper.close(sessionId, "CLOSED", "OPERATOR_CLOSED",
                     "Terminal session closed by operator", utc(now)) != 1) {
@@ -339,9 +362,10 @@ public class TerminalSessionService {
                 if (current == null || !isTerminal(current.getState())) {
                     throw error("TERMINAL_SESSION_CLOSE_FAILED", "Terminal session could not be closed");
                 }
-            } else {
-                audit(record, "TERMINAL_CLOSE", "SUCCESS", "OPERATOR_CLOSED");
+                return TerminalRelayLifecycle.ConditionalCloseDecision.LOCAL_ONLY;
             }
+            audit(record, "TERMINAL_CLOSE", "SUCCESS", "OPERATOR_CLOSED");
+            return TerminalRelayLifecycle.ConditionalCloseDecision.PERSISTED;
         });
     }
 

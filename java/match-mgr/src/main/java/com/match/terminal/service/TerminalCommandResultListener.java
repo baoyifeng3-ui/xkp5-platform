@@ -11,8 +11,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -82,9 +80,23 @@ public class TerminalCommandResultListener {
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onFinished(AgentCommandFinishedEvent event) {
-        reconcile(event);
+        try {
+            reconcileInNewTransaction(event);
+        } catch (RuntimeException ignored) {
+            // The committed command remains durable for the bounded reconciliation scan.
+        }
+    }
+
+    private void reconcileInNewTransaction(AgentCommandFinishedEvent event) {
+        if (requiresNew == null) {
+            reconcile(event);
+            return;
+        }
+        requiresNew.execute(status -> {
+            reconcile(event);
+            return null;
+        });
     }
 
     private void reconcile(AgentCommandFinishedEvent event) {
@@ -131,14 +143,7 @@ public class TerminalCommandResultListener {
                     "SUCCEEDED".equals(command.getState()), command.getResultCode(),
                     command.getResultMessage());
             try {
-                if (requiresNew == null) {
-                    reconcile(event);
-                } else {
-                    requiresNew.execute(status -> {
-                        reconcile(event);
-                        return null;
-                    });
-                }
+                reconcileInNewTransaction(event);
             } catch (RuntimeException ignored) {
                 // A later bounded scan retries only the candidate that remains non-terminal.
             }

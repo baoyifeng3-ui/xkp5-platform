@@ -13,6 +13,14 @@ public interface TerminalSessionMapper {
             + "WHERE session_id = #{sessionId} LIMIT 1")
     TerminalSessionRecord selectById(@Param("sessionId") String sessionId);
 
+    @Select({"<script>",
+            "SELECT session_id, state FROM processing_agent_terminal_session WHERE session_id IN",
+            "<foreach collection='sessionIds' item='sessionId' open='(' separator=',' close=')'>",
+            "#{sessionId}",
+            "</foreach>",
+            "</script>"})
+    List<TerminalSessionRecord> selectStatesByIds(@Param("sessionIds") List<String> sessionIds);
+
     @Select("SELECT * FROM processing_agent_terminal_session "
             + "WHERE active_agent_id = #{agentId} LIMIT 1")
     TerminalSessionRecord selectActiveByAgent(@Param("agentId") String agentId);

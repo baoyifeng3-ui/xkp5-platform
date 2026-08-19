@@ -248,6 +248,16 @@ public class TerminalSessionSchemaTest {
     }
 
     @Test
+    public void localRelayConvergenceUsesParameterizedBulkStateLookup() {
+        Class<?> mapper = load("com.match.terminal.persistence.TerminalSessionMapper");
+
+        String lookup = sql(assertMethod(mapper, "selectStatesByIds", 1, Select.class));
+
+        assertContainsAll(lookup, "SELECT session_id, state",
+                "collection='sessionIds'", "#{sessionId}", "separator=','");
+    }
+
+    @Test
     public void applicationScansTerminalMappers() {
         MapperScan mapperScan = Application.class.getAnnotation(MapperScan.class);
 

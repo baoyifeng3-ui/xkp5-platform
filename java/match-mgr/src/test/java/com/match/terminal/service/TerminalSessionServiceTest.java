@@ -329,22 +329,26 @@ public class TerminalSessionServiceTest {
     }
 
     @Test
-    public void operatorCloseRunsPersistenceInsideRelayLifecycleBoundary() {
+    public void operatorCloseRunsPersistenceInsideCommitAwareRelayLifecycleBoundary() {
         TerminalSessionRecord record = waitingBrowser(NOW.minusSeconds(1), NOW.plusSeconds(120));
         when(sessions.selectById(record.getSessionId())).thenReturn(record);
         when(sessions.close(record.getSessionId(), "CLOSED", "OPERATOR_CLOSED",
                 "Terminal session closed by operator", utc(NOW))).thenReturn(1);
         TerminalRelayLifecycle lifecycle = mock(TerminalRelayLifecycle.class);
-        doAnswer(invocation -> {
-            invocation.<Runnable>getArgument(1).run();
-            return null;
-        }).when(lifecycle).closePersistedSession(eq(record.getSessionId()), any(Runnable.class));
+        when(lifecycle.closePersistedSessionConditionally(eq(record.getSessionId()), any()))
+                .thenAnswer(invocation -> {
+                    java.util.function.Supplier<TerminalRelayLifecycle.ConditionalCloseDecision>
+                            close = invocation.getArgument(1);
+                    return close.get() == TerminalRelayLifecycle.ConditionalCloseDecision.PERSISTED
+                            ? TerminalRelayLifecycle.ConditionalCloseResult.PERSISTED
+                            : TerminalRelayLifecycle.ConditionalCloseResult.KEPT_OPEN;
+                });
         TerminalSessionService bounded = new TerminalSessionService(sessions, agents, commands,
                 Clock.fixed(NOW, ZoneOffset.UTC), random, lifecycle);
 
         bounded.close(record.getSessionId(), actor);
 
-        verify(lifecycle).closePersistedSession(eq(record.getSessionId()), any(Runnable.class));
+        verify(lifecycle).closePersistedSessionConditionally(eq(record.getSessionId()), any());
         verify(sessions).close(record.getSessionId(), "CLOSED", "OPERATOR_CLOSED",
                 "Terminal session closed by operator", utc(NOW));
     }
