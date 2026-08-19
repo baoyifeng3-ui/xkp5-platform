@@ -356,6 +356,12 @@ public class AgentCommandServiceTest {
                 NOW, NOW.plusSeconds(7200), 7, "SUPER_ADMIN");
     }
 
+    @Test(expected = IllegalArgumentException.class)
+    public void terminalCommandRejectsSubsecondDeadlines() {
+        service.requestTerminalCommand(agent, "44444444-4444-4444-8444-444444444444",
+                NOW.plusSeconds(90).plusNanos(1), NOW.plusSeconds(7200), 7, "SUPER_ADMIN");
+    }
+
     @Test
     public void terminalCommandIsTransactionalAndRejectsUnsafeRelayConfiguration() throws Exception {
         Method method = AgentCommandService.class.getMethod("requestTerminalCommand",
@@ -370,7 +376,17 @@ public class AgentCommandServiceTest {
                 "wss://relay.example/terminal/v1/agent?credential=secret", false));
         expectIllegalArgument(() -> terminalService(
                 "wss://127.0.0.1:19147/terminal/v1/agent", false));
+        expectIllegalArgument(() -> terminalService(
+                "ws://relay.example/terminal/v1/agent", true));
+        expectIllegalArgument(() -> terminalService(
+                "ws://127.0.0.2:19147/terminal/v1/agent", true));
+        expectIllegalArgument(() -> terminalService(
+                "ws://0.0.0.0:19147/terminal/v1/agent", true));
+        expectIllegalArgument(() -> terminalService(
+                "ws://127.0.0.1:19147/terminal/v1/browser", true));
         assertNotNull(terminalService("ws://127.0.0.1:19147/terminal/v1/agent", true));
+        assertNotNull(terminalService("ws://localhost/terminal/v1/agent", true));
+        assertNotNull(terminalService("ws://[::1]:19147/terminal/v1/agent", true));
     }
 
     @Test(expected = IllegalArgumentException.class)

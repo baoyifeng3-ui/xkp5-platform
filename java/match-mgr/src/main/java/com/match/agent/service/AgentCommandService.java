@@ -121,9 +121,11 @@ public class AgentCommandService {
         }
         String normalizedSessionId = requireUuid(sessionId);
         Instant now = clock.instant();
-        if (agentConnectionDeadline == null || !agentConnectionDeadline.isAfter(now)
+        if (agentConnectionDeadline == null || agentConnectionDeadline.getNano() != 0
+                || absoluteExpiresAt == null || absoluteExpiresAt.getNano() != 0
+                || !agentConnectionDeadline.isAfter(now)
                 || agentConnectionDeadline.isAfter(now.plusSeconds(90))
-                || absoluteExpiresAt == null || !absoluteExpiresAt.isAfter(agentConnectionDeadline)
+                || !absoluteExpiresAt.isAfter(agentConnectionDeadline)
                 || absoluteExpiresAt.isAfter(now.plusSeconds(7200))) {
             throw new IllegalArgumentException("Terminal command deadlines are invalid");
         }
@@ -603,7 +605,8 @@ public class AgentCommandService {
         try {
             URI uri = new URI(value);
             boolean secure = "wss".equalsIgnoreCase(uri.getScheme());
-            boolean localInsecure = insecureAllowed && "ws".equalsIgnoreCase(uri.getScheme());
+            boolean localInsecure = insecureAllowed && "ws".equalsIgnoreCase(uri.getScheme())
+                    && isLoopbackHost(uri.getHost());
             if ((!secure && !localInsecure) || uri.getHost() == null || uri.getUserInfo() != null
                     || uri.getQuery() != null || uri.getFragment() != null
                     || (!insecureAllowed && isLoopbackHost(uri.getHost()))) {
@@ -612,6 +615,13 @@ public class AgentCommandService {
             String normalized = uri.toString();
             while (normalized.endsWith("/")) {
                 normalized = normalized.substring(0, normalized.length() - 1);
+            }
+            String normalizedPath = uri.getPath();
+            while (normalizedPath != null && normalizedPath.endsWith("/")) {
+                normalizedPath = normalizedPath.substring(0, normalizedPath.length() - 1);
+            }
+            if (!"/terminal/v1/agent".equals(normalizedPath)) {
+                throw new IllegalArgumentException("Terminal Agent relay URL is invalid");
             }
             return normalized;
         } catch (URISyntaxException exception) {
@@ -626,9 +636,8 @@ public class AgentCommandService {
 
     private static boolean isLoopbackHost(String host) {
         String normalized = host.toLowerCase();
-        return "localhost".equals(normalized) || normalized.startsWith("127.")
-                || "::1".equals(normalized) || "[::1]".equals(normalized)
-                || "0.0.0.0".equals(normalized);
+        return "localhost".equals(normalized) || "127.0.0.1".equals(normalized)
+                || "::1".equals(normalized) || "[::1]".equals(normalized);
     }
 
     private boolean sameLease(ProcessingAgentCommandRecord record, String agentId, String leaseToken) {
