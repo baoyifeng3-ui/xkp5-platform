@@ -3,7 +3,11 @@ package com.match.terminal.service;
 import com.match.agent.service.AgentAuditService;
 import com.match.terminal.persistence.TerminalSessionMapper;
 import com.match.terminal.persistence.TerminalSessionRecord;
+import com.match.terminal.relay.TerminalPeer;
+import com.match.terminal.relay.TerminalRelayCoordinator;
 import org.junit.Test;
+import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.WebSocketSession;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionOperations;
@@ -22,6 +26,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -65,6 +70,63 @@ public class TerminalSessionExpiryTest {
                 Clock.fixed(NOW, ZoneOffset.UTC), null, transactions).expire();
 
         assertEquals(1, transactionCalls[0]);
+    }
+
+    @Test
+    public void expiryFailureIsIsolatedPerRowAndFailsLocalPeersClosed() throws Exception {
+        TerminalSessionMapper mapper = mock(TerminalSessionMapper.class);
+        AgentAuditService audit = mock(AgentAuditService.class);
+        TerminalSessionService relaySessions = mock(TerminalSessionService.class);
+        when(relaySessions.isRelayAttachmentEligible(any(String.class), any(String.class),
+                org.mockito.ArgumentMatchers.nullable(String.class))).thenReturn(true);
+        when(relaySessions.markRelayActive("s1")).thenReturn(true);
+        TerminalRelayCoordinator coordinator = new TerminalRelayCoordinator(
+                relaySessions, Runnable::run, () -> 0L);
+        WebSocketSession browserSocket = mock(WebSocketSession.class);
+        WebSocketSession agentSocket = mock(WebSocketSession.class);
+        when(browserSocket.isOpen()).thenReturn(true);
+        when(agentSocket.isOpen()).thenReturn(true);
+        assertTrue(coordinator.attach("s1",
+                new TerminalPeer(TerminalPeer.Role.BROWSER, null, browserSocket)));
+        assertTrue(coordinator.attach("s1",
+                new TerminalPeer(TerminalPeer.Role.AGENT, "agent", agentSocket)));
+
+        TerminalSessionRecord first = row("s1", "ACTIVE");
+        first.setAbsoluteExpiresAt(utc(NOW));
+        TerminalSessionRecord second = row("s2", "ACTIVE");
+        second.setAbsoluteExpiresAt(utc(NOW));
+        when(mapper.selectExpired(utc(NOW.minusSeconds(600)), utc(NOW), 100))
+                .thenReturn(Arrays.asList(first, second), Collections.singletonList(first));
+        when(mapper.closeExpired(eq("s1"), any(), any(), eq("CLOSED"),
+                eq("ABSOLUTE_EXPIRED"), any())).thenReturn(1, 1);
+        when(mapper.closeExpired(eq("s2"), any(), any(), eq("CLOSED"),
+                eq("ABSOLUTE_EXPIRED"), any())).thenReturn(1);
+        org.mockito.Mockito.doThrow(new IllegalStateException("audit unavailable")).doNothing()
+                .when(audit).recordTerminal(eq("TERMINAL_TIMEOUT"), eq("SUCCESS"),
+                        eq("ABSOLUTE_EXPIRED"), any(), any(String.class), eq("s1"),
+                        any(String.class));
+        TransactionOperations transactions = new TransactionOperations() {
+            @Override
+            public <T> T execute(TransactionCallback<T> action) {
+                return action.doInTransaction(mock(TransactionStatus.class));
+            }
+        };
+        TerminalSessionExpiry expiry = new TerminalSessionExpiry(mapper, coordinator, audit,
+                Clock.fixed(NOW, ZoneOffset.UTC), null, transactions);
+
+        expiry.expire();
+        expiry.expire();
+
+        verify(browserSocket).close(any(CloseStatus.class));
+        verify(agentSocket).close(any(CloseStatus.class));
+        verify(mapper, times(2)).closeExpired(eq("s1"), any(), any(), eq("CLOSED"),
+                eq("ABSOLUTE_EXPIRED"), any());
+        verify(mapper).closeExpired(eq("s2"), any(), any(), eq("CLOSED"),
+                eq("ABSOLUTE_EXPIRED"), any());
+        verify(audit, times(2)).recordTerminal(eq("TERMINAL_TIMEOUT"), eq("SUCCESS"),
+                eq("ABSOLUTE_EXPIRED"), any(), any(String.class), eq("s1"), any(String.class));
+        verify(audit).recordTerminal(eq("TERMINAL_TIMEOUT"), eq("SUCCESS"),
+                eq("ABSOLUTE_EXPIRED"), any(), any(String.class), eq("s2"), any(String.class));
     }
 
     @Test

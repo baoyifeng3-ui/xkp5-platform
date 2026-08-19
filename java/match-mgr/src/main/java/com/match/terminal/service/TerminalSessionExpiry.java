@@ -64,13 +64,17 @@ public class TerminalSessionExpiry {
         LocalDateTime idleBefore = now.minusMinutes(10);
         for (TerminalSessionRecord row : mapper.selectExpired(idleBefore, now, BATCH_SIZE)) {
             ExpiryDecision decision = decide(row, now);
-            if (transactions == null) {
-                expire(row, idleBefore, now, decision);
-            } else {
-                transactions.execute(status -> {
+            try {
+                if (transactions == null) {
                     expire(row, idleBefore, now, decision);
-                    return null;
-                });
+                } else {
+                    transactions.execute(status -> {
+                        expire(row, idleBefore, now, decision);
+                        return null;
+                    });
+                }
+            } catch (RuntimeException ignored) {
+                // Each failed row remains eligible for a later bounded expiry pass.
             }
         }
     }
