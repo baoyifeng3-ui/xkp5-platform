@@ -32,6 +32,7 @@ import OperationsHome from '@/views/operations/OperationsHome.vue'
 import AdministratorManagement from '@/views/operations/AdministratorManagement.vue'
 import LicenseDiagnostics from '@/views/operations/LicenseDiagnostics.vue'
 import ProcessingAgents from '@/views/operations/ProcessingAgents.vue'
+import ContainerTemplates from '@/views/operations/ContainerTemplates.vue'
 import ChangePassword from '@/views/ChangePassword.vue'
 import { getToken, mustChangePassword, getRole, landingRoute, getCompetitionAccessPhase } from '@/utils/auth'
 
@@ -45,6 +46,7 @@ const routes = [
     children: [
       { path: '', name: 'OperationsHome', component: OperationsHome },
       { path: 'processing-agents', name: 'ProcessingAgents', component: ProcessingAgents },
+      { path: 'container-templates', name: 'ContainerTemplates', component: ContainerTemplates },
       { path: 'administrators', name: 'AdministratorManagement', component: AdministratorManagement },
       { path: 'license', name: 'LicenseDiagnostics', component: LicenseDiagnostics }
     ]

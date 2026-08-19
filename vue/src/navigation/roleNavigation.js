@@ -32,6 +32,7 @@ const managementItems = [
 const operationsItems = [
   { key: 'home', label: '运维主页', icon: 'el-icon-odometer', route: '/operations' },
   { key: 'processing-agents', label: '处理服务器', icon: 'el-icon-cpu', route: '/operations/processing-agents' },
+  { key: 'container-templates', label: '容器模板', icon: 'el-icon-box', route: '/operations/container-templates' },
   { key: 'administrators', label: '管理员账号', icon: 'el-icon-user', route: '/operations/administrators' },
   { key: 'license', label: '授权诊断', icon: 'el-icon-key', route: '/operations/license' }
 ]

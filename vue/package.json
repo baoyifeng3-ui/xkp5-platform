@@ -7,7 +7,8 @@
     "build": "node scripts/vue-cli.js build",
     "test:navigation": "node scripts/test-role-navigation.js",
     "test:license": "node scripts/test-license-navigation.js",
-    "test:agents": "node scripts/test-agent-navigation.js && node scripts/test-agent-view-contract.js"
+    "test:agents": "node scripts/test-agent-navigation.js && node scripts/test-agent-view-contract.js",
+    "test:templates": "node scripts/test-container-template-view-contract.js"
   },
   "engines": {
     "node": ">=16 <23"
