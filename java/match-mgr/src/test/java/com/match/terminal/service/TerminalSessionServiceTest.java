@@ -258,15 +258,12 @@ public class TerminalSessionServiceTest {
     }
 
     @Test
-    public void rejectsAgentIssuanceForWrongCommandStateTypeOrPayloadBinding() {
+    public void agentIssuanceRejectsWrongCommandAndDelegatedLeaseValidationFailure() {
         TerminalSessionRecord record = waitingAgent(NOW.minusSeconds(1), NOW.plusSeconds(100));
         when(sessions.selectById(record.getSessionId())).thenReturn(record);
 
-        for (String rejectedBinding : new String[]{"wrong-command", "lowercase-state",
-                "mixed-case-type", "foreign-payload-session"}) {
-            expectCode("TERMINAL_TICKET_UNAVAILABLE", () -> service.issueAgentTicket(
-                    agent, record.getSessionId(), rejectedBinding, "lease"));
-        }
+        expectCode("TERMINAL_TICKET_UNAVAILABLE", () -> service.issueAgentTicket(
+                agent, record.getSessionId(), "wrong-command", "lease"));
         when(commands.hasRunningTerminalLease(record.getCommandId(), AGENT_ID,
                 "lease", record.getSessionId())).thenReturn(false);
         expectCode("TERMINAL_TICKET_UNAVAILABLE", () -> service.issueAgentTicket(
@@ -295,16 +292,40 @@ public class TerminalSessionServiceTest {
     }
 
     @Test
-    public void consumesBrowserTicketOnceAndBindsFailureToSessionAndExpiry() {
+    public void consumesValidBrowserTicketOnceAndReplayOrInvalidTicketReturnsFalse() {
         String sessionId = "33333333-3333-4333-8333-333333333333";
+        TerminalSessionRecord record = waitingBrowser(NOW.minusSeconds(1), NOW.plusSeconds(120));
+        record.setBrowserTicketExpiresAt(utc(NOW.plusSeconds(10)));
+        when(sessions.selectById(sessionId)).thenReturn(record);
         when(sessions.consumeBrowserTicket(eq(sessionId), any(String.class), eq(utc(NOW))))
                 .thenReturn(1, 0, 0);
 
         assertTrue(service.consumeBrowserTicket(sessionId, "ticket"));
         assertFalse(service.consumeBrowserTicket(sessionId, "ticket"));
-        assertFalse(service.consumeBrowserTicket(sessionId, "invalid-or-expired"));
+        assertFalse(service.consumeBrowserTicket(sessionId, "invalid-ticket"));
+    }
+
+    @Test
+    public void browserTicketAtExpiryBoundaryIsRejectedBeforeAtomicConsume() {
+        String sessionId = "33333333-3333-4333-8333-333333333333";
+        TerminalSessionRecord expired = waitingBrowser(NOW.minusSeconds(1), NOW.plusSeconds(120));
+        expired.setBrowserTicketExpiresAt(utc(NOW));
+        when(sessions.selectById(sessionId)).thenReturn(expired);
+
+        assertFalse(service.consumeBrowserTicket(sessionId, "ticket"));
+
+        verify(sessions, never()).consumeBrowserTicket(any(String.class), any(String.class),
+                any(LocalDateTime.class));
+    }
+
+    @Test
+    public void browserTicketCannotBeConsumedAgainstForeignSession() {
+        when(sessions.selectById("foreign-session")).thenReturn(null);
+
         assertFalse(service.consumeBrowserTicket("foreign-session", "ticket"));
-        verify(sessions).consumeBrowserTicket(eq("foreign-session"), any(String.class), eq(utc(NOW)));
+
+        verify(sessions, never()).consumeBrowserTicket(any(String.class), any(String.class),
+                any(LocalDateTime.class));
     }
 
     @Test

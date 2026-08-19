@@ -116,10 +116,23 @@ public class TerminalSessionService {
     }
 
     public boolean consumeBrowserTicket(String sessionId, String ticket) {
-        if (ticket == null) {
+        if (sessionId == null || ticket == null) {
             return false;
         }
-        return sessionMapper.consumeBrowserTicket(sessionId, digest(ticket), utc(clock.instant())) == 1;
+        Instant now = clock.instant();
+        TerminalSessionRecord record = sessionMapper.selectById(sessionId);
+        if (record == null || !sessionId.equals(record.getSessionId())
+                || !"WAITING_BROWSER".equals(record.getState())
+                || record.getAgentConnectedAt() == null
+                || record.getBrowserTicketExpiresAt() == null
+                || record.getAbsoluteExpiresAt() == null
+                || !toInstant(record.getBrowserTicketExpiresAt()).isAfter(now)
+                || !toInstant(record.getAbsoluteExpiresAt()).isAfter(now)
+                || !toInstant(record.getAgentConnectedAt()).plus(BROWSER_CONNECTION_WINDOW)
+                .isAfter(now)) {
+            return false;
+        }
+        return sessionMapper.consumeBrowserTicket(sessionId, digest(ticket), utc(now)) == 1;
     }
 
     public void close(String sessionId, User actor) {

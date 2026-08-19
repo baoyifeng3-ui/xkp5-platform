@@ -9,17 +9,18 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public interface ProcessingAgentCommandMapper extends BaseMapper<ProcessingAgentCommandRecord> {
-    @Select("SELECT command_id FROM processing_agent_command "
+    @Select("SELECT * FROM processing_agent_command "
             + "WHERE BINARY command_id = BINARY #{commandId} "
             + "AND BINARY agent_id = BINARY #{agentId} AND BINARY state = BINARY 'RUNNING' "
             + "AND BINARY lease_token = BINARY #{leaseToken} "
             + "AND BINARY command_type = BINARY 'OPEN_ROOT_TERMINAL' "
             + "AND BINARY JSON_UNQUOTE(JSON_EXTRACT(payload_json, '$.sessionId')) "
             + "= BINARY #{sessionId} LIMIT 1 FOR UPDATE")
-    String selectRunningTerminalLeaseForUpdate(@Param("commandId") String commandId,
-                                               @Param("agentId") String agentId,
-                                               @Param("leaseToken") String leaseToken,
-                                               @Param("sessionId") String sessionId);
+    ProcessingAgentCommandRecord selectRunningTerminalLeaseForUpdate(
+            @Param("commandId") String commandId,
+            @Param("agentId") String agentId,
+            @Param("leaseToken") String leaseToken,
+            @Param("sessionId") String sessionId);
 
     @Select("SELECT agent_id FROM processing_agent WHERE agent_id = #{agentId} "
             + "AND enabled = 1 AND removed_at IS NULL FOR UPDATE")

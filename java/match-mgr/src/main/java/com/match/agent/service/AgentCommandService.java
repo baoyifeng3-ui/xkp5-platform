@@ -161,8 +161,23 @@ public class AgentCommandService {
         if (commandId == null || agentId == null || leaseToken == null || sessionId == null) {
             return false;
         }
-        return commandId.equals(mapper.selectRunningTerminalLeaseForUpdate(
-                commandId, agentId, leaseToken, sessionId));
+        ProcessingAgentCommandRecord record = mapper.selectRunningTerminalLeaseForUpdate(
+                commandId, agentId, leaseToken, sessionId);
+        if (record == null || !commandId.equals(record.getCommandId())
+                || !agentId.equals(record.getAgentId())
+                || !leaseToken.equals(record.getLeaseToken())
+                || !"RUNNING".equals(record.getState())
+                || !OPEN_ROOT_TERMINAL.equals(record.getCommandType())
+                || record.getPayloadJson() == null) {
+            return false;
+        }
+        try {
+            JsonNode payload = objectMapper.readTree(record.getPayloadJson());
+            return payload != null && payload.isObject()
+                    && textEquals(payload, "sessionId", sessionId);
+        } catch (IOException | IllegalArgumentException invalidPayload) {
+            return false;
+        }
     }
 
     @Transactional

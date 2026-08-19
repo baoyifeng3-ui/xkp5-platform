@@ -82,21 +82,75 @@ public class AgentCommandServiceTest {
 
     @Test
     public void validatesRunningTerminalLeaseThroughExactMapperContract() {
-        when(mapper.selectRunningTerminalLeaseForUpdate(
-                "command", agent.getAgentId(), "lease", "session")).thenReturn("command");
+        ProcessingAgentCommandRecord record = runningTerminalLease("session");
+        when(mapper.selectRunningTerminalLeaseForUpdate(record.getCommandId(),
+                agent.getAgentId(), "lease", "session")).thenReturn(record);
 
-        assertTrue(service.hasRunningTerminalLease("command", agent.getAgentId(), "lease", "session"));
-        assertFalse(service.hasRunningTerminalLease("command", agent.getAgentId(), null, "session"));
-        verify(mapper).selectRunningTerminalLeaseForUpdate(
-                "command", agent.getAgentId(), "lease", "session");
+        assertTrue(service.hasRunningTerminalLease(record.getCommandId(),
+                agent.getAgentId(), "lease", "session"));
+        assertFalse(service.hasRunningTerminalLease(record.getCommandId(),
+                agent.getAgentId(), null, "session"));
+        verify(mapper).selectRunningTerminalLeaseForUpdate(record.getCommandId(),
+                agent.getAgentId(), "lease", "session");
     }
 
     @Test
-    public void rejectsTerminalAuthorizationWhenExactRunningTypeOrPayloadQueryDoesNotMatch() {
-        assertFalse(service.hasRunningTerminalLease("command", agent.getAgentId(), "lease", "session"));
+    public void pendingStateCannotAuthorizeTerminalLease() {
+        ProcessingAgentCommandRecord record = runningTerminalLease("session");
+        record.setState("PENDING");
+        stubRunningTerminalLease(record, "session");
 
-        verify(mapper).selectRunningTerminalLeaseForUpdate(
-                "command", agent.getAgentId(), "lease", "session");
+        assertFalse(service.hasRunningTerminalLease(record.getCommandId(),
+                agent.getAgentId(), "lease", "session"));
+    }
+
+    @Test
+    public void lowercaseRunningStateCannotAuthorizeTerminalLease() {
+        ProcessingAgentCommandRecord record = runningTerminalLease("session");
+        record.setState("running");
+        stubRunningTerminalLease(record, "session");
+
+        assertFalse(service.hasRunningTerminalLease(record.getCommandId(),
+                agent.getAgentId(), "lease", "session"));
+    }
+
+    @Test
+    public void differentCommandTypeCannotAuthorizeTerminalLease() {
+        ProcessingAgentCommandRecord record = runningTerminalLease("session");
+        record.setCommandType("SHUTDOWN_SERVER");
+        stubRunningTerminalLease(record, "session");
+
+        assertFalse(service.hasRunningTerminalLease(record.getCommandId(),
+                agent.getAgentId(), "lease", "session"));
+    }
+
+    @Test
+    public void lowercaseTerminalTypeCannotAuthorizeTerminalLease() {
+        ProcessingAgentCommandRecord record = runningTerminalLease("session");
+        record.setCommandType("open_root_terminal");
+        stubRunningTerminalLease(record, "session");
+
+        assertFalse(service.hasRunningTerminalLease(record.getCommandId(),
+                agent.getAgentId(), "lease", "session"));
+    }
+
+    @Test
+    public void mixedCaseTerminalTypeCannotAuthorizeTerminalLease() {
+        ProcessingAgentCommandRecord record = runningTerminalLease("session");
+        record.setCommandType("Open_Root_Terminal");
+        stubRunningTerminalLease(record, "session");
+
+        assertFalse(service.hasRunningTerminalLease(record.getCommandId(),
+                agent.getAgentId(), "lease", "session"));
+    }
+
+    @Test
+    public void terminalPayloadBoundToForeignSessionCannotAuthorizeLease() {
+        ProcessingAgentCommandRecord record = runningTerminalLease("foreign-session");
+        stubRunningTerminalLease(record, "requested-session");
+
+        assertFalse(service.hasRunningTerminalLease(record.getCommandId(),
+                agent.getAgentId(), "lease", "requested-session"));
     }
 
     @Test
@@ -569,6 +623,19 @@ public class AgentCommandServiceTest {
         record.setDeliveredAt(LocalDateTime.ofInstant(NOW.minusSeconds(1), ZoneOffset.UTC));
         record.setAttemptCount(1);
         return record;
+    }
+
+    private ProcessingAgentCommandRecord runningTerminalLease(String sessionId) {
+        ProcessingAgentCommandRecord record = command("RUNNING");
+        record.setCommandType("OPEN_ROOT_TERMINAL");
+        record.setLeaseToken("lease");
+        record.setPayloadJson("{\"sessionId\":\"" + sessionId + "\"}");
+        return record;
+    }
+
+    private void stubRunningTerminalLease(ProcessingAgentCommandRecord record, String requestedSessionId) {
+        when(mapper.selectRunningTerminalLeaseForUpdate(record.getCommandId(),
+                agent.getAgentId(), "lease", requestedSessionId)).thenReturn(record);
     }
 
     private ProcessingAgentCommandRecord activeTerminalCommand(String sessionId, String payload) {
