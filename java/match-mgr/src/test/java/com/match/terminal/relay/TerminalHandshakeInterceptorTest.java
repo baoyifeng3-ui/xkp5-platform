@@ -11,6 +11,7 @@ import org.springframework.http.server.ServerHttpResponse;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
+import java.time.LocalDateTime;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -124,6 +125,23 @@ public class TerminalHandshakeInterceptorTest {
         agent.setRemovedAt(java.time.LocalDateTime.now());
         when(sessions.consumeAgentTicket(agent, SESSION_ID, TICKET)).thenReturn(true);
         assertRejected(interceptor, "/terminal/v1/agent/" + SESSION_ID, validAgentHeaders());
+    }
+
+    @Test
+    public void agentHandshakeRejectsOfflineIdentityWhenAtomicConsumeRefusesIt() {
+        AgentCredentialService credentials = mock(AgentCredentialService.class);
+        TerminalSessionService sessions = mock(TerminalSessionService.class);
+        ProcessingAgentRecord agent = new ProcessingAgentRecord();
+        agent.setAgentId("agent-1");
+        agent.setEnabled(true);
+        agent.setLastSeenAt(LocalDateTime.of(2026, 8, 19, 11, 59, 44));
+        when(credentials.authenticate("Bearer credential")).thenReturn(agent);
+        when(sessions.consumeAgentTicket(agent, SESSION_ID, TICKET)).thenReturn(false);
+        TerminalHandshakeInterceptor interceptor = TerminalHandshakeInterceptor.agent(credentials, sessions);
+
+        assertRejected(interceptor, "/terminal/v1/agent/" + SESSION_ID, validAgentHeaders());
+
+        verify(sessions).consumeAgentTicket(agent, SESSION_ID, TICKET);
     }
 
     private void assertRejected(TerminalHandshakeInterceptor interceptor, String path,

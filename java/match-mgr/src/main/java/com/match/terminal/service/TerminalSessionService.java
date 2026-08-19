@@ -14,6 +14,7 @@ import com.match.terminal.persistence.TerminalSessionRecord;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.http.HttpStatus;
 
@@ -43,21 +44,45 @@ public class TerminalSessionService {
     private final AgentCommandService commandService;
     private final Clock clock;
     private final SecureRandom secureRandom;
+    private final TerminalRelayLifecycle relayLifecycle;
 
     @Autowired
     public TerminalSessionService(TerminalSessionMapper sessionMapper, ProcessingAgentMapper agentMapper,
+                                  AgentCommandService commandService, Clock clock,
+                                  ObjectProvider<TerminalRelayLifecycle> relayLifecycles) {
+        this(sessionMapper, agentMapper, commandService, clock, new SecureRandom(),
+                (sessionId, persistenceClose) -> {
+                    TerminalRelayLifecycle lifecycle = relayLifecycles.getIfAvailable();
+                    if (lifecycle == null) {
+                        persistenceClose.run();
+                    } else {
+                        lifecycle.closePersistedSession(sessionId, persistenceClose);
+                    }
+                });
+    }
+
+    public TerminalSessionService(TerminalSessionMapper sessionMapper, ProcessingAgentMapper agentMapper,
                                   AgentCommandService commandService, Clock clock) {
-        this(sessionMapper, agentMapper, commandService, clock, new SecureRandom());
+        this(sessionMapper, agentMapper, commandService, clock, new SecureRandom(),
+                TerminalSessionService::runPersistenceClose);
     }
 
     public TerminalSessionService(TerminalSessionMapper sessionMapper, ProcessingAgentMapper agentMapper,
                                   AgentCommandService commandService, Clock clock,
                                   SecureRandom secureRandom) {
+        this(sessionMapper, agentMapper, commandService, clock, secureRandom,
+                TerminalSessionService::runPersistenceClose);
+    }
+
+    public TerminalSessionService(TerminalSessionMapper sessionMapper, ProcessingAgentMapper agentMapper,
+                                  AgentCommandService commandService, Clock clock,
+                                  SecureRandom secureRandom, TerminalRelayLifecycle relayLifecycle) {
         this.sessionMapper = sessionMapper;
         this.agentMapper = agentMapper;
         this.commandService = commandService;
         this.clock = clock;
         this.secureRandom = secureRandom;
+        this.relayLifecycle = relayLifecycle;
     }
 
     public TerminalSessionView view(String sessionId, User actor) {
@@ -88,7 +113,9 @@ public class TerminalSessionService {
     }
 
     public boolean consumeAgentTicket(ProcessingAgentRecord agent, String sessionId, String ticket) {
-        if (agent == null || ticket == null) {
+        Instant now = clock.instant();
+        if (agent == null || ticket == null || !Boolean.TRUE.equals(agent.getEnabled())
+                || agent.getRemovedAt() != null || !isOnline(agent, now)) {
             return false;
         }
         TerminalSessionRecord record = sessionMapper.selectById(sessionId);
@@ -97,7 +124,32 @@ public class TerminalSessionService {
             return false;
         }
         return sessionMapper.consumeAgentTicket(sessionId, agent.getAgentId(),
-                digest(ticket), utc(clock.instant())) == 1;
+                digest(ticket), utc(now)) == 1;
+    }
+
+    public boolean isRelayAttachmentEligible(String sessionId, String role, String agentId) {
+        if (sessionId == null || role == null) {
+            return false;
+        }
+        TerminalSessionRecord record = sessionMapper.selectById(sessionId);
+        Instant now = clock.instant();
+        if (record == null || !"WAITING_BROWSER".equals(record.getState())
+                || record.getAbsoluteExpiresAt() == null
+                || !toInstant(record.getAbsoluteExpiresAt()).isAfter(now)
+                || record.getAgentConnectedAt() == null
+                || !toInstant(record.getAgentConnectedAt()).plus(BROWSER_CONNECTION_WINDOW)
+                .isAfter(now)) {
+            return false;
+        }
+        if ("BROWSER".equals(role)) {
+            return agentId == null && record.getBrowserTicketConsumedAt() != null
+                    && record.getBrowserConnectedAt() != null;
+        }
+        return "AGENT".equals(role) && agentId != null
+                && agentId.equals(record.getAgentId())
+                && agentId.equals(record.getActiveAgentId())
+                && record.getAgentTicketConsumedAt() != null
+                && record.getAgentConnectedAt() != null;
     }
 
     public TerminalTicketView issueBrowserTicket(String sessionId, User actor) {
@@ -172,16 +224,19 @@ public class TerminalSessionService {
         requireSuperAdmin(actor);
         TerminalSessionRecord record = requireSession(sessionId);
         if (isTerminal(record.getState())) {
+            relayLifecycle.closePersistedSession(sessionId, () -> { });
             return;
         }
-        Instant now = clock.instant();
-        if (sessionMapper.close(sessionId, "CLOSED", "OPERATOR_CLOSED",
-                "Terminal session closed by operator", utc(now)) != 1) {
-            TerminalSessionRecord current = sessionMapper.selectById(sessionId);
-            if (current == null || !isTerminal(current.getState())) {
-                throw error("TERMINAL_SESSION_CLOSE_FAILED", "Terminal session could not be closed");
+        relayLifecycle.closePersistedSession(sessionId, () -> {
+            Instant now = clock.instant();
+            if (sessionMapper.close(sessionId, "CLOSED", "OPERATOR_CLOSED",
+                    "Terminal session closed by operator", utc(now)) != 1) {
+                TerminalSessionRecord current = sessionMapper.selectById(sessionId);
+                if (current == null || !isTerminal(current.getState())) {
+                    throw error("TERMINAL_SESSION_CLOSE_FAILED", "Terminal session could not be closed");
+                }
             }
-        }
+        });
     }
 
     @Transactional
@@ -356,5 +411,9 @@ public class TerminalSessionService {
 
     private TerminalSessionException error(String code, String message) {
         return new TerminalSessionException(code, message);
+    }
+
+    private static void runPersistenceClose(String sessionId, Runnable persistenceClose) {
+        persistenceClose.run();
     }
 }

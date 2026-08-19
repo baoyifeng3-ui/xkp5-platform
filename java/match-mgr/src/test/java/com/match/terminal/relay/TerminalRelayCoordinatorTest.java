@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -114,6 +115,104 @@ public class TerminalRelayCoordinatorTest {
     }
 
     @Test
+    public void onlyBrowserCanClaimOperatorClosed() {
+        Fixture browserFixture = new Fixture();
+        TerminalPeer browser = browserFixture.peer(TerminalPeer.Role.BROWSER);
+        browserFixture.pair(browser, browserFixture.peer(TerminalPeer.Role.AGENT));
+
+        browserFixture.coordinator.onText(browser,
+                "{\"type\":\"close\",\"reason\":\"OPERATOR_CLOSED\"}");
+        verify(browserFixture.sessions).finishRelay(SESSION_ID, true, "OPERATOR_CLOSED");
+
+        Fixture agentFixture = new Fixture();
+        TerminalPeer agent = agentFixture.peer(TerminalPeer.Role.AGENT);
+        agentFixture.pair(agentFixture.peer(TerminalPeer.Role.BROWSER), agent);
+
+        agentFixture.coordinator.onText(agent,
+                "{\"type\":\"close\",\"reason\":\"OPERATOR_CLOSED\"}");
+        verify(agentFixture.sessions).finishRelay(SESSION_ID, false, "PROTOCOL_ERROR");
+    }
+
+    @Test
+    public void delayedAttachRejectsPersistedTerminalSessionWithoutCreatingRelay() throws Exception {
+        TerminalSessionService sessions = mock(TerminalSessionService.class);
+        TerminalRelayCoordinator coordinator = new TerminalRelayCoordinator(
+                sessions, Runnable::run, () -> 0L);
+        TerminalPeer browser = peer(TerminalPeer.Role.BROWSER);
+        AtomicBoolean terminal = new AtomicBoolean();
+        when(sessions.isRelayAttachmentEligible(SESSION_ID, "BROWSER", null))
+                .thenAnswer(invocation -> !terminal.get());
+
+        coordinator.closePersistedSession(SESSION_ID, () -> terminal.set(true));
+
+        assertFalse(coordinator.attach(SESSION_ID, browser));
+
+        verify(browser.session()).close(any(CloseStatus.class));
+        assertEquals(0, coordinator.relayCount());
+    }
+
+    @Test
+    public void terminalCloseRacingAttachCannotLeaveRelayOrSocket() throws Exception {
+        TerminalSessionService sessions = mock(TerminalSessionService.class);
+        CountDownLatch eligibilityEntered = new CountDownLatch(1);
+        CountDownLatch releaseEligibility = new CountDownLatch(1);
+        AtomicBoolean terminal = new AtomicBoolean();
+        when(sessions.isRelayAttachmentEligible(SESSION_ID, "BROWSER", null))
+                .thenAnswer(invocation -> {
+                    eligibilityEntered.countDown();
+                    assertTrue(releaseEligibility.await(5, TimeUnit.SECONDS));
+                    return !terminal.get();
+                });
+        TerminalRelayCoordinator coordinator = new TerminalRelayCoordinator(
+                sessions, Runnable::run, () -> 0L);
+        TerminalPeer browser = peer(TerminalPeer.Role.BROWSER);
+        ExecutorService callers = Executors.newFixedThreadPool(2);
+        try {
+            Future<Boolean> attaching = callers.submit(() -> coordinator.attach(SESSION_ID, browser));
+            assertTrue(eligibilityEntered.await(5, TimeUnit.SECONDS));
+            Future<?> closing = callers.submit(() -> coordinator.closePersistedSession(
+                    SESSION_ID, () -> terminal.set(true)));
+            releaseEligibility.countDown();
+            attaching.get(5, TimeUnit.SECONDS);
+            closing.get(5, TimeUnit.SECONDS);
+
+            assertTrue(terminal.get());
+            verify(browser.session()).close(any(CloseStatus.class));
+            assertEquals(0, coordinator.relayCount());
+        } finally {
+            releaseEligibility.countDown();
+            callers.shutdownNow();
+            assertTrue(callers.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    public void failedTerminalPersistenceKeepsBoundedRejectionUntilSharedRetrySucceeds()
+            throws Exception {
+        TerminalSessionService sessions = mock(TerminalSessionService.class);
+        allowAttachments(sessions);
+        AtomicReference<Runnable> periodic = new AtomicReference<>();
+        TerminalRelayCoordinator coordinator = new TerminalRelayCoordinator(
+                sessions, Runnable::run, () -> 0L, periodic::set);
+        TerminalPeer browser = peer(TerminalPeer.Role.BROWSER);
+        assertTrue(coordinator.attach(SESSION_ID, browser));
+        doThrow(new IllegalStateException("db unavailable")).doNothing()
+                .when(sessions).finishRelay(SESSION_ID, false, "PEER_DISCONNECTED");
+
+        coordinator.detach(browser, TerminalRelayCoordinator.CloseReason.PEER_DISCONNECTED);
+        TerminalPeer delayed = peer(TerminalPeer.Role.BROWSER);
+
+        assertFalse(coordinator.attach(SESSION_ID, delayed));
+        assertEquals(1, coordinator.relayCount());
+        verify(delayed.session()).close(any(CloseStatus.class));
+
+        periodic.get().run();
+
+        verify(sessions, times(2)).finishRelay(SESSION_ID, false, "PEER_DISCONNECTED");
+        assertEquals(0, coordinator.relayCount());
+    }
+
+    @Test
     public void rejectsEveryInvalidControlShape() {
         for (String invalid : Arrays.asList(
                 "{\"type\":\"resize\",\"columns\":19,\"rows\":36}",
@@ -167,6 +266,7 @@ public class TerminalRelayCoordinatorTest {
     @Test
     public void boundsRelayMapAndEachOutboundQueue() {
         TerminalSessionService sessions = mock(TerminalSessionService.class);
+        allowAttachments(sessions);
         List<Runnable> writes = new CopyOnWriteArrayList<>();
         TerminalRelayCoordinator coordinator = new TerminalRelayCoordinator(
                 sessions, writes::add, () -> 0L);
@@ -198,6 +298,7 @@ public class TerminalRelayCoordinatorTest {
     @Test
     public void zeroLengthFramesCannotCreateAnUnboundedMessageQueue() {
         TerminalSessionService sessions = mock(TerminalSessionService.class);
+        allowAttachments(sessions);
         List<Runnable> writes = new CopyOnWriteArrayList<>();
         TerminalRelayCoordinator coordinator = new TerminalRelayCoordinator(
                 sessions, writes::add, () -> 0L);
@@ -220,6 +321,7 @@ public class TerminalRelayCoordinatorTest {
     @Test
     public void lowVolumeBinaryTrafficFlushesOnTheSharedTimeBoundary() {
         TerminalSessionService sessions = mock(TerminalSessionService.class);
+        allowAttachments(sessions);
         AtomicLong ticker = new AtomicLong();
         AtomicReference<Runnable> periodic = new AtomicReference<>();
         TerminalRelayCoordinator coordinator = new TerminalRelayCoordinator(
@@ -243,6 +345,7 @@ public class TerminalRelayCoordinatorTest {
     @Test
     public void cleanupCompletesWhenTrafficAndSocketCleanupThrow() throws Exception {
         TerminalSessionService sessions = mock(TerminalSessionService.class);
+        allowAttachments(sessions);
         TerminalRelayCoordinator coordinator = new TerminalRelayCoordinator(
                 sessions, Runnable::run, () -> 0L);
         TerminalPeer browser = peer(TerminalPeer.Role.BROWSER);
@@ -267,6 +370,7 @@ public class TerminalRelayCoordinatorTest {
     @Test
     public void dataCannotCrossUntilActivationPersistenceCompletes() throws Exception {
         TerminalSessionService sessions = mock(TerminalSessionService.class);
+        allowAttachments(sessions);
         CountDownLatch activationEntered = new CountDownLatch(1);
         CountDownLatch releaseActivation = new CountDownLatch(1);
         when(sessions.markRelayActive(SESSION_ID)).thenAnswer(invocation -> {
@@ -302,6 +406,7 @@ public class TerminalRelayCoordinatorTest {
     @Test
     public void activationFailureNeverOpensTheForwardingGate() throws Exception {
         TerminalSessionService sessions = mock(TerminalSessionService.class);
+        allowAttachments(sessions);
         when(sessions.markRelayActive(SESSION_ID)).thenReturn(false);
         TerminalRelayCoordinator coordinator = new TerminalRelayCoordinator(
                 sessions, Runnable::run, () -> 0L);
@@ -369,6 +474,7 @@ public class TerminalRelayCoordinatorTest {
     @Test
     public void acceptedBinaryIsAccountedWhenDetachOverlapsWriterScheduling() throws Exception {
         TerminalSessionService sessions = mock(TerminalSessionService.class);
+        allowAttachments(sessions);
         CountDownLatch schedulingEntered = new CountDownLatch(1);
         CountDownLatch releaseScheduling = new CountDownLatch(1);
         Executor blockedScheduler = command -> {
@@ -453,6 +559,11 @@ public class TerminalRelayCoordinatorTest {
         return new TerminalPeer(role, role == TerminalPeer.Role.AGENT ? "agent-1" : null, socket);
     }
 
+    private static void allowAttachments(TerminalSessionService sessions) {
+        when(sessions.isRelayAttachmentEligible(any(String.class), any(String.class),
+                org.mockito.ArgumentMatchers.nullable(String.class))).thenReturn(true);
+    }
+
     private static final class Fixture {
         private final TerminalSessionService sessions = mock(TerminalSessionService.class);
         private final AtomicLong ticker = new AtomicLong();
@@ -466,6 +577,7 @@ public class TerminalRelayCoordinatorTest {
             when(sessions.markRelayActive(SESSION_ID)).thenReturn(true);
             when(sessions.recordRelayTraffic(any(String.class), anyLong(), anyLong()))
                     .thenReturn(true);
+            allowAttachments(sessions);
         }
 
         private TerminalPeer peer(TerminalPeer.Role role) {

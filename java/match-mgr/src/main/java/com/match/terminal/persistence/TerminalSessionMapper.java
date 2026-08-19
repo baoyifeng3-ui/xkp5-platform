@@ -52,13 +52,20 @@ public interface TerminalSessionMapper {
                          @Param("expiresAt") LocalDateTime expiresAt,
                          @Param("now") LocalDateTime now);
 
-    @Update("UPDATE processing_agent_terminal_session SET state = 'WAITING_BROWSER', "
-            + "agent_ticket_consumed_at = #{now}, agent_connected_at = #{now}, updated_at = #{now} "
-            + "WHERE session_id = #{sessionId} AND state = 'WAITING_AGENT' "
-            + "AND BINARY agent_id = BINARY #{agentId} "
-            + "AND agent_ticket_digest = #{digest} AND agent_ticket_consumed_at IS NULL "
-            + "AND agent_ticket_expires_at > #{now} AND absolute_expires_at > #{now} "
-            + "AND DATE_ADD(requested_at, INTERVAL 90 SECOND) > #{now}")
+    @Update("UPDATE processing_agent_terminal_session s JOIN processing_agent a "
+            + "ON BINARY a.agent_id = BINARY s.agent_id "
+            + "SET s.state = 'WAITING_BROWSER', s.agent_ticket_consumed_at = #{now}, "
+            + "s.agent_connected_at = #{now}, s.updated_at = #{now} "
+            + "WHERE s.session_id = #{sessionId} AND s.state = 'WAITING_AGENT' "
+            + "AND BINARY s.agent_id = BINARY #{agentId} "
+            + "AND BINARY s.active_agent_id = BINARY #{agentId} "
+            + "AND BINARY a.agent_id = BINARY #{agentId} AND a.enabled = TRUE "
+            + "AND a.removed_at IS NULL AND a.last_seen_at IS NOT NULL "
+            + "AND a.last_seen_at >= DATE_SUB(#{now}, INTERVAL 15 SECOND) "
+            + "AND a.last_seen_at <= #{now} "
+            + "AND s.agent_ticket_digest = #{digest} AND s.agent_ticket_consumed_at IS NULL "
+            + "AND s.agent_ticket_expires_at > #{now} AND s.absolute_expires_at > #{now} "
+            + "AND DATE_ADD(s.requested_at, INTERVAL 90 SECOND) > #{now}")
     int consumeAgentTicket(@Param("sessionId") String sessionId,
                            @Param("agentId") String agentId,
                            @Param("digest") String digest,

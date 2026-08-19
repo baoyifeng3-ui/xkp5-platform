@@ -17,6 +17,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.lang.reflect.Method;
 import java.time.Clock;
@@ -33,6 +34,7 @@ import static org.junit.Assert.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -256,6 +258,84 @@ public class TerminalSessionServiceTest {
         verify(sessions, org.mockito.Mockito.times(2)).consumeAgentTicket(
                 eq(record.getSessionId()), eq(AGENT_ID), digest.capture(), eq(utc(NOW)));
         assertTrue(Pattern.matches("[0-9a-f]{64}", digest.getValue()));
+    }
+
+    @Test
+    public void agentTicketConsumeRequiresInclusiveOnlineEnabledAgentWindow() {
+        TerminalSessionRecord record = waitingAgent(NOW.minusSeconds(1), NOW.plusSeconds(100));
+        when(sessions.selectById(record.getSessionId())).thenReturn(record);
+
+        agent.setLastSeenAt(null);
+        assertFalse(service.consumeAgentTicket(agent, record.getSessionId(), "secret"));
+        agent.setLastSeenAt(utc(NOW.minusSeconds(15).minusNanos(1)));
+        assertFalse(service.consumeAgentTicket(agent, record.getSessionId(), "secret"));
+        agent.setLastSeenAt(utc(NOW.plusNanos(1)));
+        assertFalse(service.consumeAgentTicket(agent, record.getSessionId(), "secret"));
+        agent.setLastSeenAt(utc(NOW.minusSeconds(15)));
+        agent.setEnabled(false);
+        assertFalse(service.consumeAgentTicket(agent, record.getSessionId(), "secret"));
+        agent.setEnabled(true);
+        agent.setRemovedAt(utc(NOW.minusSeconds(1)));
+        assertFalse(service.consumeAgentTicket(agent, record.getSessionId(), "secret"));
+        verify(sessions, never()).consumeAgentTicket(any(String.class), any(String.class),
+                any(String.class), any(LocalDateTime.class));
+
+        agent.setRemovedAt(null);
+        agent.setLastSeenAt(utc(NOW));
+        when(sessions.consumeAgentTicket(eq(record.getSessionId()), eq(AGENT_ID),
+                any(String.class), eq(utc(NOW)))).thenReturn(1);
+        assertTrue(service.consumeAgentTicket(agent, record.getSessionId(), "secret"));
+    }
+
+    @Test
+    public void relayAttachmentEligibilityRequiresConsumedRoleAndNonterminalState() {
+        TerminalSessionRecord record = waitingBrowser(NOW.minusSeconds(1), NOW.plusSeconds(120));
+        record.setAgentTicketConsumedAt(utc(NOW.minusSeconds(1)));
+        record.setBrowserTicketConsumedAt(utc(NOW));
+        record.setBrowserConnectedAt(utc(NOW));
+        when(sessions.selectById(record.getSessionId())).thenReturn(record);
+
+        assertTrue(service.isRelayAttachmentEligible(record.getSessionId(), "AGENT", AGENT_ID));
+        assertTrue(service.isRelayAttachmentEligible(record.getSessionId(), "BROWSER", null));
+        assertFalse(service.isRelayAttachmentEligible(record.getSessionId(), "AGENT", "other-agent"));
+
+        record.setState("CLOSED");
+        assertFalse(service.isRelayAttachmentEligible(record.getSessionId(), "BROWSER", null));
+        record.setState("WAITING_BROWSER");
+        record.setAgentConnectedAt(utc(NOW.minusSeconds(60)));
+        assertFalse(service.isRelayAttachmentEligible(record.getSessionId(), "BROWSER", null));
+    }
+
+    @Test
+    public void operatorCloseRunsPersistenceInsideRelayLifecycleBoundary() {
+        TerminalSessionRecord record = waitingBrowser(NOW.minusSeconds(1), NOW.plusSeconds(120));
+        when(sessions.selectById(record.getSessionId())).thenReturn(record);
+        when(sessions.close(record.getSessionId(), "CLOSED", "OPERATOR_CLOSED",
+                "Terminal session closed by operator", utc(NOW))).thenReturn(1);
+        TerminalRelayLifecycle lifecycle = mock(TerminalRelayLifecycle.class);
+        doAnswer(invocation -> {
+            invocation.<Runnable>getArgument(1).run();
+            return null;
+        }).when(lifecycle).closePersistedSession(eq(record.getSessionId()), any(Runnable.class));
+        TerminalSessionService bounded = new TerminalSessionService(sessions, agents, commands,
+                Clock.fixed(NOW, ZoneOffset.UTC), random, lifecycle);
+
+        bounded.close(record.getSessionId(), actor);
+
+        verify(lifecycle).closePersistedSession(eq(record.getSessionId()), any(Runnable.class));
+        verify(sessions).close(record.getSessionId(), "CLOSED", "OPERATOR_CLOSED",
+                "Terminal session closed by operator", utc(NOW));
+    }
+
+    @Test
+    public void springLifecycleProviderIsResolvedLazilyToAvoidBeanCycle() {
+        @SuppressWarnings("unchecked")
+        ObjectProvider<TerminalRelayLifecycle> provider = mock(ObjectProvider.class);
+
+        new TerminalSessionService(sessions, agents, commands,
+                Clock.fixed(NOW, ZoneOffset.UTC), provider);
+
+        verify(provider, never()).getIfAvailable();
     }
 
     @Test
