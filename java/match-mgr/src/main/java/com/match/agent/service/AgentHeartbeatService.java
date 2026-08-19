@@ -4,12 +4,15 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.match.agent.model.AgentHeartbeatAck;
 import com.match.agent.model.AgentHeartbeatRequest;
+import com.match.agent.model.AgentOperationGrant;
 import com.match.agent.model.AgentMetricSnapshot;
 import com.match.agent.persistence.AgentMetricMinuteMapper;
 import com.match.agent.persistence.AgentMetricMinuteRecord;
 import com.match.agent.persistence.ProcessingAgentMapper;
 import com.match.agent.persistence.ProcessingAgentRecord;
 import com.match.agent.web.AgentProtocolException;
+import com.match.licensing.model.LicenseStatus;
+import com.match.licensing.service.LicenseStatusService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -31,37 +34,47 @@ public class AgentHeartbeatService {
     private final AgentMetricMinuteMapper metricMapper;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final LicenseStatusService licenseStatusService;
 
     @Autowired
     public AgentHeartbeatService(ProcessingAgentMapper agentMapper,
                                  AgentMetricMinuteMapper metricMapper,
-                                 ObjectMapper objectMapper) {
-        this(agentMapper, metricMapper, objectMapper, Clock.systemUTC());
+                                 ObjectMapper objectMapper,
+                                 LicenseStatusService licenseStatusService) {
+        this(agentMapper, metricMapper, objectMapper, licenseStatusService, Clock.systemUTC());
     }
 
     AgentHeartbeatService(ProcessingAgentMapper agentMapper,
                           AgentMetricMinuteMapper metricMapper,
                           ObjectMapper objectMapper,
+                          LicenseStatusService licenseStatusService,
                           Clock clock) {
         this.agentMapper = agentMapper;
         this.metricMapper = metricMapper;
         this.objectMapper = objectMapper;
+        this.licenseStatusService = licenseStatusService;
         this.clock = clock;
     }
 
     public AgentHeartbeatAck accept(ProcessingAgentRecord agent, AgentHeartbeatRequest request) {
         validate(agent, request);
         Instant instant = clock.instant();
+        AgentOperationGrant operationGrant = operationGrant(instant);
         LocalDateTime now = LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
         String metricsJson = serialize(request.getMetrics());
         int updated = agentMapper.updateLatestIfNew(agent.getAgentId(), request.getBootId(),
                 request.getSequence(), now, request.getAgentVersion(), metricsJson, now);
         if (updated == 0) {
-            return new AgentHeartbeatAck(false, request.getSequence(), instant.toEpochMilli());
+            return new AgentHeartbeatAck(false, request.getSequence(), instant.toEpochMilli(), operationGrant);
         }
 
         metricMapper.accumulate(toMinuteRecord(agent.getAgentId(), request.getMetrics(), instant, now));
-        return new AgentHeartbeatAck(true, request.getSequence(), instant.toEpochMilli());
+        return new AgentHeartbeatAck(true, request.getSequence(), instant.toEpochMilli(), operationGrant);
+    }
+
+    private AgentOperationGrant operationGrant(Instant now) {
+        LicenseStatus status = licenseStatusService.currentStatus();
+        return new AgentOperationGrant(status != null && status.isUsable(), now.plusSeconds(30));
     }
 
     private AgentMetricMinuteRecord toMinuteRecord(String agentId, AgentMetricSnapshot metrics,

@@ -9,6 +9,9 @@ import com.match.agent.persistence.AgentMetricMinuteRecord;
 import com.match.agent.persistence.ProcessingAgentMapper;
 import com.match.agent.persistence.ProcessingAgentRecord;
 import com.match.agent.web.AgentProtocolException;
+import com.match.licensing.model.LicenseState;
+import com.match.licensing.model.LicenseStatus;
+import com.match.licensing.service.LicenseStatusService;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -38,12 +41,16 @@ public class AgentHeartbeatServiceTest {
     private AgentMetricMinuteMapper metricMapper;
     private AgentHeartbeatService service;
     private ProcessingAgentRecord agent;
+    private LicenseStatusService licenseStatusService;
 
     @Before
     public void setUp() {
         agentMapper = mock(ProcessingAgentMapper.class);
         metricMapper = mock(AgentMetricMinuteMapper.class);
-        service = new AgentHeartbeatService(agentMapper, metricMapper, new ObjectMapper(),
+        licenseStatusService = mock(LicenseStatusService.class);
+        when(licenseStatusService.currentStatus()).thenReturn(new LicenseStatus(LicenseState.ACTIVE,
+                "license-1", "XKP", NOW.plusSeconds(3600), 10));
+        service = new AgentHeartbeatService(agentMapper, metricMapper, new ObjectMapper(), licenseStatusService,
                 Clock.fixed(NOW, ZoneOffset.UTC));
         agent = new ProcessingAgentRecord();
         agent.setAgentId("agent-id");
@@ -52,10 +59,33 @@ public class AgentHeartbeatServiceTest {
     @Test
     public void productionConstructorIsTheExplicitSpringInjectionPoint() throws Exception {
         Constructor<AgentHeartbeatService> constructor = AgentHeartbeatService.class.getConstructor(
-                ProcessingAgentMapper.class, AgentMetricMinuteMapper.class, ObjectMapper.class);
+                ProcessingAgentMapper.class, AgentMetricMinuteMapper.class, ObjectMapper.class,
+                LicenseStatusService.class);
 
         assertTrue("multiple constructors require an explicit Spring injection point",
                 constructor.isAnnotationPresent(Autowired.class));
+    }
+
+    @Test
+    public void heartbeatReturnsShortLivedOperationGrantForUsableLicense() {
+        when(agentMapper.updateLatestIfNew(any(), any(), anyLong(), any(), any(), any(), any())).thenReturn(1);
+
+        AgentHeartbeatAck ack = service.accept(agent, heartbeat(1));
+
+        assertTrue(ack.getOperationGrant().isAllowed());
+        assertEquals(NOW.plusSeconds(30), ack.getOperationGrant().getExpiresAt());
+    }
+
+    @Test
+    public void heartbeatDeniesEnvironmentOperationsForExpiredLicense() {
+        when(licenseStatusService.currentStatus()).thenReturn(new LicenseStatus(LicenseState.EXPIRED,
+                "license-1", "XKP", NOW.minusSeconds(1), 10));
+        when(agentMapper.updateLatestIfNew(any(), any(), anyLong(), any(), any(), any(), any())).thenReturn(1);
+
+        AgentHeartbeatAck ack = service.accept(agent, heartbeat(1));
+
+        assertFalse(ack.getOperationGrant().isAllowed());
+        assertEquals(NOW.plusSeconds(30), ack.getOperationGrant().getExpiresAt());
     }
 
     @Test
