@@ -137,6 +137,36 @@ public class TerminalSessionService {
         return sessionMapper.consumeBrowserTicket(sessionId, digest(ticket), utc(now)) == 1;
     }
 
+    public boolean markRelayActive(String sessionId) {
+        return sessionId != null && sessionMapper.markActive(sessionId, utc(clock.instant())) == 1;
+    }
+
+    public boolean recordRelayTraffic(String sessionId, long browserToAgent, long agentToBrowser) {
+        if (sessionId == null || browserToAgent < 0 || agentToBrowser < 0
+                || (browserToAgent == 0 && agentToBrowser == 0)) {
+            return false;
+        }
+        return sessionMapper.addTraffic(sessionId, browserToAgent, agentToBrowser,
+                utc(clock.instant())) == 1;
+    }
+
+    public void finishRelay(String sessionId, boolean operatorClosed, String reason) {
+        String state = operatorClosed ? "CLOSED" : "FAILED";
+        String stableReason = operatorClosed ? "OPERATOR_CLOSED" : stableRelayFailure(reason);
+        String message = operatorClosed ? "Terminal session closed by operator"
+                : "Terminal relay closed";
+        sessionMapper.close(sessionId, state, stableReason, message, utc(clock.instant()));
+    }
+
+    private String stableRelayFailure(String reason) {
+        if ("PEER_DISCONNECTED".equals(reason) || "PROTOCOL_ERROR".equals(reason)
+                || "BACKPRESSURE".equals(reason) || "RATE_LIMITED".equals(reason)
+                || "SESSION_REJECTED".equals(reason) || "IO_ERROR".equals(reason)) {
+            return reason;
+        }
+        return "RELAY_FAILURE";
+    }
+
     public void close(String sessionId, User actor) {
         requireSuperAdmin(actor);
         TerminalSessionRecord record = requireSession(sessionId);

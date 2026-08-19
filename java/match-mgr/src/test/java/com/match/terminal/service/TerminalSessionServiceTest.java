@@ -362,6 +362,28 @@ public class TerminalSessionServiceTest {
     }
 
     @Test
+    public void relayHooksPersistOnlyStateAndBoundedByteCounts() {
+        String sessionId = "33333333-3333-4333-8333-333333333333";
+        when(sessions.markActive(sessionId, utc(NOW))).thenReturn(1);
+        when(sessions.addTraffic(sessionId, 4096L, 2048L, utc(NOW))).thenReturn(1);
+
+        assertTrue(service.markRelayActive(sessionId));
+        assertTrue(service.recordRelayTraffic(sessionId, 4096L, 2048L));
+        assertFalse(service.recordRelayTraffic(sessionId, 0L, 0L));
+        service.finishRelay(sessionId, false, "PROTOCOL_ERROR");
+        service.finishRelay(sessionId, true, "ignored");
+        service.finishRelay(sessionId, false, "externally-controlled-unbounded-reason");
+
+        verify(sessions).addTraffic(sessionId, 4096L, 2048L, utc(NOW));
+        verify(sessions).close(sessionId, "FAILED", "PROTOCOL_ERROR",
+                "Terminal relay closed", utc(NOW));
+        verify(sessions).close(sessionId, "CLOSED", "OPERATOR_CLOSED",
+                "Terminal session closed by operator", utc(NOW));
+        verify(sessions).close(sessionId, "FAILED", "RELAY_FAILURE",
+                "Terminal relay closed", utc(NOW));
+    }
+
+    @Test
     public void capsBothTicketTypesByAbsoluteExpiry() {
         TerminalSessionRecord agentRecord = waitingAgent(NOW.minusSeconds(1), NOW.plusSeconds(5));
         when(sessions.selectById(agentRecord.getSessionId())).thenReturn(agentRecord);
