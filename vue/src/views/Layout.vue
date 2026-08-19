@@ -65,6 +65,7 @@
 import { getClearTime } from '@/api/Match'
 import { mapState } from 'vuex'
 import { clearSession, setCompetitionAccessPhase } from '@/utils/auth'
+import { startUserActivity, stopUserActivity } from '@/services/userActivity'
 
 export default {
   data () {
@@ -107,12 +108,14 @@ export default {
     }
   },
   async mounted () {
+    startUserActivity()
     this.syncTimer = setInterval(this.syncState, 10000)
     this.tickTimer = setInterval(this.updateCountdownText, 1000)
     await this.syncState()
     this.updateCountdownText()
   },
   beforeDestroy () {
+    stopUserActivity()
     clearInterval(this.syncTimer)
     clearInterval(this.tickTimer)
   },

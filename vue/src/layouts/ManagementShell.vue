@@ -22,10 +22,13 @@
 <script>
 const { managementItems } = require('@/navigation/roleNavigation')
 import { clearSession, getUserName } from '@/utils/auth'
+import { logoutUser, startUserActivity, stopUserActivity } from '@/services/userActivity'
 export default {
   data: () => ({ items: managementItems }),
   computed: { userName: () => getUserName() || '管理员' },
-  methods: { logout () { clearSession(); this.$router.replace('/login') } }
+  mounted () { startUserActivity() },
+  beforeDestroy () { stopUserActivity() },
+  methods: { async logout () { try { await logoutUser() } finally { clearSession(); this.$router.replace('/login') } } }
 }
 </script>
 <style>@import url(../assets/style/platform-shell.css);</style>

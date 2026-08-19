@@ -10,6 +10,7 @@
 <script>
 const { userItems } = require('@/navigation/roleNavigation')
 import { clearSession, getUserName } from '@/utils/auth'
-export default { data: () => ({ items: userItems }), computed: { userName: () => getUserName() || '用户' }, methods: { logout () { clearSession(); this.$router.replace('/login') } } }
+import { logoutUser, startUserActivity, stopUserActivity } from '@/services/userActivity'
+export default { data: () => ({ items: userItems }), computed: { userName: () => getUserName() || '用户' }, mounted () { startUserActivity() }, beforeDestroy () { stopUserActivity() }, methods: { async logout () { try { await logoutUser() } finally { clearSession(); this.$router.replace('/login') } } } }
 </script>
 <style>@import url(../assets/style/platform-shell.css);</style>
