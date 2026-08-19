@@ -35,7 +35,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-@Service
+@Service("trainingEnvironmentLifecycleService")
 public class TrainingEnvironmentService {
     private final ProcessingAgentMapper agentMapper;
     private final ProcessingEnvironmentSlotMapper slotMapper;
