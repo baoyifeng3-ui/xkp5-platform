@@ -12,6 +12,7 @@ import com.match.agent.web.AgentProtocolException;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -29,6 +30,7 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -81,6 +83,29 @@ public class AgentCommandServiceTest {
 
         assertEquals(existing.getCommandId(), view.getCommandId());
         verify(mapper, never()).insert(any(ProcessingAgentCommandRecord.class));
+    }
+
+    @Test
+    public void concurrentDuplicateEnvironmentCommandReturnsTheExistingCommand() {
+        String dedupKey = "environment-1:CREATE";
+        ProcessingAgentCommandRecord existing = command("PENDING");
+        existing.setCommandType("CREATE_TRAINING_ENVIRONMENT");
+        existing.setActiveDedupKey(dedupKey);
+        when(mapper.selectActiveByDedup(agent.getAgentId(), existing.getCommandType(), dedupKey))
+                .thenReturn(null, existing);
+        doThrow(new DuplicateKeyException("duplicate active command"))
+                .when(mapper).insert(any(ProcessingAgentCommandRecord.class));
+
+        AgentCommandView view = service.requestEnvironmentCommand(agent, existing.getCommandType(),
+                "{}", 7, "SUPER_ADMIN", dedupKey);
+
+        assertEquals(existing.getCommandId(), view.getCommandId());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void environmentCommandPayloadCannotExceedAgentEnvelopeBudget() {
+        service.requestEnvironmentCommand(agent, "CREATE_TRAINING_ENVIRONMENT",
+                repeat('x', 3073), 7, "SUPER_ADMIN", "environment-1:CREATE");
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -182,6 +207,26 @@ public class AgentCommandServiceTest {
                 eq(running.getLeaseToken()), eq("SUCCEEDED"), any(LocalDateTime.class),
                 any(String.class), any(String.class), any(String.class));
         verify(audit).recordCommandSuccess("SHUTDOWN_ACCEPTED", null, agent.getAgentId(), running.getCommandId());
+    }
+
+    @Test
+    public void environmentCommandAcceptsSuccessfulResultAsTerminal() {
+        ProcessingAgentCommandRecord running = leasedCommand("RUNNING");
+        running.setCommandType("CREATE_TRAINING_ENVIRONMENT");
+        when(mapper.selectById(running.getCommandId())).thenReturn(running);
+        when(mapper.markTerminal(eq(running.getCommandId()), eq(agent.getAgentId()),
+                eq(running.getLeaseToken()), eq("SUCCEEDED"), any(LocalDateTime.class),
+                eq("ENVIRONMENT_CREATED"), eq("container pair created"), eq(null))).thenReturn(1);
+
+        AgentCommandView view = service.finish(agent, running.getCommandId(),
+                result(true, "ENVIRONMENT_CREATED", "container pair created"));
+
+        assertEquals("SUCCEEDED", view.getState());
+        assertNotNull(view.getCompletedAt());
+        assertEquals("ENVIRONMENT_CREATED", view.getResultCode());
+        verify(audit).recordCommandSuccess("COMMAND_RESULT", null, agent.getAgentId(), running.getCommandId());
+        verify(audit, never()).recordCommandFailure(eq("COMMAND_RESULT"), any(String.class),
+                eq(null), eq(agent.getAgentId()), eq(running.getCommandId()));
     }
 
     @Test

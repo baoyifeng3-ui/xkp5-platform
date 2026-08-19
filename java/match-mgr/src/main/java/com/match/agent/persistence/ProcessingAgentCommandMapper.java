@@ -19,6 +19,12 @@ public interface ProcessingAgentCommandMapper extends BaseMapper<ProcessingAgent
                                                @Param("commandType") String commandType);
 
     @Select("SELECT * FROM processing_agent_command WHERE agent_id = #{agentId} "
+            + "AND command_type = #{commandType} AND active_dedup_key = #{dedupKey} LIMIT 1")
+    ProcessingAgentCommandRecord selectActiveByDedup(@Param("agentId") String agentId,
+                                                     @Param("commandType") String commandType,
+                                                     @Param("dedupKey") String dedupKey);
+
+    @Select("SELECT * FROM processing_agent_command WHERE agent_id = #{agentId} "
             + "ORDER BY requested_at DESC, command_id DESC LIMIT #{limit}")
     List<ProcessingAgentCommandRecord> selectRecent(@Param("agentId") String agentId,
                                                      @Param("limit") int limit);

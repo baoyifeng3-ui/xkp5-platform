@@ -16,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import com.match.agent.web.AgentProtocolException;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -35,6 +36,7 @@ public class AgentCommandService {
     static final long LEASE_SECONDS = 30;
     private static final int MAX_RESULT_MESSAGE_LENGTH = 512;
     private static final int MAX_RESULT_JSON_BYTES = 16 * 1024;
+    private static final int MAX_ENVIRONMENT_PAYLOAD_BYTES = 3 * 1024;
     private static final Pattern SAFE_RESULT_CODE = Pattern.compile("^[A-Z0-9_]{1,64}$");
 
     private final ProcessingAgentCommandMapper mapper;
@@ -83,6 +85,58 @@ public class AgentCommandService {
             return toView(record);
         } catch (DuplicateKeyException collision) {
             ProcessingAgentCommandRecord concurrent = mapper.selectActive(agentId, SHUTDOWN_SERVER);
+            if (concurrent != null) {
+                return toView(concurrent);
+            }
+            throw collision;
+        }
+    }
+
+    @Transactional
+    public AgentCommandView requestEnvironmentCommand(ProcessingAgentRecord agent, String commandType,
+                                                      String payloadJson, Integer requesterUserId,
+                                                      String requesterRole, String dedupKey) {
+        String agentId = requireAgentId(agent);
+        if (mapper.selectEnabledAgentForUpdate(agentId) == null) {
+            throw new IllegalArgumentException("Processing server is disabled");
+        }
+        if (!"CREATE_TRAINING_ENVIRONMENT".equals(commandType)
+                && !"START_TRAINING_ENVIRONMENT".equals(commandType)
+                && !"STOP_TRAINING_ENVIRONMENT".equals(commandType)
+                && !"RESTORE_TRAINING_ENVIRONMENT".equals(commandType)) {
+            throw new IllegalArgumentException("Environment command type is invalid");
+        }
+        if (payloadJson == null
+                || payloadJson.getBytes(StandardCharsets.UTF_8).length > MAX_ENVIRONMENT_PAYLOAD_BYTES) {
+            throw new IllegalArgumentException("Environment command payload is invalid");
+        }
+        ProcessingAgentCommandRecord existing = dedupKey == null ? null
+                : mapper.selectActiveByDedup(agentId, commandType, dedupKey);
+        if (existing != null) {
+            return toView(existing);
+        }
+        LocalDateTime now = utcNow();
+        ProcessingAgentCommandRecord record = new ProcessingAgentCommandRecord();
+        record.setCommandId(UUID.randomUUID().toString());
+        record.setAgentId(agentId);
+        record.setCommandType(commandType);
+        record.setCommandVersion(COMMAND_VERSION);
+        record.setPayloadJson(payloadJson);
+        record.setState("PENDING");
+        record.setActiveDedupKey(dedupKey);
+        record.setRequesterUserId(requesterUserId);
+        record.setRequesterRole(requireRole(requesterRole));
+        record.setCorrelationId(UUID.randomUUID().toString());
+        record.setRequestedAt(now);
+        record.setAvailableAt(now);
+        record.setAttemptCount(0);
+        record.setUpdatedAt(now);
+        try {
+            mapper.insert(record);
+            return toView(record);
+        } catch (DuplicateKeyException collision) {
+            ProcessingAgentCommandRecord concurrent = dedupKey == null ? null
+                    : mapper.selectActiveByDedup(agentId, commandType, dedupKey);
             if (concurrent != null) {
                 return toView(concurrent);
             }
@@ -177,19 +231,26 @@ public class AgentCommandService {
                     && "OFFLINE_CONFIRMED".equals(current.getResultCode())) {
                 return toView(current);
             }
-            throw leaseConflict();
+            if (current != null && SHUTDOWN_SERVER.equals(current.getCommandType())) {
+                throw leaseConflict();
+            }
         }
-        if (mapper.markTerminal(commandId, agentId, result.leaseToken, result.state, now,
+        String terminalState = result.success ? "SUCCEEDED" : result.state;
+        if (mapper.markTerminal(commandId, agentId, result.leaseToken, terminalState, now,
                 result.code, result.message, result.json) == 1) {
             ProcessingAgentCommandRecord completed = new ProcessingAgentCommandRecord();
             completed.setCommandId(commandId);
             completed.setAgentId(agentId);
-            completed.setState(result.state);
+            completed.setState(terminalState);
             completed.setCompletedAt(now);
             completed.setResultCode(result.code);
             completed.setResultMessage(result.message);
             completed.setResultJson(result.json);
-            auditService.recordCommandFailure("COMMAND_RESULT", result.code, null, agentId, commandId);
+            if (result.success) {
+                auditService.recordCommandSuccess("COMMAND_RESULT", null, agentId, commandId);
+            } else {
+                auditService.recordCommandFailure("COMMAND_RESULT", result.code, null, agentId, commandId);
+            }
             return toView(completed);
         }
         ProcessingAgentCommandRecord current = mapper.selectById(commandId);
@@ -199,7 +260,7 @@ public class AgentCommandService {
             return toView(current);
         }
         if (sameLease(current, agentId, result.leaseToken) && isTerminal(current.getState())
-                && Objects.equals(current.getState(), result.state)
+                && Objects.equals(current.getState(), terminalState)
                 && Objects.equals(current.getResultCode(), result.code)
                 && Objects.equals(current.getResultMessage(), result.message)
                 && Objects.equals(current.getResultJson(), result.json)) {
