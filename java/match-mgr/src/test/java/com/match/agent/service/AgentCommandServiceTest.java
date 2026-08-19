@@ -384,6 +384,11 @@ public class AgentCommandServiceTest {
                 "ws://0.0.0.0:19147/terminal/v1/agent", true));
         expectIllegalArgument(() -> terminalService(
                 "ws://127.0.0.1:19147/terminal/v1/browser", true));
+        expectIllegalArgument(() -> terminalService(
+                "ws://127.0.0.1:19147/terminal%2Fv1/agent", true));
+        expectIllegalArgument(() -> terminalService(
+                "wss://management.example/terminal%2Fv1/agent", false));
+        expectIllegalArgument(() -> terminalService("ws:///terminal/v1/agent", true));
         assertNotNull(terminalService("ws://127.0.0.1:19147/terminal/v1/agent", true));
         assertNotNull(terminalService("ws://localhost/terminal/v1/agent", true));
         assertNotNull(terminalService("ws://[::1]:19147/terminal/v1/agent", true));

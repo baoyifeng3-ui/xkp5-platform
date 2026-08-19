@@ -620,7 +620,8 @@ public class AgentCommandService {
             while (normalizedPath != null && normalizedPath.endsWith("/")) {
                 normalizedPath = normalizedPath.substring(0, normalizedPath.length() - 1);
             }
-            if (!"/terminal/v1/agent".equals(normalizedPath)) {
+            if (!"/terminal/v1/agent".equals(normalizedPath)
+                    || !"/terminal/v1/agent".equals(uri.getRawPath())) {
                 throw new IllegalArgumentException("Terminal Agent relay URL is invalid");
             }
             return normalized;
@@ -635,6 +636,9 @@ public class AgentCommandService {
     }
 
     private static boolean isLoopbackHost(String host) {
+        if (host == null) {
+            return false;
+        }
         String normalized = host.toLowerCase();
         return "localhost".equals(normalized) || "127.0.0.1".equals(normalized)
                 || "::1".equals(normalized) || "[::1]".equals(normalized);
