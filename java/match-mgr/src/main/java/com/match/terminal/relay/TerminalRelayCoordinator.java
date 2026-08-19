@@ -20,6 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.LongSupplier;
+import java.util.function.BooleanSupplier;
 
 public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
     @FunctionalInterface
@@ -333,6 +334,45 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
                 }
                 return;
             }
+        }
+    }
+
+    @Override
+    public boolean closePersistedSessionIf(String sessionId, BooleanSupplier persistenceClose) {
+        Relay relay = relays.get(sessionId);
+        if (relay == null) {
+            return persistenceClose.getAsBoolean();
+        }
+        synchronized (relay.closeExecutionLock) {
+            boolean wasActive;
+            TrafficBatch traffic;
+            synchronized (relay) {
+                if (relay.closed.get()) {
+                    return false;
+                }
+                wasActive = relay.active;
+                traffic = gateRelayClosed(relay);
+            }
+            TrafficPersistence trafficResult = persistTraffic(traffic);
+            boolean closed = trafficResult == TrafficPersistence.SUCCESS
+                    && persistenceClose.getAsBoolean();
+            if (!closed) {
+                synchronized (relay) {
+                    relay.closed.set(false);
+                    relay.active = wasActive;
+                    if (traffic != null && trafficResult == TrafficPersistence.SUCCESS) {
+                        relay.browserToAgentAcknowledged = traffic.browserBytes;
+                        relay.agentToBrowserAcknowledged = traffic.agentBytes;
+                    }
+                }
+                return false;
+            }
+            closePeer(relay.browser, CloseReason.SESSION_REJECTED);
+            closePeer(relay.agent, CloseReason.SESSION_REJECTED);
+            synchronized (lifecycleLock) {
+                relays.remove(sessionId, relay);
+            }
+            return true;
         }
     }
 

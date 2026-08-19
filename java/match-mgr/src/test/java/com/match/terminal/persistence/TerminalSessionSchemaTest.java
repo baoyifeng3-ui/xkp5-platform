@@ -217,6 +217,35 @@ public class TerminalSessionSchemaTest {
     }
 
     @Test
+    public void recoveryAndCommandReconciliationAreGuardedAndReleaseSecrets() {
+        Class<?> mapper = load("com.match.terminal.persistence.TerminalSessionMapper");
+        String recoverable = sql(assertMethod(mapper, "selectRecoverable", 1, Select.class));
+        assertContainsAll(recoverable,
+                "state IN ('WAITING_AGENT', 'WAITING_BROWSER', 'ACTIVE')",
+                "ORDER BY requested_at, session_id", "LIMIT #{limit}");
+
+        String recover = sql(assertMethod(mapper, "recover", 2, Update.class));
+        assertContainsAll(recover, "state = 'FAILED'", "active_agent_id = NULL",
+                "agent_ticket_digest = NULL", "browser_ticket_digest = NULL",
+                "end_reason = 'MANAGEMENT_RESTARTED'",
+                "state IN ('WAITING_AGENT', 'WAITING_BROWSER', 'ACTIVE')");
+
+        String command = sql(assertMethod(mapper, "closeCommandSession", 7, Update.class));
+        assertContainsAll(command, "BINARY command_id = BINARY #{commandId}",
+                "BINARY agent_id = BINARY #{agentId}", "active_agent_id = NULL",
+                "agent_ticket_digest = NULL", "browser_ticket_digest = NULL",
+                "state IN ('WAITING_AGENT', 'WAITING_BROWSER', 'ACTIVE')");
+
+        String candidates = sql(assertMethod(mapper,
+                "selectCommandReconciliationCandidates", 1, Select.class));
+        assertContainsAll(candidates,
+                "BINARY c.command_id = BINARY s.command_id",
+                "BINARY c.command_type = BINARY 'OPEN_ROOT_TERMINAL'",
+                "c.state IN ('SUCCEEDED', 'FAILED')",
+                "s.state IN ('WAITING_AGENT', 'WAITING_BROWSER', 'ACTIVE')", "LIMIT #{limit}");
+    }
+
+    @Test
     public void applicationScansTerminalMappers() {
         MapperScan mapperScan = Application.class.getAnnotation(MapperScan.class);
 

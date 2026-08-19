@@ -6,6 +6,7 @@ import com.match.agent.model.AgentCommandEnvelope;
 import com.match.agent.model.AgentCommandResultRequest;
 import com.match.agent.model.AgentCommandStartRequest;
 import com.match.agent.model.AgentCommandView;
+import com.match.agent.model.AgentCommandFinishedEvent;
 import com.match.agent.persistence.ProcessingAgentCommandMapper;
 import com.match.agent.persistence.ProcessingAgentCommandRecord;
 import com.match.agent.persistence.ProcessingAgentRecord;
@@ -15,6 +16,7 @@ import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -513,6 +515,36 @@ public class AgentCommandServiceTest {
         verify(audit).recordCommandSuccess("COMMAND_RESULT", null, agent.getAgentId(), running.getCommandId());
         verify(audit, never()).recordCommandFailure(eq("COMMAND_RESULT"), any(String.class),
                 eq(null), eq(agent.getAgentId()), eq(running.getCommandId()));
+    }
+
+    @Test
+    public void terminalResultPublishesFinishedEventOnlyAfterFirstSuccessfulUpdate() {
+        ApplicationEventPublisher publisher = mock(ApplicationEventPublisher.class);
+        service = new AgentCommandService(mapper, new ObjectMapper().findAndRegisterModules(),
+                audit, Clock.fixed(NOW, ZoneOffset.UTC), null,
+                "wss://127.0.0.1:19147/terminal/v1/agent", true, publisher);
+        ProcessingAgentCommandRecord running = leasedCommand("RUNNING");
+        running.setCommandType("OPEN_ROOT_TERMINAL");
+        ProcessingAgentCommandRecord completed = leasedCommand("FAILED");
+        completed.setCommandType("OPEN_ROOT_TERMINAL");
+        completed.setResultCode("PTY_START_FAILED");
+        completed.setResultMessage("secret output");
+        when(mapper.selectById(running.getCommandId())).thenReturn(running, completed);
+        when(mapper.markTerminal(eq(running.getCommandId()), eq(agent.getAgentId()),
+                eq(running.getLeaseToken()), eq("FAILED"), any(LocalDateTime.class),
+                eq("PTY_START_FAILED"), eq("secret output"), eq(null))).thenReturn(1, 0);
+
+        service.finish(agent, running.getCommandId(),
+                result(false, "PTY_START_FAILED", "secret output"));
+        service.finish(agent, running.getCommandId(),
+                result(false, "PTY_START_FAILED", "secret output"));
+
+        ArgumentCaptor<Object> event = ArgumentCaptor.forClass(Object.class);
+        verify(publisher).publishEvent(event.capture());
+        AgentCommandFinishedEvent finished = (AgentCommandFinishedEvent) event.getValue();
+        assertEquals("OPEN_ROOT_TERMINAL", finished.getCommandType());
+        assertEquals("PTY_START_FAILED", finished.getResultCode());
+        assertEquals("secret output", finished.getResultMessage());
     }
 
     @Test

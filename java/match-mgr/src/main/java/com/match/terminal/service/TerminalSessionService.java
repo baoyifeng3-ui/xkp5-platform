@@ -4,6 +4,7 @@ import com.match.agent.model.AgentCommandView;
 import com.match.agent.persistence.ProcessingAgentMapper;
 import com.match.agent.persistence.ProcessingAgentRecord;
 import com.match.agent.service.AgentCommandService;
+import com.match.agent.service.AgentAuditService;
 import com.match.agent.web.AgentProtocolException;
 import com.match.entity.User;
 import com.match.security.UserRole;
@@ -29,6 +30,8 @@ import java.security.SecureRandom;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 
 @Service
 public class TerminalSessionService {
@@ -45,44 +48,93 @@ public class TerminalSessionService {
     private final Clock clock;
     private final SecureRandom secureRandom;
     private final TerminalRelayLifecycle relayLifecycle;
+    private final AtomicBoolean startupRecoveryComplete;
+    private final AgentAuditService auditService;
 
     @Autowired
     public TerminalSessionService(TerminalSessionMapper sessionMapper, ProcessingAgentMapper agentMapper,
                                   AgentCommandService commandService, Clock clock,
+                                  ObjectProvider<TerminalRelayLifecycle> relayLifecycles,
+                                  AgentAuditService auditService) {
+        this(sessionMapper, agentMapper, commandService, clock, new SecureRandom(),
+                providerLifecycle(relayLifecycles), auditService);
+        beginStartupRecovery();
+    }
+
+    public TerminalSessionService(TerminalSessionMapper sessionMapper, ProcessingAgentMapper agentMapper,
+                                  AgentCommandService commandService, Clock clock,
                                   ObjectProvider<TerminalRelayLifecycle> relayLifecycles) {
         this(sessionMapper, agentMapper, commandService, clock, new SecureRandom(),
-                (sessionId, persistenceClose) -> {
-                    TerminalRelayLifecycle lifecycle = relayLifecycles.getIfAvailable();
-                    if (lifecycle == null) {
-                        persistenceClose.run();
-                    } else {
-                        lifecycle.closePersistedSession(sessionId, persistenceClose);
-                    }
-                });
+                providerLifecycle(relayLifecycles), null);
+        beginStartupRecovery();
+    }
+
+    private static TerminalRelayLifecycle providerLifecycle(
+            ObjectProvider<TerminalRelayLifecycle> relayLifecycles) {
+        return new TerminalRelayLifecycle() {
+            @Override
+            public void closePersistedSession(String sessionId, Runnable persistenceClose) {
+                TerminalRelayLifecycle lifecycle = relayLifecycles.getIfAvailable();
+                if (lifecycle == null) {
+                    persistenceClose.run();
+                } else {
+                    lifecycle.closePersistedSession(sessionId, persistenceClose);
+                }
+            }
+
+            @Override
+            public boolean closePersistedSessionIf(String sessionId,
+                                                   BooleanSupplier persistenceClose) {
+                TerminalRelayLifecycle lifecycle = relayLifecycles.getIfAvailable();
+                return lifecycle == null ? persistenceClose.getAsBoolean()
+                        : lifecycle.closePersistedSessionIf(sessionId, persistenceClose);
+            }
+        };
     }
 
     public TerminalSessionService(TerminalSessionMapper sessionMapper, ProcessingAgentMapper agentMapper,
                                   AgentCommandService commandService, Clock clock) {
         this(sessionMapper, agentMapper, commandService, clock, new SecureRandom(),
-                TerminalSessionService::runPersistenceClose);
+                TerminalSessionService::runPersistenceClose, null);
     }
 
     public TerminalSessionService(TerminalSessionMapper sessionMapper, ProcessingAgentMapper agentMapper,
                                   AgentCommandService commandService, Clock clock,
                                   SecureRandom secureRandom) {
         this(sessionMapper, agentMapper, commandService, clock, secureRandom,
-                TerminalSessionService::runPersistenceClose);
+                TerminalSessionService::runPersistenceClose, null);
     }
 
     public TerminalSessionService(TerminalSessionMapper sessionMapper, ProcessingAgentMapper agentMapper,
                                   AgentCommandService commandService, Clock clock,
                                   SecureRandom secureRandom, TerminalRelayLifecycle relayLifecycle) {
+        this(sessionMapper, agentMapper, commandService, clock, secureRandom, relayLifecycle, null);
+    }
+
+    public TerminalSessionService(TerminalSessionMapper sessionMapper, ProcessingAgentMapper agentMapper,
+                                  AgentCommandService commandService, Clock clock,
+                                  SecureRandom secureRandom, TerminalRelayLifecycle relayLifecycle,
+                                  AgentAuditService auditService) {
         this.sessionMapper = sessionMapper;
         this.agentMapper = agentMapper;
         this.commandService = commandService;
         this.clock = clock;
         this.secureRandom = secureRandom;
         this.relayLifecycle = relayLifecycle;
+        this.startupRecoveryComplete = new AtomicBoolean(true);
+        this.auditService = auditService;
+    }
+
+    public void beginStartupRecovery() {
+        startupRecoveryComplete.set(false);
+    }
+
+    public void completeStartupRecovery() {
+        startupRecoveryComplete.set(true);
+    }
+
+    public boolean isStartupRecoveryComplete() {
+        return startupRecoveryComplete.get();
     }
 
     public TerminalSessionView view(String sessionId, User actor) {
@@ -109,10 +161,15 @@ public class TerminalSessionService {
         if (!expiresAt.isAfter(now)) {
             throw ticketUnavailable();
         }
-        return persistTicket(sessionId, expiresAt, now, true);
+        TerminalTicketView ticket = persistTicket(sessionId, expiresAt, now, true);
+        audit(record, "AGENT_TICKET_ISSUED", "SUCCESS", null);
+        return ticket;
     }
 
     public boolean consumeAgentTicket(ProcessingAgentRecord agent, String sessionId, String ticket) {
+        if (!startupRecoveryComplete.get()) {
+            return false;
+        }
         Instant now = clock.instant();
         if (agent == null || ticket == null || !Boolean.TRUE.equals(agent.getEnabled())
                 || agent.getRemovedAt() != null || !isOnline(agent, now)) {
@@ -123,12 +180,16 @@ public class TerminalSessionService {
                 || !agent.getAgentId().equals(record.getActiveAgentId())) {
             return false;
         }
-        return sessionMapper.consumeAgentTicket(sessionId, agent.getAgentId(),
+        boolean consumed = sessionMapper.consumeAgentTicket(sessionId, agent.getAgentId(),
                 digest(ticket), utc(now)) == 1;
+        if (consumed) {
+            audit(record, "AGENT_ATTACHED", "SUCCESS", null);
+        }
+        return consumed;
     }
 
     public boolean isRelayAttachmentEligible(String sessionId, String role, String agentId) {
-        if (sessionId == null || role == null) {
+        if (!startupRecoveryComplete.get() || sessionId == null || role == null) {
             return false;
         }
         TerminalSessionRecord record = sessionMapper.selectById(sessionId);
@@ -167,11 +228,13 @@ public class TerminalSessionService {
         if (!expiresAt.isAfter(now)) {
             throw ticketUnavailable();
         }
-        return persistTicket(sessionId, expiresAt, now, false);
+        TerminalTicketView ticket = persistTicket(sessionId, expiresAt, now, false);
+        audit(record, "BROWSER_TICKET_ISSUED", "SUCCESS", null);
+        return ticket;
     }
 
     public boolean consumeBrowserTicket(String sessionId, String ticket) {
-        if (sessionId == null || ticket == null) {
+        if (!startupRecoveryComplete.get() || sessionId == null || ticket == null) {
             return false;
         }
         Instant now = clock.instant();
@@ -187,11 +250,20 @@ public class TerminalSessionService {
                 .isAfter(now)) {
             return false;
         }
-        return sessionMapper.consumeBrowserTicket(sessionId, digest(ticket), utc(now)) == 1;
+        boolean consumed = sessionMapper.consumeBrowserTicket(sessionId, digest(ticket), utc(now)) == 1;
+        if (consumed) {
+            audit(record, "BROWSER_ATTACHED", "SUCCESS", null);
+        }
+        return consumed;
     }
 
     public boolean markRelayActive(String sessionId) {
-        return sessionId != null && sessionMapper.markActive(sessionId, utc(clock.instant())) == 1;
+        boolean active = sessionId != null
+                && sessionMapper.markActive(sessionId, utc(clock.instant())) == 1;
+        if (active) {
+            audit(sessionMapper.selectById(sessionId), "TERMINAL_ACTIVE", "SUCCESS", null);
+        }
+        return active;
     }
 
     public boolean recordRelayTraffic(String sessionId, long browserToAgentTotal,
@@ -209,7 +281,10 @@ public class TerminalSessionService {
         String stableReason = operatorClosed ? "OPERATOR_CLOSED" : stableRelayFailure(reason);
         String message = operatorClosed ? "Terminal session closed by operator"
                 : "Terminal relay closed";
-        sessionMapper.close(sessionId, state, stableReason, message, utc(clock.instant()));
+        if (sessionMapper.close(sessionId, state, stableReason, message, utc(clock.instant())) == 1) {
+            audit(sessionMapper.selectById(sessionId), "TERMINAL_CLOSE",
+                    operatorClosed ? "SUCCESS" : "FAILURE", stableReason);
+        }
     }
 
     private String stableRelayFailure(String reason) {
@@ -236,6 +311,8 @@ public class TerminalSessionService {
                 if (current == null || !isTerminal(current.getState())) {
                     throw error("TERMINAL_SESSION_CLOSE_FAILED", "Terminal session could not be closed");
                 }
+            } else {
+                audit(record, "TERMINAL_CLOSE", "SUCCESS", "OPERATOR_CLOSED");
             }
         });
     }
@@ -292,6 +369,11 @@ public class TerminalSessionService {
         if (sessionMapper.setCommand(record.getSessionId(), command.getCommandId(), utcNow) != 1) {
             throw error("TERMINAL_COMMAND_ATTACH_FAILED",
                     "Terminal command could not be attached to its session");
+        }
+        if (auditService != null) {
+            auditService.recordTerminal("TERMINAL_REQUEST", "SUCCESS", null,
+                    record.getRequesterUserId(), record.getAgentId(), record.getSessionId(),
+                    command.getCommandId());
         }
 
         TerminalSessionView view = new TerminalSessionView();
@@ -360,6 +442,18 @@ public class TerminalSessionService {
         view.setAbsoluteExpiresAt(toInstant(record.getAbsoluteExpiresAt()));
         view.setCommandId(record.getCommandId());
         return view;
+    }
+
+    private void audit(TerminalSessionRecord record, String action, String result, String reason) {
+        if (auditService == null || record == null) {
+            return;
+        }
+        try {
+            auditService.recordTerminal(action, result, reason, record.getRequesterUserId(),
+                    record.getAgentId(), record.getSessionId(), record.getCommandId());
+        } catch (RuntimeException ignored) {
+            // Terminal transition remains authoritative; audit must not retain a root socket.
+        }
     }
 
     private String digest(String ticket) {

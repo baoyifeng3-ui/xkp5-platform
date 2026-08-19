@@ -6,6 +6,7 @@ import com.match.agent.model.AgentCommandEnvelope;
 import com.match.agent.model.AgentCommandResultRequest;
 import com.match.agent.model.AgentCommandStartRequest;
 import com.match.agent.model.AgentCommandView;
+import com.match.agent.model.AgentCommandFinishedEvent;
 import com.match.agent.persistence.ProcessingAgentCommandMapper;
 import com.match.agent.persistence.ProcessingAgentCommandRecord;
 import com.match.agent.persistence.ProcessingAgentRecord;
@@ -18,6 +19,7 @@ import com.match.environment.service.EnvironmentOperationReconciler;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -55,18 +57,19 @@ public class AgentCommandService {
     private final Clock clock;
     private final EnvironmentOperationReconciler environmentReconciler;
     private final String terminalRelayBaseUrl;
+    private final ApplicationEventPublisher eventPublisher;
 
     public AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper,
                                AgentAuditService auditService, Clock clock) {
         this(mapper, objectMapper, auditService, clock, null,
-                "wss://127.0.0.1:19147/terminal/v1/agent", true);
+                "wss://127.0.0.1:19147/terminal/v1/agent", true, event -> { });
     }
 
     public AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper,
                                AgentAuditService auditService, Clock clock,
                                EnvironmentOperationReconciler environmentReconciler) {
         this(mapper, objectMapper, auditService, clock, environmentReconciler,
-                "wss://127.0.0.1:19147/terminal/v1/agent", true);
+                "wss://127.0.0.1:19147/terminal/v1/agent", true, event -> { });
     }
 
     @Autowired
@@ -75,15 +78,25 @@ public class AgentCommandService {
                                EnvironmentOperationReconciler environmentReconciler,
                                @Value("${match.terminal.agent-relay-url}")
                                String terminalRelayBaseUrl,
-                               Environment environment) {
+                               Environment environment,
+                               ApplicationEventPublisher eventPublisher) {
         this(mapper, objectMapper, auditService, clock, environmentReconciler, terminalRelayBaseUrl,
-                isDevelopmentProfile(environment));
+                isDevelopmentProfile(environment), eventPublisher);
+    }
+
+    AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper,
+                        AgentAuditService auditService, Clock clock,
+                         EnvironmentOperationReconciler environmentReconciler,
+                         String terminalRelayBaseUrl, boolean insecureTerminalRelayAllowed) {
+        this(mapper, objectMapper, auditService, clock, environmentReconciler,
+                terminalRelayBaseUrl, insecureTerminalRelayAllowed, event -> { });
     }
 
     AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper,
                         AgentAuditService auditService, Clock clock,
                         EnvironmentOperationReconciler environmentReconciler,
-                        String terminalRelayBaseUrl, boolean insecureTerminalRelayAllowed) {
+                        String terminalRelayBaseUrl, boolean insecureTerminalRelayAllowed,
+                        ApplicationEventPublisher eventPublisher) {
         this.mapper = mapper;
         this.objectMapper = objectMapper;
         this.auditService = auditService;
@@ -91,6 +104,7 @@ public class AgentCommandService {
         this.environmentReconciler = environmentReconciler;
         this.terminalRelayBaseUrl = validateTerminalRelayBaseUrl(terminalRelayBaseUrl,
                 insecureTerminalRelayAllowed);
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -382,6 +396,12 @@ public class AgentCommandService {
             if (environmentReconciler != null) {
                 environmentReconciler.reconcile(commandId, result.success, result.code,
                         result.message, result.json);
+            }
+            ProcessingAgentCommandRecord persisted = mapper.selectById(commandId);
+            if (persisted != null && Objects.equals(agentId, persisted.getAgentId())
+                    && persisted.getCommandType() != null) {
+                eventPublisher.publishEvent(new AgentCommandFinishedEvent(commandId, agentId,
+                        persisted.getCommandType(), result.success, result.code, result.message));
             }
             return toView(completed);
         }

@@ -156,4 +156,39 @@ public interface TerminalSessionMapper {
     List<TerminalSessionRecord> selectExpired(@Param("idleBefore") LocalDateTime idleBefore,
                                                @Param("now") LocalDateTime now,
                                                @Param("limit") int limit);
+
+    @Select("SELECT * FROM processing_agent_terminal_session "
+            + "WHERE state IN ('WAITING_AGENT', 'WAITING_BROWSER', 'ACTIVE') "
+            + "ORDER BY requested_at, session_id LIMIT #{limit}")
+    List<TerminalSessionRecord> selectRecoverable(@Param("limit") int limit);
+
+    @Update("UPDATE processing_agent_terminal_session SET state = 'FAILED', active_agent_id = NULL, "
+            + "agent_ticket_digest = NULL, browser_ticket_digest = NULL, ended_at = #{now}, "
+            + "end_reason = 'MANAGEMENT_RESTARTED', end_message = 'Terminal management restarted', "
+            + "updated_at = #{now} WHERE session_id = #{sessionId} "
+            + "AND state IN ('WAITING_AGENT', 'WAITING_BROWSER', 'ACTIVE')")
+    int recover(@Param("sessionId") String sessionId, @Param("now") LocalDateTime now);
+
+    @Update("UPDATE processing_agent_terminal_session SET state = #{state}, active_agent_id = NULL, "
+            + "agent_ticket_digest = NULL, browser_ticket_digest = NULL, ended_at = #{now}, "
+            + "end_reason = #{reason}, end_message = #{message}, updated_at = #{now} "
+            + "WHERE session_id = #{sessionId} AND BINARY command_id = BINARY #{commandId} "
+            + "AND BINARY agent_id = BINARY #{agentId} "
+            + "AND state IN ('WAITING_AGENT', 'WAITING_BROWSER', 'ACTIVE') "
+            + "AND #{state} IN ('CLOSED', 'FAILED')")
+    int closeCommandSession(@Param("sessionId") String sessionId,
+                            @Param("commandId") String commandId,
+                            @Param("agentId") String agentId,
+                            @Param("state") String state,
+                            @Param("reason") String reason,
+                            @Param("message") String message,
+                            @Param("now") LocalDateTime now);
+
+    @Select("SELECT s.* FROM processing_agent_terminal_session s "
+            + "JOIN processing_agent_command c ON BINARY c.command_id = BINARY s.command_id "
+            + "WHERE s.state IN ('WAITING_AGENT', 'WAITING_BROWSER', 'ACTIVE') "
+            + "AND BINARY c.command_type = BINARY 'OPEN_ROOT_TERMINAL' "
+            + "AND c.state IN ('SUCCEEDED', 'FAILED') "
+            + "ORDER BY s.requested_at, s.session_id LIMIT #{limit}")
+    List<TerminalSessionRecord> selectCommandReconciliationCandidates(@Param("limit") int limit);
 }

@@ -4,6 +4,7 @@ import com.match.agent.model.AgentCommandView;
 import com.match.agent.persistence.ProcessingAgentMapper;
 import com.match.agent.persistence.ProcessingAgentRecord;
 import com.match.agent.service.AgentCommandService;
+import com.match.agent.service.AgentAuditService;
 import com.match.agent.web.AgentProtocolException;
 import com.match.entity.User;
 import com.match.terminal.model.TerminalSessionView;
@@ -551,6 +552,37 @@ public class TerminalSessionServiceTest {
         when(sessions.close(eq(record.getSessionId()), eq("CLOSED"), any(String.class),
                 any(String.class), eq(utc(NOW)))).thenReturn(0);
         expectCode("TERMINAL_SESSION_CLOSE_FAILED", () -> service.close(record.getSessionId(), actor));
+    }
+
+    @Test
+    public void startupRecoveryGateRejectsAttachmentsUntilCompleted() {
+        TerminalSessionRecord record = waitingBrowser(NOW.minusSeconds(1), NOW.plusSeconds(120));
+        record.setAgentTicketConsumedAt(utc(NOW.minusSeconds(1)));
+        when(sessions.selectById(record.getSessionId())).thenReturn(record);
+
+        service.beginStartupRecovery();
+        assertFalse(service.isRelayAttachmentEligible(record.getSessionId(), "AGENT", AGENT_ID));
+        assertFalse(service.consumeAgentTicket(agent, record.getSessionId(), "ticket"));
+        assertFalse(service.consumeBrowserTicket(record.getSessionId(), "ticket"));
+        verify(sessions, never()).consumeAgentTicket(any(String.class), any(String.class),
+                any(String.class), any(LocalDateTime.class));
+        verify(sessions, never()).consumeBrowserTicket(any(String.class), any(String.class),
+                any(LocalDateTime.class));
+        service.completeStartupRecovery();
+        assertTrue(service.isRelayAttachmentEligible(record.getSessionId(), "AGENT", AGENT_ID));
+    }
+
+    @Test
+    public void successfulRequestAuditsMetadataAtCommittedBoundary() {
+        AgentAuditService audit = mock(AgentAuditService.class);
+        service = new TerminalSessionService(sessions, agents, commands,
+                Clock.fixed(NOW, ZoneOffset.UTC), random,
+                (sessionId, action) -> action.run(), audit);
+
+        TerminalSessionView created = create();
+
+        verify(audit).recordTerminal("TERMINAL_REQUEST", "SUCCESS", null, 7, AGENT_ID,
+                created.getSessionId(), created.getCommandId());
     }
 
     private TerminalSessionRecord waitingAgent(Instant requestedAt, Instant absoluteExpiry) {

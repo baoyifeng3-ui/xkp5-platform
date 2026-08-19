@@ -937,6 +937,22 @@ public class TerminalRelayCoordinatorTest {
         }
     }
 
+    @Test
+    public void conditionalCloseThatLosesPersistenceRaceKeepsPeersAttached() {
+        Fixture fixture = new Fixture();
+        TerminalPeer browser = fixture.peer(TerminalPeer.Role.BROWSER);
+        TerminalPeer agent = fixture.peer(TerminalPeer.Role.AGENT);
+        fixture.pair(browser, agent);
+        fixture.coordinator.onBinary(browser, ByteBuffer.wrap(new byte[]{7}));
+
+        assertFalse(fixture.coordinator.closePersistedSessionIf(SESSION_ID, () -> false));
+
+        assertEquals(1, fixture.coordinator.relayCount());
+        assertTrue(browser.session().isOpen());
+        assertTrue(agent.session().isOpen());
+        verify(fixture.sessions).recordRelayTraffic(SESSION_ID, 1L, 0L);
+    }
+
     private TerminalPeer peer(TerminalPeer.Role role) {
         WebSocketSession socket = mock(WebSocketSession.class);
         when(socket.isOpen()).thenReturn(true);

@@ -44,4 +44,23 @@ public class AgentAuditServiceTest {
         assertEquals("command-id", saved.getValue().getCommandId());
         assertEquals(null, saved.getValue().getTokenId());
     }
+
+    @Test
+    public void terminalAuditUsesSessionAsCorrelationWithoutTokenOrSensitiveText() {
+        AgentAuditMapper mapper = mock(AgentAuditMapper.class);
+        AgentAuditService service = new AgentAuditService(mapper,
+                Clock.fixed(Instant.parse("2026-08-18T12:00:00Z"), ZoneOffset.UTC));
+        String sessionId = "33333333-3333-4333-8333-333333333333";
+
+        service.recordTerminal("TERMINAL_CLOSE", "SUCCESS", "PTY_EXITED", 7,
+                "11111111-1111-4111-8111-111111111111", sessionId,
+                "22222222-2222-4222-8222-222222222222");
+
+        ArgumentCaptor<AgentAuditRecord> saved = ArgumentCaptor.forClass(AgentAuditRecord.class);
+        verify(mapper).insert(saved.capture());
+        assertEquals(sessionId, saved.getValue().getCorrelationId());
+        assertEquals(null, saved.getValue().getTokenId());
+        assertFalse(saved.getValue().toString().contains("ticket"));
+        assertFalse(saved.getValue().toString().contains("terminal output"));
+    }
 }

@@ -51,8 +51,34 @@ public class AgentAuditService {
         insert(action, "FAILURE", safeReason, actorUserId, agentId, null, commandId);
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordTerminal(String action, String result, String reasonCode,
+                               Integer actorUserId, String agentId, String sessionId,
+                               String commandId) {
+        if (sessionId == null) {
+            throw new IllegalArgumentException("Terminal session identity is required");
+        }
+        UUID.fromString(sessionId);
+        UUID.fromString(agentId);
+        if (commandId != null) {
+            UUID.fromString(commandId);
+        }
+        String safeReason = reasonCode == null ? null
+                : SAFE_CODE.matcher(reasonCode).matches() ? reasonCode : "UNKNOWN";
+        if (!"SUCCESS".equals(result) && !"FAILURE".equals(result)) {
+            throw new IllegalArgumentException("Terminal audit result is invalid");
+        }
+        insert(action, result, safeReason, actorUserId, agentId, null, commandId, sessionId);
+    }
+
     private void insert(String action, String result, String reasonCode, Integer actorUserId,
                         String agentId, String tokenId, String commandId) {
+        insert(action, result, reasonCode, actorUserId, agentId, tokenId, commandId,
+                UUID.randomUUID().toString());
+    }
+
+    private void insert(String action, String result, String reasonCode, Integer actorUserId,
+                        String agentId, String tokenId, String commandId, String correlationId) {
         if (action == null || !SAFE_CODE.matcher(action).matches()) {
             throw new IllegalArgumentException("Agent 审计操作代码无效");
         }
@@ -64,7 +90,7 @@ public class AgentAuditService {
         record.setAction(action);
         record.setResult(result);
         record.setReasonCode(reasonCode);
-        record.setCorrelationId(UUID.randomUUID().toString());
+        record.setCorrelationId(correlationId);
         record.setCreatedAt(LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC));
         mapper.insert(record);
     }
