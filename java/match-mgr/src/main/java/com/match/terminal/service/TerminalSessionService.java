@@ -4,6 +4,7 @@ import com.match.agent.model.AgentCommandView;
 import com.match.agent.persistence.ProcessingAgentMapper;
 import com.match.agent.persistence.ProcessingAgentRecord;
 import com.match.agent.service.AgentCommandService;
+import com.match.agent.web.AgentProtocolException;
 import com.match.entity.User;
 import com.match.security.UserRole;
 import com.match.terminal.model.TerminalSessionView;
@@ -12,6 +13,7 @@ import com.match.terminal.persistence.TerminalSessionRecord;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.http.HttpStatus;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -80,8 +82,18 @@ public class TerminalSessionService {
                     "An active terminal session already exists for this Agent");
         }
 
-        AgentCommandView command = commandService.requestTerminalCommand(agent, record.getSessionId(),
-                agentConnectionDeadline, absoluteExpiresAt, actor.getUserId(), UserRole.SUPER_ADMIN.name());
+        AgentCommandView command;
+        try {
+            command = commandService.requestTerminalCommand(agent, record.getSessionId(),
+                    agentConnectionDeadline, absoluteExpiresAt, actor.getUserId(),
+                    UserRole.SUPER_ADMIN.name());
+        } catch (AgentProtocolException exception) {
+            if (!"TERMINAL_COMMAND_SESSION_CONFLICT".equals(exception.getCode())) {
+                throw exception;
+            }
+            throw new TerminalSessionException(exception.getCode(), exception.getMessage(),
+                    HttpStatus.CONFLICT);
+        }
         if (sessionMapper.setCommand(record.getSessionId(), command.getCommandId(), utcNow) != 1) {
             throw error("TERMINAL_COMMAND_ATTACH_FAILED",
                     "Terminal command could not be attached to its session");

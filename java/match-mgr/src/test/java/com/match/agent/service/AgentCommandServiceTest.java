@@ -201,6 +201,24 @@ public class AgentCommandServiceTest {
     }
 
     @Test
+    public void terminalCommandRejectsWrongVersionAndNonExactIdleTimeoutInteger() {
+        String sessionId = "44444444-4444-4444-8444-444444444444";
+        ProcessingAgentCommandRecord wrongVersion = activeTerminalCommand(sessionId,
+                terminalPayload(sessionId));
+        wrongVersion.setCommandVersion(2);
+        stubActiveTerminal(wrongVersion);
+        expectTerminalSessionConflict(() -> requestTerminal(sessionId));
+
+        org.mockito.Mockito.reset(mapper);
+        when(mapper.selectEnabledAgentForUpdate(agent.getAgentId())).thenReturn(agent.getAgentId());
+        ProcessingAgentCommandRecord hugeInteger = activeTerminalCommand(sessionId,
+                terminalPayload(sessionId).replace("\"idleTimeoutSeconds\":600",
+                        "\"idleTimeoutSeconds\":4294967896"));
+        stubActiveTerminal(hugeInteger);
+        expectTerminalSessionConflict(() -> requestTerminal(sessionId));
+    }
+
+    @Test
     public void duplicateTerminalCollisionWithForeignSessionIsRejected() {
         String requestedSession = "44444444-4444-4444-8444-444444444444";
         String foreignSession = "55555555-5555-4555-8555-555555555555";
@@ -243,6 +261,27 @@ public class AgentCommandServiceTest {
     }
 
     @Test
+    public void terminalCommandAcceptsNinetySecondConnectionDeadline() {
+        AgentCommandView created = service.requestTerminalCommand(agent,
+                "44444444-4444-4444-8444-444444444444", NOW.plusSeconds(90),
+                NOW.plusSeconds(7200), 7, "SUPER_ADMIN");
+
+        assertNotNull(created.getCommandId());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void terminalCommandRejectsNinetyOneSecondConnectionDeadline() {
+        service.requestTerminalCommand(agent, "44444444-4444-4444-8444-444444444444",
+                NOW.plusSeconds(91), NOW.plusSeconds(7200), 7, "SUPER_ADMIN");
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void terminalCommandRejectsExpiredConnectionDeadline() {
+        service.requestTerminalCommand(agent, "44444444-4444-4444-8444-444444444444",
+                NOW, NOW.plusSeconds(7200), 7, "SUPER_ADMIN");
+    }
+
+    @Test
     public void terminalCommandIsTransactionalAndRejectsUnsafeRelayConfiguration() throws Exception {
         Method method = AgentCommandService.class.getMethod("requestTerminalCommand",
                 ProcessingAgentRecord.class, String.class, Instant.class, Instant.class,
@@ -254,6 +293,8 @@ public class AgentCommandServiceTest {
                 "wss://user:secret@relay.example/terminal/v1/agent", false));
         expectIllegalArgument(() -> terminalService(
                 "wss://relay.example/terminal/v1/agent?credential=secret", false));
+        expectIllegalArgument(() -> terminalService(
+                "wss://127.0.0.1:19147/terminal/v1/agent", false));
         assertNotNull(terminalService("ws://127.0.0.1:19147/terminal/v1/agent", true));
     }
 

@@ -4,6 +4,7 @@ import com.match.agent.model.AgentCommandView;
 import com.match.agent.persistence.ProcessingAgentMapper;
 import com.match.agent.persistence.ProcessingAgentRecord;
 import com.match.agent.service.AgentCommandService;
+import com.match.agent.web.AgentProtocolException;
 import com.match.entity.User;
 import com.match.terminal.model.TerminalSessionView;
 import com.match.terminal.persistence.TerminalSessionMapper;
@@ -14,6 +15,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.http.HttpStatus;
 
 import java.lang.reflect.Method;
 import java.time.Clock;
@@ -159,6 +161,31 @@ public class TerminalSessionServiceTest {
         when(sessions.setCommand(any(String.class), eq(command.getCommandId()), any(LocalDateTime.class)))
                 .thenReturn(0);
         expectCode("TERMINAL_COMMAND_ATTACH_FAILED", () -> create());
+    }
+
+    @Test
+    public void translatesOnlyTerminalCommandSessionConflictsToTerminalDomain() {
+        AgentProtocolException conflict = new AgentProtocolException(
+                "TERMINAL_COMMAND_SESSION_CONFLICT", "foreign terminal command", HttpStatus.CONFLICT);
+        when(commands.requestTerminalCommand(eq(agent), any(String.class), any(Instant.class),
+                any(Instant.class), eq(7), eq("SUPER_ADMIN"))).thenThrow(conflict);
+
+        TerminalSessionException translated = expectCode(
+                "TERMINAL_COMMAND_SESSION_CONFLICT", () -> create());
+
+        assertEquals(HttpStatus.CONFLICT, translated.getStatus());
+
+        AgentProtocolException unrelated = new AgentProtocolException(
+                "COMMAND_LEASE_CONFLICT", "unrelated", HttpStatus.CONFLICT);
+        when(commands.requestTerminalCommand(eq(agent), any(String.class), any(Instant.class),
+                any(Instant.class), eq(7), eq("SUPER_ADMIN"))).thenThrow(unrelated);
+        try {
+            create();
+        } catch (AgentProtocolException actual) {
+            assertEquals(unrelated, actual);
+            return;
+        }
+        throw new AssertionError("unrelated Agent protocol failure was translated");
     }
 
     private TerminalSessionView create() {

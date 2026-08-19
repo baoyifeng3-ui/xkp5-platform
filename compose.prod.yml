@@ -64,6 +64,7 @@ services:
       MATCH_FASTDFS_TRACKER: fastdfs-tracker:22122
       MATCH_FASTDFS_HTTP: http://fastdfs-storage:8888/
       MATCH_ALLOWED_ORIGINS: ${MATCH_ALLOWED_ORIGINS:-http://localhost:19140,http://127.0.0.1:19140,http://172.16.33.154:19140,http://172.16.33.158:19140}
+      TERMINAL_AGENT_RELAY_URL: ${TERMINAL_AGENT_RELAY_URL:?Set externally reachable terminal Agent relay URL}
       MATCH_DATASET_ROOT: /data/dataset
       MATCH_SCORING_SCRIPT: /app/python/evaluation_score.py
       MATCH_SCORING_ANNOTATIONS_ROOT: /data/scoring

@@ -59,25 +59,25 @@ public class AgentCommandService {
     public AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper,
                                AgentAuditService auditService, Clock clock) {
         this(mapper, objectMapper, auditService, clock, null,
-                "wss://127.0.0.1:19147/terminal/v1/agent", false);
+                "wss://127.0.0.1:19147/terminal/v1/agent", true);
     }
 
     public AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper,
                                AgentAuditService auditService, Clock clock,
                                EnvironmentOperationReconciler environmentReconciler) {
         this(mapper, objectMapper, auditService, clock, environmentReconciler,
-                "wss://127.0.0.1:19147/terminal/v1/agent", false);
+                "wss://127.0.0.1:19147/terminal/v1/agent", true);
     }
 
     @Autowired
     public AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper,
                                AgentAuditService auditService, Clock clock,
                                EnvironmentOperationReconciler environmentReconciler,
-                               @Value("${match.terminal.agent-relay-url:wss://127.0.0.1:19147/terminal/v1/agent}")
+                               @Value("${match.terminal.agent-relay-url}")
                                String terminalRelayBaseUrl,
                                Environment environment) {
         this(mapper, objectMapper, auditService, clock, environmentReconciler, terminalRelayBaseUrl,
-                Arrays.asList(environment.getActiveProfiles()).contains("local"));
+                isDevelopmentProfile(environment));
     }
 
     AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper,
@@ -108,6 +108,7 @@ public class AgentCommandService {
         String normalizedSessionId = requireUuid(sessionId);
         Instant now = clock.instant();
         if (agentConnectionDeadline == null || !agentConnectionDeadline.isAfter(now)
+                || agentConnectionDeadline.isAfter(now.plusSeconds(90))
                 || absoluteExpiresAt == null || !absoluteExpiresAt.isAfter(agentConnectionDeadline)
                 || absoluteExpiresAt.isAfter(now.plusSeconds(7200))) {
             throw new IllegalArgumentException("Terminal command deadlines are invalid");
@@ -117,7 +118,7 @@ public class AgentCommandService {
         ProcessingAgentCommandRecord existing = mapper.selectActiveByDedup(agentId,
                 OPEN_ROOT_TERMINAL, dedupKey);
         if (existing != null) {
-            return requireMatchingTerminalCommand(existing, normalizedSessionId,
+            return requireMatchingTerminalCommand(existing, agentId, dedupKey, normalizedSessionId,
                     agentConnectionDeadline, absoluteExpiresAt);
         }
         String payloadJson = terminalPayload(normalizedSessionId, agentConnectionDeadline,
@@ -148,8 +149,8 @@ public class AgentCommandService {
             ProcessingAgentCommandRecord concurrent = mapper.selectActiveByDedup(agentId,
                     OPEN_ROOT_TERMINAL, dedupKey);
             if (concurrent != null) {
-                return requireMatchingTerminalCommand(concurrent, normalizedSessionId,
-                        agentConnectionDeadline, absoluteExpiresAt);
+                return requireMatchingTerminalCommand(concurrent, agentId, dedupKey,
+                        normalizedSessionId, agentConnectionDeadline, absoluteExpiresAt);
             }
             throw collision;
         }
@@ -510,6 +511,8 @@ public class AgentCommandService {
     }
 
     private AgentCommandView requireMatchingTerminalCommand(ProcessingAgentCommandRecord record,
+                                                             String agentId,
+                                                             String dedupKey,
                                                              String sessionId,
                                                              Instant connectionDeadline,
                                                              Instant absoluteExpiresAt) {
@@ -520,12 +523,17 @@ public class AgentCommandService {
                 throw terminalSessionConflict();
             }
             JsonNode payload = objectMapper.readTree(payloadJson);
-            if (payload == null || !payload.isObject() || payload.size() != 5
+            if (!OPEN_ROOT_TERMINAL.equals(record.getCommandType())
+                    || !Integer.valueOf(COMMAND_VERSION).equals(record.getCommandVersion())
+                    || !agentId.equals(record.getAgentId())
+                    || !dedupKey.equals(record.getActiveDedupKey())
+                    || payload == null || !payload.isObject() || payload.size() != 5
                     || !textEquals(payload, "sessionId", sessionId)
                     || !textEquals(payload, "relayUrl", terminalRelayBaseUrl + "/" + sessionId)
                     || !textEquals(payload, "agentConnectionDeadline", connectionDeadline.toString())
                     || payload.get("idleTimeoutSeconds") == null
                     || !payload.get("idleTimeoutSeconds").isIntegralNumber()
+                    || !payload.get("idleTimeoutSeconds").canConvertToInt()
                     || payload.get("idleTimeoutSeconds").asInt() != 600
                     || !textEquals(payload, "absoluteExpiresAt", absoluteExpiresAt.toString())) {
                 throw terminalSessionConflict();
@@ -553,7 +561,8 @@ public class AgentCommandService {
             boolean secure = "wss".equalsIgnoreCase(uri.getScheme());
             boolean localInsecure = insecureAllowed && "ws".equalsIgnoreCase(uri.getScheme());
             if ((!secure && !localInsecure) || uri.getHost() == null || uri.getUserInfo() != null
-                    || uri.getQuery() != null || uri.getFragment() != null) {
+                    || uri.getQuery() != null || uri.getFragment() != null
+                    || (!insecureAllowed && isLoopbackHost(uri.getHost()))) {
                 throw new IllegalArgumentException("Terminal Agent relay URL is invalid");
             }
             String normalized = uri.toString();
@@ -564,6 +573,18 @@ public class AgentCommandService {
         } catch (URISyntaxException exception) {
             throw new IllegalArgumentException("Terminal Agent relay URL is invalid", exception);
         }
+    }
+
+    private static boolean isDevelopmentProfile(Environment environment) {
+        List<String> profiles = Arrays.asList(environment.getActiveProfiles());
+        return profiles.contains("local") || profiles.contains("test");
+    }
+
+    private static boolean isLoopbackHost(String host) {
+        String normalized = host.toLowerCase();
+        return "localhost".equals(normalized) || normalized.startsWith("127.")
+                || "::1".equals(normalized) || "[::1]".equals(normalized)
+                || "0.0.0.0".equals(normalized);
     }
 
     private boolean sameLease(ProcessingAgentCommandRecord record, String agentId, String leaseToken) {

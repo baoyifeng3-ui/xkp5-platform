@@ -26,6 +26,8 @@ fdfs:
   web-server-url: ${MATCH_FASTDFS_HTTP:http://localhost:8888/}
 
 match:
+  terminal:
+    agent-relay-url: ${TERMINAL_AGENT_RELAY_URL:wss://127.0.0.1:19147/terminal/v1/agent}
   participant-login-gate-enabled: ${MATCH_PARTICIPANT_LOGIN_GATE_ENABLED:true}
   fastdfs:
     storage-host: ${MATCH_FASTDFS_STORAGE_HOST:127.0.0.1}

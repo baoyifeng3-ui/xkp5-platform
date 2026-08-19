@@ -26,6 +26,8 @@ fdfs:
   web-server-url: ${MATCH_FASTDFS_HTTP:http://fastdfs-storage:8888/}
 
 match:
+  terminal:
+    agent-relay-url: ${TERMINAL_AGENT_RELAY_URL}
   allowed-origins: ${MATCH_ALLOWED_ORIGINS:http://localhost:19140,http://127.0.0.1:19140,http://172.16.33.154:19140,http://172.16.33.158:19140}
   dataset-root: ${MATCH_DATASET_ROOT:/data/dataset}
   scoring:
