@@ -26,6 +26,7 @@ CREATE TABLE processing_agent_terminal_session (
     updated_at DATETIME(3) NOT NULL,
     PRIMARY KEY (session_id),
     UNIQUE KEY uk_terminal_active_agent (active_agent_id),
+    UNIQUE KEY uk_terminal_command_id (command_id),
     KEY idx_terminal_state_expiry (state, absolute_expires_at),
     KEY idx_terminal_agent_history (agent_id, requested_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

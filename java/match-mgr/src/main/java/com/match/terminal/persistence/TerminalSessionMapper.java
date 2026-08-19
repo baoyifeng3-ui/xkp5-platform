@@ -1,6 +1,5 @@
 package com.match.terminal.persistence;
 
-import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -9,7 +8,7 @@ import org.apache.ibatis.annotations.Update;
 import java.time.LocalDateTime;
 import java.util.List;
 
-public interface TerminalSessionMapper extends BaseMapper<TerminalSessionRecord> {
+public interface TerminalSessionMapper {
     @Select("SELECT * FROM processing_agent_terminal_session "
             + "WHERE session_id = #{sessionId} LIMIT 1")
     TerminalSessionRecord selectById(@Param("sessionId") String sessionId);
@@ -22,7 +21,6 @@ public interface TerminalSessionMapper extends BaseMapper<TerminalSessionRecord>
             + "WHERE command_id = #{commandId} LIMIT 1")
     TerminalSessionRecord selectByCommandId(@Param("commandId") String commandId);
 
-    @Override
     @Insert("INSERT INTO processing_agent_terminal_session (session_id, agent_id, requester_user_id, "
             + "requester_role, state, active_agent_id, agent_ticket_digest, agent_ticket_expires_at, "
             + "agent_ticket_consumed_at, browser_ticket_digest, browser_ticket_expires_at, "
@@ -46,8 +44,9 @@ public interface TerminalSessionMapper extends BaseMapper<TerminalSessionRecord>
     @Update("UPDATE processing_agent_terminal_session SET agent_ticket_digest = #{digest}, "
             + "agent_ticket_expires_at = #{expiresAt}, agent_ticket_consumed_at = NULL, updated_at = #{now} "
             + "WHERE session_id = #{sessionId} AND state = 'WAITING_AGENT' "
-            + "AND absolute_expires_at > #{now} AND #{expiresAt} > #{now} "
-            + "AND #{expiresAt} <= absolute_expires_at")
+            + "AND absolute_expires_at > #{now} "
+            + "AND DATE_ADD(requested_at, INTERVAL 90 SECOND) > #{now} AND #{expiresAt} > #{now} "
+            + "AND #{expiresAt} <= LEAST(DATE_ADD(requested_at, INTERVAL 90 SECOND), absolute_expires_at)")
     int issueAgentTicket(@Param("sessionId") String sessionId,
                          @Param("digest") String digest,
                          @Param("expiresAt") LocalDateTime expiresAt,
@@ -57,7 +56,8 @@ public interface TerminalSessionMapper extends BaseMapper<TerminalSessionRecord>
             + "agent_ticket_consumed_at = #{now}, agent_connected_at = #{now}, updated_at = #{now} "
             + "WHERE session_id = #{sessionId} AND state = 'WAITING_AGENT' "
             + "AND agent_ticket_digest = #{digest} AND agent_ticket_consumed_at IS NULL "
-            + "AND agent_ticket_expires_at > #{now} AND absolute_expires_at > #{now}")
+            + "AND agent_ticket_expires_at > #{now} AND absolute_expires_at > #{now} "
+            + "AND DATE_ADD(requested_at, INTERVAL 90 SECOND) > #{now}")
     int consumeAgentTicket(@Param("sessionId") String sessionId,
                            @Param("digest") String digest,
                            @Param("now") LocalDateTime now);
@@ -66,7 +66,9 @@ public interface TerminalSessionMapper extends BaseMapper<TerminalSessionRecord>
             + "browser_ticket_expires_at = #{expiresAt}, browser_ticket_consumed_at = NULL, "
             + "updated_at = #{now} WHERE session_id = #{sessionId} "
             + "AND state = 'WAITING_BROWSER' AND absolute_expires_at > #{now} "
-            + "AND #{expiresAt} > #{now} AND #{expiresAt} <= absolute_expires_at")
+            + "AND DATE_ADD(agent_connected_at, INTERVAL 60 SECOND) > #{now} AND #{expiresAt} > #{now} "
+            + "AND #{expiresAt} <= LEAST(DATE_ADD(agent_connected_at, INTERVAL 60 SECOND), "
+            + "absolute_expires_at)")
     int issueBrowserTicket(@Param("sessionId") String sessionId,
                            @Param("digest") String digest,
                            @Param("expiresAt") LocalDateTime expiresAt,
@@ -76,7 +78,8 @@ public interface TerminalSessionMapper extends BaseMapper<TerminalSessionRecord>
             + "browser_connected_at = #{now}, updated_at = #{now} WHERE session_id = #{sessionId} "
             + "AND state = 'WAITING_BROWSER' AND browser_ticket_digest = #{digest} "
             + "AND browser_ticket_consumed_at IS NULL AND browser_ticket_expires_at > #{now} "
-            + "AND absolute_expires_at > #{now}")
+            + "AND absolute_expires_at > #{now} "
+            + "AND DATE_ADD(agent_connected_at, INTERVAL 60 SECOND) > #{now}")
     int consumeBrowserTicket(@Param("sessionId") String sessionId,
                              @Param("digest") String digest,
                              @Param("now") LocalDateTime now);
@@ -93,7 +96,8 @@ public interface TerminalSessionMapper extends BaseMapper<TerminalSessionRecord>
     @Update("UPDATE processing_agent_terminal_session "
             + "SET browser_to_agent_bytes = browser_to_agent_bytes + #{browserToAgent}, "
             + "agent_to_browser_bytes = agent_to_browser_bytes + #{agentToBrowser}, "
-            + "last_io_at = #{ioAt}, updated_at = #{ioAt} WHERE session_id = #{sessionId} "
+            + "last_io_at = GREATEST(COALESCE(last_io_at, active_at, #{ioAt}), #{ioAt}), "
+            + "updated_at = GREATEST(updated_at, #{ioAt}) WHERE session_id = #{sessionId} "
             + "AND state = 'ACTIVE' AND absolute_expires_at > #{ioAt} "
             + "AND #{browserToAgent} >= 0 AND #{agentToBrowser} >= 0")
     int addTraffic(@Param("sessionId") String sessionId,
@@ -112,6 +116,22 @@ public interface TerminalSessionMapper extends BaseMapper<TerminalSessionRecord>
               @Param("reason") String reason,
               @Param("message") String message,
               @Param("now") LocalDateTime now);
+
+    @Update("UPDATE processing_agent_terminal_session SET state = #{state}, active_agent_id = NULL, "
+            + "agent_ticket_digest = NULL, browser_ticket_digest = NULL, ended_at = #{now}, "
+            + "end_reason = #{reason}, end_message = #{message}, updated_at = #{now} "
+            + "WHERE session_id = #{sessionId} AND #{state} IN ('CLOSED', 'FAILED') "
+            + "AND state IN ('WAITING_AGENT', 'WAITING_BROWSER', 'ACTIVE') "
+            + "AND (absolute_expires_at <= #{now} "
+            + "OR (state = 'WAITING_AGENT' AND requested_at <= DATE_SUB(#{now}, INTERVAL 90 SECOND)) "
+            + "OR (state = 'WAITING_BROWSER' AND agent_connected_at <= DATE_SUB(#{now}, INTERVAL 60 SECOND)) "
+            + "OR (state = 'ACTIVE' AND COALESCE(last_io_at, active_at) <= #{idleBefore}))")
+    int closeExpired(@Param("sessionId") String sessionId,
+                     @Param("idleBefore") LocalDateTime idleBefore,
+                     @Param("now") LocalDateTime now,
+                     @Param("state") String state,
+                     @Param("reason") String reason,
+                     @Param("message") String message);
 
     @Select("SELECT * FROM processing_agent_terminal_session "
             + "WHERE state IN ('WAITING_AGENT', 'WAITING_BROWSER', 'ACTIVE') "

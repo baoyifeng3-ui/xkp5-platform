@@ -2,6 +2,7 @@ package com.match.terminal.persistence;
 
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.match.Application;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Select;
@@ -9,6 +10,7 @@ import org.apache.ibatis.annotations.Update;
 import org.junit.Test;
 import org.mybatis.spring.annotation.MapperScan;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
@@ -48,6 +50,7 @@ public class TerminalSessionSchemaTest {
         }
 
         assertUniqueIndex(sql, "uk_terminal_active_agent", "active_agent_id");
+        assertUniqueIndex(sql, "uk_terminal_command_id", "command_id");
         assertIndex(sql, "idx_terminal_state_expiry", "state", "absolute_expires_at");
         assertIndex(sql, "idx_terminal_agent_history", "agent_id", "requested_at");
         assertFalse(sql.contains("terminal_input"));
@@ -133,6 +136,60 @@ public class TerminalSessionSchemaTest {
     }
 
     @Test
+    public void mapperDoesNotExposeGenericMutationApis() {
+        Class<?> mapper = load("com.match.terminal.persistence.TerminalSessionMapper");
+
+        assertFalse(BaseMapper.class.isAssignableFrom(mapper));
+    }
+
+    @Test
+    public void ticketsCannotOutliveTheirConnectionPhases() {
+        Class<?> mapper = load("com.match.terminal.persistence.TerminalSessionMapper");
+
+        String issueAgent = sql(assertMethod(mapper, "issueAgentTicket", 4, Update.class));
+        assertContainsAll(issueAgent, "DATE_ADD(requested_at, INTERVAL 90 SECOND) > #{now}",
+                "#{expiresAt} <= LEAST(DATE_ADD(requested_at, INTERVAL 90 SECOND), absolute_expires_at)");
+
+        String consumeAgent = sql(assertMethod(mapper, "consumeAgentTicket", 3, Update.class));
+        assertContainsAll(consumeAgent, "DATE_ADD(requested_at, INTERVAL 90 SECOND) > #{now}",
+                "agent_ticket_expires_at > #{now}");
+
+        String issueBrowser = sql(assertMethod(mapper, "issueBrowserTicket", 4, Update.class));
+        assertContainsAll(issueBrowser, "DATE_ADD(agent_connected_at, INTERVAL 60 SECOND) > #{now}",
+                "#{expiresAt} <= LEAST(DATE_ADD(agent_connected_at, INTERVAL 60 SECOND), absolute_expires_at)");
+
+        String consumeBrowser = sql(assertMethod(mapper, "consumeBrowserTicket", 3, Update.class));
+        assertContainsAll(consumeBrowser, "DATE_ADD(agent_connected_at, INTERVAL 60 SECOND) > #{now}",
+                "browser_ticket_expires_at > #{now}");
+    }
+
+    @Test
+    public void trafficFlushesCannotMoveTimestampsBackward() {
+        Class<?> mapper = load("com.match.terminal.persistence.TerminalSessionMapper");
+
+        String addTraffic = sql(assertMethod(mapper, "addTraffic", 4, Update.class));
+        assertContainsAll(addTraffic,
+                "last_io_at = GREATEST(COALESCE(last_io_at, active_at, #{ioAt}), #{ioAt})",
+                "updated_at = GREATEST(updated_at, #{ioAt})",
+                "#{browserToAgent} >= 0", "#{agentToBrowser} >= 0");
+    }
+
+    @Test
+    public void expiredClosureAtomicallyRechecksEveryExpiryCondition() {
+        Class<?> mapper = load("com.match.terminal.persistence.TerminalSessionMapper");
+
+        String closeExpired = sql(assertMethod(mapper, "closeExpired", 6, Update.class));
+        assertContainsAll(closeExpired, "active_agent_id = NULL", "agent_ticket_digest = NULL",
+                "browser_ticket_digest = NULL", "#{state} IN ('CLOSED', 'FAILED')",
+                "state IN ('WAITING_AGENT', 'WAITING_BROWSER', 'ACTIVE')",
+                "absolute_expires_at <= #{now}",
+                "state = 'WAITING_AGENT' AND requested_at <= DATE_SUB(#{now}, INTERVAL 90 SECOND)",
+                "state = 'WAITING_BROWSER' AND agent_connected_at <= DATE_SUB(#{now}, INTERVAL 60 SECOND)",
+                "state = 'ACTIVE' AND COALESCE(last_io_at, active_at) <= #{idleBefore}");
+        assertFalse(closeExpired.contains("'EXPIRED'"));
+    }
+
+    @Test
     public void applicationScansTerminalMappers() {
         MapperScan mapperScan = Application.class.getAnnotation(MapperScan.class);
 
@@ -193,9 +250,13 @@ public class TerminalSessionSchemaTest {
         InputStream input = getClass().getResourceAsStream(path);
         assertNotNull("missing migration " + path, input);
         try (InputStream closeable = input) {
-            byte[] bytes = new byte[closeable.available()];
-            int count = closeable.read(bytes);
-            return new String(bytes, 0, count, StandardCharsets.UTF_8);
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            byte[] buffer = new byte[4096];
+            int count;
+            while ((count = closeable.read(buffer)) != -1) {
+                output.write(buffer, 0, count);
+            }
+            return new String(output.toByteArray(), StandardCharsets.UTF_8);
         }
     }
 }
