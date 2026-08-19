@@ -6,6 +6,7 @@ import com.match.security.RoleGuard;
 import com.match.util.result.Response;
 import com.match.util.result.ResponseResult;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -20,6 +21,12 @@ public class AdminTrainingEnvironmentController {
                                               EnvironmentOperationService operationService) {
         this.roleGuard = roleGuard;
         this.operationService = operationService;
+    }
+
+    @GetMapping
+    public ResponseResult<Object> list() {
+        roleGuard.requireAnyAdmin();
+        return Response.makeOKRsp(operationService.listAll());
     }
 
     @PostMapping("/{environmentId}/start")

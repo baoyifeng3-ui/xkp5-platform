@@ -113,6 +113,11 @@ public class EnvironmentOperationService {
         return environmentMapper.selectByUser(userId);
     }
 
+    @Transactional(readOnly = true)
+    public List<TrainingEnvironmentRecord> listAll() {
+        return environmentMapper.selectAllEnvironments();
+    }
+
     private TrainingEnvironmentOperationView createWaitingStart(TrainingEnvironmentRecord environment,
                                                                  int actorUserId, String actorRole) {
         String operationId = UUID.randomUUID().toString();

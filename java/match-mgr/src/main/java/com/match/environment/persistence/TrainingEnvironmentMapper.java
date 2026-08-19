@@ -23,6 +23,9 @@ public interface TrainingEnvironmentMapper extends BaseMapper<TrainingEnvironmen
             + "ORDER BY course_id, environment_id")
     List<TrainingEnvironmentRecord> selectByUser(@Param("userId") int userId);
 
+    @Select("SELECT * FROM training_environment ORDER BY created_at DESC, environment_id DESC")
+    List<TrainingEnvironmentRecord> selectAllEnvironments();
+
     @Update("UPDATE training_environment SET desired_state = #{desiredState}, "
             + "actual_state = #{actualState}, current_operation_id = #{operationId}, "
             + "updated_by = #{updatedBy}, updated_at = #{updatedAt}, lock_version = lock_version + 1 "
