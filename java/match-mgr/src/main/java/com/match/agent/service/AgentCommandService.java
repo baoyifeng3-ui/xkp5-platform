@@ -16,6 +16,8 @@ import org.springframework.http.HttpStatus;
 import com.match.agent.web.AgentProtocolException;
 import com.match.environment.service.EnvironmentOperationReconciler;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -29,16 +31,22 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.Arrays;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 @Service
 public class AgentCommandService {
     static final String SHUTDOWN_SERVER = "SHUTDOWN_SERVER";
+    static final String OPEN_ROOT_TERMINAL = "OPEN_ROOT_TERMINAL";
     static final int COMMAND_VERSION = 1;
     static final int MAX_DELIVERY_ATTEMPTS = 5;
     static final long LEASE_SECONDS = 30;
     private static final int MAX_RESULT_MESSAGE_LENGTH = 512;
     private static final int MAX_RESULT_JSON_BYTES = 16 * 1024;
     private static final int MAX_ENVIRONMENT_PAYLOAD_BYTES = 3 * 1024;
+    private static final int MAX_TERMINAL_PAYLOAD_BYTES = 1024;
     private static final Pattern SAFE_RESULT_CODE = Pattern.compile("^[A-Z0-9_]{1,64}$");
 
     private final ProcessingAgentCommandMapper mapper;
@@ -46,21 +54,103 @@ public class AgentCommandService {
     private final AgentAuditService auditService;
     private final Clock clock;
     private final EnvironmentOperationReconciler environmentReconciler;
+    private final String terminalRelayBaseUrl;
 
     public AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper,
                                AgentAuditService auditService, Clock clock) {
-        this(mapper, objectMapper, auditService, clock, null);
+        this(mapper, objectMapper, auditService, clock, null,
+                "wss://127.0.0.1:19147/terminal/v1/agent", false);
+    }
+
+    public AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper,
+                               AgentAuditService auditService, Clock clock,
+                               EnvironmentOperationReconciler environmentReconciler) {
+        this(mapper, objectMapper, auditService, clock, environmentReconciler,
+                "wss://127.0.0.1:19147/terminal/v1/agent", false);
     }
 
     @Autowired
     public AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper,
                                AgentAuditService auditService, Clock clock,
-                               EnvironmentOperationReconciler environmentReconciler) {
+                               EnvironmentOperationReconciler environmentReconciler,
+                               @Value("${match.terminal.agent-relay-url:wss://127.0.0.1:19147/terminal/v1/agent}")
+                               String terminalRelayBaseUrl,
+                               Environment environment) {
+        this(mapper, objectMapper, auditService, clock, environmentReconciler, terminalRelayBaseUrl,
+                Arrays.asList(environment.getActiveProfiles()).contains("local"));
+    }
+
+    AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper,
+                        AgentAuditService auditService, Clock clock,
+                        EnvironmentOperationReconciler environmentReconciler,
+                        String terminalRelayBaseUrl, boolean insecureTerminalRelayAllowed) {
         this.mapper = mapper;
         this.objectMapper = objectMapper;
         this.auditService = auditService;
         this.clock = clock;
         this.environmentReconciler = environmentReconciler;
+        this.terminalRelayBaseUrl = validateTerminalRelayBaseUrl(terminalRelayBaseUrl,
+                insecureTerminalRelayAllowed);
+    }
+
+    @Transactional
+    public AgentCommandView requestTerminalCommand(ProcessingAgentRecord agent, String sessionId,
+                                                   Instant agentConnectionDeadline,
+                                                   Instant absoluteExpiresAt,
+                                                   Integer requesterUserId, String requesterRole) {
+        String agentId = requireAgentId(agent);
+        if (mapper.selectEnabledAgentForUpdate(agentId) == null) {
+            throw new IllegalArgumentException("Processing server is disabled");
+        }
+        if (!"SUPER_ADMIN".equals(requesterRole)) {
+            throw new IllegalArgumentException("Terminal command requester role is invalid");
+        }
+        String normalizedSessionId = requireUuid(sessionId);
+        Instant now = clock.instant();
+        if (agentConnectionDeadline == null || !agentConnectionDeadline.isAfter(now)
+                || absoluteExpiresAt == null || !absoluteExpiresAt.isAfter(agentConnectionDeadline)
+                || absoluteExpiresAt.isAfter(now.plusSeconds(7200))) {
+            throw new IllegalArgumentException("Terminal command deadlines are invalid");
+        }
+
+        String dedupKey = agentId + ":" + OPEN_ROOT_TERMINAL;
+        ProcessingAgentCommandRecord existing = mapper.selectActiveByDedup(agentId,
+                OPEN_ROOT_TERMINAL, dedupKey);
+        if (existing != null) {
+            return toView(existing);
+        }
+        String payloadJson = terminalPayload(normalizedSessionId, agentConnectionDeadline,
+                absoluteExpiresAt);
+        if (payloadJson.getBytes(StandardCharsets.UTF_8).length > MAX_TERMINAL_PAYLOAD_BYTES) {
+            throw new IllegalArgumentException("Terminal command payload is invalid");
+        }
+        LocalDateTime requestedAt = LocalDateTime.ofInstant(now, ZoneOffset.UTC);
+        ProcessingAgentCommandRecord record = new ProcessingAgentCommandRecord();
+        record.setCommandId(UUID.randomUUID().toString());
+        record.setAgentId(agentId);
+        record.setCommandType(OPEN_ROOT_TERMINAL);
+        record.setCommandVersion(COMMAND_VERSION);
+        record.setPayloadJson(payloadJson);
+        record.setState("PENDING");
+        record.setActiveDedupKey(dedupKey);
+        record.setRequesterUserId(requesterUserId);
+        record.setRequesterRole(requesterRole);
+        record.setCorrelationId(UUID.randomUUID().toString());
+        record.setRequestedAt(requestedAt);
+        record.setAvailableAt(requestedAt);
+        record.setAttemptCount(0);
+        record.setUpdatedAt(requestedAt);
+        try {
+            mapper.insert(record);
+            return toView(record);
+        } catch (DuplicateKeyException collision) {
+            ProcessingAgentCommandRecord concurrent = mapper.selectActiveByDedup(agentId,
+                    OPEN_ROOT_TERMINAL, dedupKey);
+            if (concurrent != null) {
+                return toView(concurrent);
+            }
+            throw collision;
+        }
     }
 
     @Transactional
@@ -388,6 +478,51 @@ public class AgentCommandService {
             return UUID.fromString(leaseToken).toString();
         } catch (RuntimeException exception) {
             throw new IllegalArgumentException("Command lease token is invalid");
+        }
+    }
+
+    private String requireUuid(String value) {
+        try {
+            String normalized = UUID.fromString(value).toString();
+            if (!normalized.equals(value)) {
+                throw new IllegalArgumentException();
+            }
+            return normalized;
+        } catch (RuntimeException exception) {
+            throw new IllegalArgumentException("Terminal session identity is invalid");
+        }
+    }
+
+    private String terminalPayload(String sessionId, Instant connectionDeadline, Instant absoluteExpiresAt) {
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("sessionId", sessionId);
+        payload.put("relayUrl", terminalRelayBaseUrl + "/" + sessionId);
+        payload.put("agentConnectionDeadline", connectionDeadline.toString());
+        payload.put("idleTimeoutSeconds", 600);
+        payload.put("absoluteExpiresAt", absoluteExpiresAt.toString());
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Terminal command payload cannot be serialized", exception);
+        }
+    }
+
+    private static String validateTerminalRelayBaseUrl(String value, boolean insecureAllowed) {
+        try {
+            URI uri = new URI(value);
+            boolean secure = "wss".equalsIgnoreCase(uri.getScheme());
+            boolean localInsecure = insecureAllowed && "ws".equalsIgnoreCase(uri.getScheme());
+            if ((!secure && !localInsecure) || uri.getHost() == null || uri.getUserInfo() != null
+                    || uri.getQuery() != null || uri.getFragment() != null) {
+                throw new IllegalArgumentException("Terminal Agent relay URL is invalid");
+            }
+            String normalized = uri.toString();
+            while (normalized.endsWith("/")) {
+                normalized = normalized.substring(0, normalized.length() - 1);
+            }
+            return normalized;
+        } catch (URISyntaxException exception) {
+            throw new IllegalArgumentException("Terminal Agent relay URL is invalid", exception);
         }
     }
 

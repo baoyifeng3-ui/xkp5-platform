@@ -1,6 +1,7 @@
 package com.match.agent.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.match.agent.model.AgentCommandEnvelope;
 import com.match.agent.model.AgentCommandResultRequest;
 import com.match.agent.model.AgentCommandStartRequest;
@@ -13,6 +14,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -21,6 +23,10 @@ import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.Collections;
 import java.util.List;
+import java.util.Iterator;
+import java.util.Set;
+import java.util.HashSet;
+import java.lang.reflect.Method;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -100,6 +106,98 @@ public class AgentCommandServiceTest {
                 "{}", 7, "SUPER_ADMIN", dedupKey);
 
         assertEquals(existing.getCommandId(), view.getCommandId());
+    }
+
+    @Test
+    public void createsTicketFreeRootTerminalCommandWithClosedPayload() throws Exception {
+        String sessionId = "44444444-4444-4444-8444-444444444444";
+        Instant connectionDeadline = NOW.plusSeconds(90);
+        Instant absoluteExpiry = NOW.plusSeconds(7200);
+
+        AgentCommandView view = service.requestTerminalCommand(agent, sessionId,
+                connectionDeadline, absoluteExpiry, 7, "SUPER_ADMIN");
+
+        ArgumentCaptor<ProcessingAgentCommandRecord> saved =
+                ArgumentCaptor.forClass(ProcessingAgentCommandRecord.class);
+        verify(mapper).insert(saved.capture());
+        ProcessingAgentCommandRecord record = saved.getValue();
+        assertEquals("OPEN_ROOT_TERMINAL", record.getCommandType());
+        assertEquals(agent.getAgentId() + ":OPEN_ROOT_TERMINAL", record.getActiveDedupKey());
+        assertEquals("SUPER_ADMIN", record.getRequesterRole());
+        JsonNode payload = new ObjectMapper().readTree(record.getPayloadJson());
+        Set<String> keys = new HashSet<>();
+        Iterator<String> names = payload.fieldNames();
+        while (names.hasNext()) keys.add(names.next());
+        assertEquals(new HashSet<>(java.util.Arrays.asList("sessionId", "relayUrl",
+                "agentConnectionDeadline", "idleTimeoutSeconds", "absoluteExpiresAt")), keys);
+        assertEquals(sessionId, payload.get("sessionId").asText());
+        assertEquals("wss://127.0.0.1:19147/terminal/v1/agent/" + sessionId,
+                payload.get("relayUrl").asText());
+        assertEquals(connectionDeadline.toString(), payload.get("agentConnectionDeadline").asText());
+        assertEquals(600, payload.get("idleTimeoutSeconds").asInt());
+        assertEquals(absoluteExpiry.toString(), payload.get("absoluteExpiresAt").asText());
+        assertFalse(record.getPayloadJson().toLowerCase().contains("ticket"));
+        assertEquals(record.getCommandId(), view.getCommandId());
+    }
+
+    @Test
+    public void concurrentDuplicateTerminalCommandReturnsExistingCommand() {
+        String sessionId = "44444444-4444-4444-8444-444444444444";
+        String dedupKey = agent.getAgentId() + ":OPEN_ROOT_TERMINAL";
+        ProcessingAgentCommandRecord existing = command("PENDING");
+        existing.setCommandType("OPEN_ROOT_TERMINAL");
+        existing.setActiveDedupKey(dedupKey);
+        when(mapper.selectActiveByDedup(agent.getAgentId(), "OPEN_ROOT_TERMINAL", dedupKey))
+                .thenReturn(null, existing);
+        doThrow(new DuplicateKeyException("duplicate active command"))
+                .when(mapper).insert(any(ProcessingAgentCommandRecord.class));
+
+        AgentCommandView view = service.requestTerminalCommand(agent, sessionId,
+                NOW.plusSeconds(90), NOW.plusSeconds(7200), 7, "SUPER_ADMIN");
+
+        assertEquals(existing.getCommandId(), view.getCommandId());
+    }
+
+    @Test
+    public void terminalCommandDoesNotReuseACommandWithAnotherDedupKey() {
+        ProcessingAgentCommandRecord unrelated = command("PENDING");
+        unrelated.setCommandType("OPEN_ROOT_TERMINAL");
+        unrelated.setActiveDedupKey("unrelated-key");
+        when(mapper.selectActive(agent.getAgentId(), "OPEN_ROOT_TERMINAL")).thenReturn(unrelated);
+
+        AgentCommandView created = service.requestTerminalCommand(agent,
+                "44444444-4444-4444-8444-444444444444", NOW.plusSeconds(90),
+                NOW.plusSeconds(7200), 7, "SUPER_ADMIN");
+
+        assertNotEquals(unrelated.getCommandId(), created.getCommandId());
+        verify(mapper).insert(any(ProcessingAgentCommandRecord.class));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void terminalCommandRequiresSuperAdmin() {
+        service.requestTerminalCommand(agent, "44444444-4444-4444-8444-444444444444",
+                NOW.plusSeconds(90), NOW.plusSeconds(7200), 7, "ADMIN");
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void terminalCommandRejectsAbsoluteExpiryBeyondTwoHours() {
+        service.requestTerminalCommand(agent, "44444444-4444-4444-8444-444444444444",
+                NOW.plusSeconds(90), NOW.plusSeconds(7201), 7, "SUPER_ADMIN");
+    }
+
+    @Test
+    public void terminalCommandIsTransactionalAndRejectsUnsafeRelayConfiguration() throws Exception {
+        Method method = AgentCommandService.class.getMethod("requestTerminalCommand",
+                ProcessingAgentRecord.class, String.class, Instant.class, Instant.class,
+                Integer.class, String.class);
+        assertNotNull(method.getAnnotation(Transactional.class));
+
+        expectIllegalArgument(() -> terminalService("ws://relay.example/terminal/v1/agent", false));
+        expectIllegalArgument(() -> terminalService(
+                "wss://user:secret@relay.example/terminal/v1/agent", false));
+        expectIllegalArgument(() -> terminalService(
+                "wss://relay.example/terminal/v1/agent?credential=secret", false));
+        assertNotNull(terminalService("ws://127.0.0.1:19147/terminal/v1/agent", true));
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -373,6 +471,20 @@ public class AgentCommandServiceTest {
             return;
         }
         throw new AssertionError("expected command lease conflict");
+    }
+
+    private AgentCommandService terminalService(String relayUrl, boolean localDevelopment) {
+        return new AgentCommandService(mapper, new ObjectMapper().findAndRegisterModules(),
+                audit, Clock.fixed(NOW, ZoneOffset.UTC), null, relayUrl, localDevelopment);
+    }
+
+    private void expectIllegalArgument(Runnable action) {
+        try {
+            action.run();
+        } catch (IllegalArgumentException expected) {
+            return;
+        }
+        throw new AssertionError("expected IllegalArgumentException");
     }
 
     private String repeat(char value, int count) {
