@@ -108,6 +108,23 @@ public class AgentCommandServiceTest {
                 repeat('x', 3073), 7, "SUPER_ADMIN", "environment-1:CREATE");
     }
 
+    @Test
+    public void normalUserCanRequestOnlyAnEnvironmentCommand() {
+        service.requestEnvironmentCommand(agent, "START_TRAINING_ENVIRONMENT", "{}",
+                21, "USER", "environment-1:START");
+
+        ArgumentCaptor<ProcessingAgentCommandRecord> saved =
+                ArgumentCaptor.forClass(ProcessingAgentCommandRecord.class);
+        verify(mapper).insert(saved.capture());
+        assertEquals("USER", saved.getValue().getRequesterRole());
+        assertEquals("START_TRAINING_ENVIRONMENT", saved.getValue().getCommandType());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void normalUserCannotRequestServerShutdown() {
+        service.requestShutdown(agent, 21, "USER");
+    }
+
     @Test(expected = IllegalArgumentException.class)
     public void shutdownRequestRechecksEnabledAgentInsideTransaction() {
         when(mapper.selectEnabledAgentForUpdate(agent.getAgentId())).thenReturn(null);

@@ -125,7 +125,7 @@ public class AgentCommandService {
         record.setState("PENDING");
         record.setActiveDedupKey(dedupKey);
         record.setRequesterUserId(requesterUserId);
-        record.setRequesterRole(requireRole(requesterRole));
+        record.setRequesterRole(requireEnvironmentRole(requesterRole));
         record.setCorrelationId(UUID.randomUUID().toString());
         record.setRequestedAt(now);
         record.setAvailableAt(now);
@@ -314,6 +314,13 @@ public class AgentCommandService {
             throw new IllegalArgumentException("Command requester role is invalid");
         }
         return role;
+    }
+
+    private String requireEnvironmentRole(String role) {
+        if ("USER".equals(role)) {
+            return role;
+        }
+        return requireRole(role);
     }
 
     private ValidatedResult validateResult(AgentCommandResultRequest request) {

@@ -22,6 +22,10 @@ public class RoleGuard {
         return require(UserRole.ADMIN, "仅普通管理员可以执行此操作");
     }
 
+    public User requireUser() {
+        return require(UserRole.USER, "仅普通用户可以执行此操作");
+    }
+
     public User requireAnyAdmin() {
         User user = currentEnabledUser("仅管理员可以执行此操作");
         UserRole role = roleOf(user);

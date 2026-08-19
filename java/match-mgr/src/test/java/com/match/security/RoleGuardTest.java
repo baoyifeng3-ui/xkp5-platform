@@ -48,6 +48,28 @@ public class RoleGuardTest {
         }
     }
 
+    @Test
+    public void enabledNormalUserCanUseUserGuard() {
+        User user = enabledUser("student", "USER");
+        when(userService.getById(21)).thenReturn(user);
+        when(loginSession.loginId()).thenReturn(21);
+
+        assertEquals(user, guard.requireUser());
+    }
+
+    @Test
+    public void administratorCannotUseUserGuard() {
+        User user = enabledUser("manager", "ADMIN");
+        when(userService.getById(7)).thenReturn(user);
+        when(loginSession.loginId()).thenReturn(7);
+        try {
+            guard.requireUser();
+            fail("administrator must not enter the normal user surface");
+        } catch (AdminAccessException expected) {
+            assertEquals("仅普通用户可以执行此操作", expected.getMessage());
+        }
+    }
+
     private User enabledUser(String userName, String role) {
         User user = new User();
         user.setUserName(userName);

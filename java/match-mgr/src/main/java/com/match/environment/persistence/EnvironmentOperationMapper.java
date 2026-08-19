@@ -9,6 +9,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public interface EnvironmentOperationMapper extends BaseMapper<EnvironmentOperationRecord> {
+    @Select("SELECT * FROM environment_operation WHERE environment_id = #{environmentId} "
+            + "AND active_operation_key IS NOT NULL LIMIT 1 FOR UPDATE")
+    EnvironmentOperationRecord selectActive(@Param("environmentId") String environmentId);
+
     @Select("SELECT * FROM environment_operation WHERE operation_id = #{operationId} FOR UPDATE")
     EnvironmentOperationRecord selectForUpdate(@Param("operationId") String operationId);
 
