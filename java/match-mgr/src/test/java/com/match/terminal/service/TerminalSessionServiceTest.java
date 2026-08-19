@@ -43,6 +43,19 @@ import static org.mockito.Mockito.when;
 
 public class TerminalSessionServiceTest {
     private static final Instant NOW = Instant.parse("2026-08-19T12:00:00Z");
+
+    @Test
+    public void successfulLifecycleTransitionsIncludeAuditInRequiredTransaction() throws Exception {
+        assertRequiredTransaction("issueAgentTicket", ProcessingAgentRecord.class, String.class,
+                String.class, String.class);
+        assertRequiredTransaction("consumeAgentTicket", ProcessingAgentRecord.class, String.class,
+                String.class);
+        assertRequiredTransaction("issueBrowserTicket", String.class, User.class);
+        assertRequiredTransaction("consumeBrowserTicket", String.class, String.class);
+        assertRequiredTransaction("markRelayActive", String.class);
+        assertRequiredTransaction("finishRelay", String.class, boolean.class, String.class);
+        assertRequiredTransaction("close", String.class, User.class);
+    }
     private static final String AGENT_ID = "11111111-1111-4111-8111-111111111111";
     private TerminalSessionMapper sessions;
     private ProcessingAgentMapper agents;
@@ -173,6 +186,14 @@ public class TerminalSessionServiceTest {
         when(sessions.setCommand(any(String.class), eq(command.getCommandId()), any(LocalDateTime.class)))
                 .thenReturn(0);
         expectCode("TERMINAL_COMMAND_ATTACH_FAILED", () -> create());
+    }
+
+    private static void assertRequiredTransaction(String methodName, Class<?>... parameterTypes)
+            throws Exception {
+        Method method = TerminalSessionService.class.getMethod(methodName, parameterTypes);
+        Transactional transactional = method.getAnnotation(Transactional.class);
+        assertNotNull(transactional);
+        assertEquals(Propagation.REQUIRED, transactional.propagation());
     }
 
     @Test
@@ -564,12 +585,32 @@ public class TerminalSessionServiceTest {
         assertFalse(service.isRelayAttachmentEligible(record.getSessionId(), "AGENT", AGENT_ID));
         assertFalse(service.consumeAgentTicket(agent, record.getSessionId(), "ticket"));
         assertFalse(service.consumeBrowserTicket(record.getSessionId(), "ticket"));
+        expectCode("TERMINAL_TICKET_UNAVAILABLE", () -> service.issueAgentTicket(agent,
+                record.getSessionId(), record.getCommandId(), "lease"));
+        expectCode("TERMINAL_TICKET_UNAVAILABLE",
+                () -> service.issueBrowserTicket(record.getSessionId(), actor));
         verify(sessions, never()).consumeAgentTicket(any(String.class), any(String.class),
                 any(String.class), any(LocalDateTime.class));
         verify(sessions, never()).consumeBrowserTicket(any(String.class), any(String.class),
                 any(LocalDateTime.class));
+        verify(sessions, never()).issueAgentTicket(any(String.class), any(String.class),
+                any(LocalDateTime.class), any(LocalDateTime.class));
+        verify(sessions, never()).issueBrowserTicket(any(String.class), any(String.class),
+                any(LocalDateTime.class), any(LocalDateTime.class));
         service.completeStartupRecovery();
         assertTrue(service.isRelayAttachmentEligible(record.getSessionId(), "AGENT", AGENT_ID));
+    }
+
+    @Test
+    public void startupRecoveryRejectsNewTerminalRequestsBeforeAgentLookup() {
+        service.beginStartupRecovery();
+
+        TerminalSessionException exception = expectCode("TERMINAL_STARTUP_RECOVERY",
+                () -> service.create(AGENT_ID, actor, "OPEN_ROOT_TERMINAL"));
+
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, exception.getStatus());
+        verify(agents, never()).selectForManagement(any(String.class));
+        verify(sessions, never()).insert(any(TerminalSessionRecord.class));
     }
 
     @Test

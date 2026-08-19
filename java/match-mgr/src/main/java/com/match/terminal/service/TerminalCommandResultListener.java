@@ -13,6 +13,9 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -28,18 +31,28 @@ public class TerminalCommandResultListener {
     private final AgentAuditService auditService;
     private final Clock clock;
     private final TerminalSessionService sessionService;
+    private final TransactionOperations requiresNew;
 
     public TerminalCommandResultListener(TerminalSessionMapper mapper,
                                          TerminalRelayLifecycle lifecycle,
                                          AgentAuditService auditService, Clock clock) {
-        this(mapper, null, lifecycle, auditService, clock, null);
+        this(mapper, null, lifecycle, auditService, clock, null, (TransactionOperations) null);
     }
 
     public TerminalCommandResultListener(TerminalSessionMapper mapper,
                                          ProcessingAgentCommandMapper commandMapper,
                                          TerminalRelayLifecycle lifecycle,
                                          AgentAuditService auditService, Clock clock) {
-        this(mapper, commandMapper, lifecycle, auditService, clock, null);
+        this(mapper, commandMapper, lifecycle, auditService, clock, null,
+                (TransactionOperations) null);
+    }
+
+    public TerminalCommandResultListener(TerminalSessionMapper mapper,
+                                         ProcessingAgentCommandMapper commandMapper,
+                                         TerminalRelayLifecycle lifecycle,
+                                         AgentAuditService auditService, Clock clock,
+                                         TransactionOperations requiresNew) {
+        this(mapper, commandMapper, lifecycle, auditService, clock, null, requiresNew);
     }
 
     @Autowired
@@ -47,18 +60,34 @@ public class TerminalCommandResultListener {
                                          ProcessingAgentCommandMapper commandMapper,
                                          TerminalRelayLifecycle lifecycle,
                                          AgentAuditService auditService, Clock clock,
-                                         TerminalSessionService sessionService) {
+                                         TerminalSessionService sessionService,
+                                         PlatformTransactionManager transactionManager) {
+        this(mapper, commandMapper, lifecycle, auditService, clock, sessionService,
+                requiresNew(transactionManager));
+    }
+
+    private TerminalCommandResultListener(TerminalSessionMapper mapper,
+                                          ProcessingAgentCommandMapper commandMapper,
+                                          TerminalRelayLifecycle lifecycle,
+                                          AgentAuditService auditService, Clock clock,
+                                          TerminalSessionService sessionService,
+                                          TransactionOperations requiresNew) {
         this.mapper = mapper;
         this.commandMapper = commandMapper;
         this.lifecycle = lifecycle;
         this.auditService = auditService;
         this.clock = clock;
         this.sessionService = sessionService;
+        this.requiresNew = requiresNew;
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onFinished(AgentCommandFinishedEvent event) {
+        reconcile(event);
+    }
+
+    private void reconcile(AgentCommandFinishedEvent event) {
         if (event == null || !"OPEN_ROOT_TERMINAL".equals(event.getCommandType())) {
             return;
         }
@@ -69,24 +98,21 @@ public class TerminalCommandResultListener {
         String state = event.isSuccess() ? "CLOSED" : "FAILED";
         String reason = event.isSuccess() ? "PTY_EXITED" : safeFailureCode(event.getResultCode());
         String message = event.isSuccess() ? "Terminal PTY exited" : "Terminal PTY command failed";
-        boolean closed = lifecycle.closePersistedSessionIf(row.getSessionId(), () ->
-                mapper.closeCommandSession(row.getSessionId(), event.getCommandId(), event.getAgentId(),
-                        state, reason, message, utcNow()) == 1);
-        if (closed) {
-            try {
+        lifecycle.closePersistedSessionConditionally(row.getSessionId(), () -> {
+            if (mapper.closeCommandSession(row.getSessionId(), event.getCommandId(), event.getAgentId(),
+                    state, reason, message, utcNow()) == 1) {
                 auditService.recordTerminal(
                         event.isSuccess() ? "TERMINAL_CLOSE" : "TERMINAL_PTY_FAILURE",
                         event.isSuccess() ? "SUCCESS" : "FAILURE", reason,
                         row.getRequesterUserId(), row.getAgentId(), row.getSessionId(),
                         row.getCommandId());
-            } catch (RuntimeException ignored) {
-                // The guarded session close must commit even when audit storage is unavailable.
+                return TerminalRelayLifecycle.ConditionalCloseDecision.PERSISTED;
             }
-        }
+            return currentDecision(row.getSessionId());
+        });
     }
 
     @Scheduled(fixedDelayString = "${match.terminal.command-reconcile-delay-ms:5000}")
-    @Transactional
     public void reconcileMissed() {
         if (commandMapper == null || sessionService != null
                 && !sessionService.isStartupRecoveryComplete()) {
@@ -100,10 +126,37 @@ public class TerminalCommandResultListener {
                     && !"FAILED".equals(command.getState())) {
                 continue;
             }
-            onFinished(new AgentCommandFinishedEvent(command.getCommandId(), command.getAgentId(),
-                    command.getCommandType(), "SUCCEEDED".equals(command.getState()),
-                    command.getResultCode(), command.getResultMessage()));
+            AgentCommandFinishedEvent event = new AgentCommandFinishedEvent(command.getCommandId(),
+                    command.getAgentId(), command.getCommandType(),
+                    "SUCCEEDED".equals(command.getState()), command.getResultCode(),
+                    command.getResultMessage());
+            try {
+                if (requiresNew == null) {
+                    reconcile(event);
+                } else {
+                    requiresNew.execute(status -> {
+                        reconcile(event);
+                        return null;
+                    });
+                }
+            } catch (RuntimeException ignored) {
+                // A later bounded scan retries only the candidate that remains non-terminal.
+            }
         }
+    }
+
+    private TerminalRelayLifecycle.ConditionalCloseDecision currentDecision(String sessionId) {
+        TerminalSessionRecord current = mapper.selectById(sessionId);
+        return current == null || "CLOSED".equals(current.getState())
+                || "FAILED".equals(current.getState())
+                ? TerminalRelayLifecycle.ConditionalCloseDecision.LOCAL_ONLY
+                : TerminalRelayLifecycle.ConditionalCloseDecision.KEEP_OPEN;
+    }
+
+    private static TransactionOperations requiresNew(PlatformTransactionManager manager) {
+        TransactionTemplate template = new TransactionTemplate(manager);
+        template.setPropagationBehavior(TransactionTemplate.PROPAGATION_REQUIRES_NEW);
+        return template;
     }
 
     private String safeFailureCode(String code) {

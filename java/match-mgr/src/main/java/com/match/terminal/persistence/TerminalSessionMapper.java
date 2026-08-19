@@ -159,15 +159,21 @@ public interface TerminalSessionMapper {
 
     @Select("SELECT * FROM processing_agent_terminal_session "
             + "WHERE state IN ('WAITING_AGENT', 'WAITING_BROWSER', 'ACTIVE') "
+            + "AND requested_at <= #{recoveryStartedAt} "
             + "ORDER BY requested_at, session_id LIMIT #{limit}")
-    List<TerminalSessionRecord> selectRecoverable(@Param("limit") int limit);
+    List<TerminalSessionRecord> selectRecoverable(
+            @Param("recoveryStartedAt") LocalDateTime recoveryStartedAt,
+            @Param("limit") int limit);
 
     @Update("UPDATE processing_agent_terminal_session SET state = 'FAILED', active_agent_id = NULL, "
             + "agent_ticket_digest = NULL, browser_ticket_digest = NULL, ended_at = #{now}, "
             + "end_reason = 'MANAGEMENT_RESTARTED', end_message = 'Terminal management restarted', "
             + "updated_at = #{now} WHERE session_id = #{sessionId} "
+            + "AND requested_at <= #{recoveryStartedAt} "
             + "AND state IN ('WAITING_AGENT', 'WAITING_BROWSER', 'ACTIVE')")
-    int recover(@Param("sessionId") String sessionId, @Param("now") LocalDateTime now);
+    int recover(@Param("sessionId") String sessionId,
+                @Param("recoveryStartedAt") LocalDateTime recoveryStartedAt,
+                @Param("now") LocalDateTime now);
 
     @Update("UPDATE processing_agent_terminal_session SET state = #{state}, active_agent_id = NULL, "
             + "agent_ticket_digest = NULL, browser_ticket_digest = NULL, ended_at = #{now}, "

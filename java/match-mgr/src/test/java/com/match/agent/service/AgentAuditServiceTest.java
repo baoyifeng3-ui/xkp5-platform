@@ -4,17 +4,31 @@ import com.match.agent.persistence.AgentAuditMapper;
 import com.match.agent.persistence.AgentAuditRecord;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.lang.reflect.Method;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 public class AgentAuditServiceTest {
+    @Test
+    public void terminalAuditParticipatesInAuthoritativeTransaction() throws Exception {
+        Method method = AgentAuditService.class.getMethod("recordTerminal", String.class,
+                String.class, String.class, Integer.class, String.class, String.class, String.class);
+        Transactional transactional = method.getAnnotation(Transactional.class);
+
+        assertNotNull(transactional);
+        assertEquals(Propagation.REQUIRED, transactional.propagation());
+    }
+
     @Test
     public void recordsSafeMetadataWithoutCredentials() {
         AgentAuditMapper mapper = mock(AgentAuditMapper.class);

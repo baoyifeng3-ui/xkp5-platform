@@ -4,6 +4,9 @@ import com.match.agent.service.AgentAuditService;
 import com.match.terminal.persistence.TerminalSessionMapper;
 import com.match.terminal.persistence.TerminalSessionRecord;
 import org.junit.Test;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -13,6 +16,7 @@ import java.util.Arrays;
 import java.util.Collections;
 
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -23,6 +27,45 @@ import static org.mockito.Mockito.when;
 
 public class TerminalSessionExpiryTest {
     private static final Instant NOW = Instant.parse("2026-08-19T12:00:00Z");
+
+    @Test
+    public void expiryUpdateAndAuditShareOnePerRowTransaction() {
+        TerminalSessionMapper mapper = mock(TerminalSessionMapper.class);
+        TerminalRelayLifecycle lifecycle = mock(TerminalRelayLifecycle.class);
+        AgentAuditService audit = mock(AgentAuditService.class);
+        TerminalSessionRecord row = row("s1", "ACTIVE");
+        row.setAbsoluteExpiresAt(utc(NOW));
+        when(mapper.selectExpired(utc(NOW.minusSeconds(600)), utc(NOW), 100))
+                .thenReturn(Collections.singletonList(row));
+        when(mapper.closeExpired(eq("s1"), any(), any(), eq("CLOSED"),
+                eq("ABSOLUTE_EXPIRED"), any())).thenReturn(1);
+        when(lifecycle.closePersistedSessionConditionally(eq("s1"), any()))
+                .thenAnswer(TerminalSessionExpiryTest::runConditional);
+        int[] transactionCalls = {0};
+        boolean[] inTransaction = {false};
+        TransactionOperations transactions = new TransactionOperations() {
+            @Override
+            public <T> T execute(TransactionCallback<T> action) {
+                transactionCalls[0]++;
+                inTransaction[0] = true;
+                try {
+                    return action.doInTransaction(mock(TransactionStatus.class));
+                } finally {
+                    inTransaction[0] = false;
+                }
+            }
+        };
+        org.mockito.Mockito.doAnswer(invocation -> {
+            assertTrue(inTransaction[0]);
+            return null;
+        }).when(audit).recordTerminal(eq("TERMINAL_TIMEOUT"), eq("SUCCESS"),
+                eq("ABSOLUTE_EXPIRED"), any(), any(String.class), eq("s1"), any(String.class));
+
+        new TerminalSessionExpiry(mapper, lifecycle, audit,
+                Clock.fixed(NOW, ZoneOffset.UTC), null, transactions).expire();
+
+        assertEquals(1, transactionCalls[0]);
+    }
 
     @Test
     public void expiresAtInclusiveBoundariesWithStablePrecedenceAndBatchLimit() {
@@ -43,11 +86,8 @@ public class TerminalSessionExpiryTest {
         idle.setAbsoluteExpiresAt(utc(NOW.plusSeconds(1)));
         when(mapper.selectExpired(utc(NOW.minusSeconds(600)), utc(NOW), 100))
                 .thenReturn(Arrays.asList(absolute, agent, browser, idle));
-        when(lifecycle.closePersistedSessionIf(any(String.class), any()))
-                .thenAnswer(invocation -> {
-                    java.util.function.BooleanSupplier action = invocation.getArgument(1);
-                    return action.getAsBoolean();
-                });
+        when(lifecycle.closePersistedSessionConditionally(any(String.class), any()))
+                .thenAnswer(TerminalSessionExpiryTest::runConditional);
         when(mapper.closeExpired(eq("s1"), any(), any(), eq("CLOSED"),
                 eq("ABSOLUTE_EXPIRED"), any())).thenReturn(1);
         when(mapper.closeExpired(eq("s2"), any(), any(), eq("FAILED"),
@@ -78,20 +118,20 @@ public class TerminalSessionExpiryTest {
         AgentAuditService audit = mock(AgentAuditService.class);
         TerminalSessionService sessions = mock(TerminalSessionService.class);
         TerminalSessionRecord row = row("s1", "ACTIVE");
-        when(mapper.selectRecoverable(100)).thenReturn(Collections.singletonList(row),
+        when(mapper.selectRecoverable(utc(NOW), 100)).thenReturn(Collections.singletonList(row),
                 Collections.emptyList());
-        when(mapper.recover("s1", utc(NOW))).thenReturn(1);
+        when(mapper.recover("s1", utc(NOW), utc(NOW))).thenReturn(1);
         TerminalSessionExpiry expiry = new TerminalSessionExpiry(mapper, lifecycle, audit,
                 Clock.fixed(NOW, ZoneOffset.UTC), sessions);
-        when(lifecycle.closePersistedSessionIf(eq("s1"), any())).thenAnswer(invocation -> {
+        when(lifecycle.closePersistedSessionConditionally(eq("s1"), any())).thenAnswer(invocation -> {
             verify(sessions, never()).completeStartupRecovery();
-            return ((java.util.function.BooleanSupplier) invocation.getArgument(1)).getAsBoolean();
+            return runConditional(invocation);
         });
 
         expiry.recoverOnStartup();
 
-        verify(mapper, org.mockito.Mockito.times(2)).selectRecoverable(100);
-        verify(mapper).recover("s1", utc(NOW));
+        verify(mapper, org.mockito.Mockito.times(2)).selectRecoverable(utc(NOW), 100);
+        verify(mapper).recover("s1", utc(NOW), utc(NOW));
         verify(sessions).completeStartupRecovery();
     }
 
@@ -99,7 +139,7 @@ public class TerminalSessionExpiryTest {
     public void startupRecoveryFailureLeavesGateClosed() {
         TerminalSessionMapper mapper = mock(TerminalSessionMapper.class);
         TerminalSessionService sessions = mock(TerminalSessionService.class);
-        when(mapper.selectRecoverable(100)).thenThrow(new IllegalStateException("db"));
+        when(mapper.selectRecoverable(utc(NOW), 100)).thenThrow(new IllegalStateException("db"));
         TerminalSessionExpiry expiry = new TerminalSessionExpiry(mapper,
                 mock(TerminalRelayLifecycle.class), mock(AgentAuditService.class),
                 Clock.fixed(NOW, ZoneOffset.UTC), sessions);
@@ -118,10 +158,11 @@ public class TerminalSessionExpiryTest {
         TerminalSessionMapper mapper = mock(TerminalSessionMapper.class);
         TerminalSessionService sessions = mock(TerminalSessionService.class);
         TerminalSessionRecord row = row("s1", "ACTIVE");
-        when(mapper.selectRecoverable(100)).thenReturn(Collections.singletonList(row),
+        when(mapper.selectRecoverable(utc(NOW), 100)).thenReturn(Collections.singletonList(row),
                 Collections.emptyList());
         TerminalRelayLifecycle lifecycle = mock(TerminalRelayLifecycle.class);
-        when(lifecycle.closePersistedSessionIf(eq("s1"), any())).thenReturn(false);
+        when(lifecycle.closePersistedSessionConditionally(eq("s1"), any()))
+                .thenReturn(TerminalRelayLifecycle.ConditionalCloseResult.LOCAL_ONLY);
 
         new TerminalSessionExpiry(mapper, lifecycle, mock(AgentAuditService.class),
                 Clock.fixed(NOW, ZoneOffset.UTC), sessions).recoverOnStartup();
@@ -130,17 +171,87 @@ public class TerminalSessionExpiryTest {
     }
 
     @Test
+    public void recoveryContinuesAfterRemoteWinnerClearsEntireSelectedBatch() {
+        TerminalSessionMapper mapper = mock(TerminalSessionMapper.class);
+        TerminalSessionService sessions = mock(TerminalSessionService.class);
+        TerminalSessionRecord remoteWinner = row("s1", "ACTIVE");
+        TerminalSessionRecord nextBatch = row("s2", "ACTIVE");
+        when(mapper.selectRecoverable(utc(NOW), 100)).thenReturn(
+                Collections.singletonList(remoteWinner), Collections.singletonList(nextBatch),
+                Collections.singletonList(nextBatch), Collections.emptyList());
+        when(mapper.recover("s2", utc(NOW), utc(NOW))).thenReturn(1);
+        TerminalRelayLifecycle lifecycle = mock(TerminalRelayLifecycle.class);
+        when(lifecycle.closePersistedSessionConditionally(eq("s1"), any()))
+                .thenReturn(TerminalRelayLifecycle.ConditionalCloseResult.LOCAL_ONLY);
+        when(lifecycle.closePersistedSessionConditionally(eq("s2"), any()))
+                .thenAnswer(TerminalSessionExpiryTest::runConditional);
+
+        new TerminalSessionExpiry(mapper, lifecycle, mock(AgentAuditService.class),
+                Clock.fixed(NOW, ZoneOffset.UTC), sessions).recoverOnStartup();
+
+        verify(mapper).recover("s2", utc(NOW), utc(NOW));
+        verify(sessions).completeStartupRecovery();
+    }
+
+    @Test
+    public void recoveryFailsClosedWhenSelectedRowsRemainEligibleWithoutProgress() {
+        TerminalSessionMapper mapper = mock(TerminalSessionMapper.class);
+        TerminalSessionService sessions = mock(TerminalSessionService.class);
+        TerminalSessionRecord stuck = row("s1", "ACTIVE");
+        when(mapper.selectRecoverable(utc(NOW), 100)).thenReturn(
+                Collections.singletonList(stuck), Collections.singletonList(stuck));
+        TerminalRelayLifecycle lifecycle = mock(TerminalRelayLifecycle.class);
+        when(lifecycle.closePersistedSessionConditionally(eq("s1"), any()))
+                .thenReturn(TerminalRelayLifecycle.ConditionalCloseResult.KEPT_OPEN);
+
+        boolean failed = false;
+        try {
+            new TerminalSessionExpiry(mapper, lifecycle, mock(AgentAuditService.class),
+                    Clock.fixed(NOW, ZoneOffset.UTC), sessions).recoverOnStartup();
+        } catch (IllegalStateException expected) {
+            failed = true;
+        }
+
+        assertTrue(failed);
+        verify(sessions, never()).completeStartupRecovery();
+    }
+
+    @Test
+    public void recoveryDoesNotTrustLocalOnlyWhenDatabaseRowIsStillEligible() {
+        TerminalSessionMapper mapper = mock(TerminalSessionMapper.class);
+        TerminalSessionService sessions = mock(TerminalSessionService.class);
+        TerminalSessionRecord stuck = row("s1", "ACTIVE");
+        when(mapper.selectRecoverable(utc(NOW), 100)).thenReturn(
+                Collections.singletonList(stuck), Collections.singletonList(stuck));
+        when(mapper.selectById("s1")).thenReturn(stuck);
+        TerminalRelayLifecycle lifecycle = mock(TerminalRelayLifecycle.class);
+        when(lifecycle.closePersistedSessionConditionally(eq("s1"), any()))
+                .thenReturn(TerminalRelayLifecycle.ConditionalCloseResult.LOCAL_ONLY);
+
+        boolean failed = false;
+        try {
+            new TerminalSessionExpiry(mapper, lifecycle, mock(AgentAuditService.class),
+                    Clock.fixed(NOW, ZoneOffset.UTC), sessions).recoverOnStartup();
+        } catch (IllegalStateException expected) {
+            failed = true;
+        }
+
+        assertTrue(failed);
+        verify(sessions, never()).completeStartupRecovery();
+    }
+
+    @Test
     public void recoveryAuditFailureDoesNotStrandStartupGate() {
         TerminalSessionMapper mapper = mock(TerminalSessionMapper.class);
         TerminalSessionService sessions = mock(TerminalSessionService.class);
         AgentAuditService audit = mock(AgentAuditService.class);
         TerminalSessionRecord row = row("s1", "ACTIVE");
-        when(mapper.selectRecoverable(100)).thenReturn(Collections.singletonList(row),
+        when(mapper.selectRecoverable(utc(NOW), 100)).thenReturn(Collections.singletonList(row),
                 Collections.emptyList());
-        when(mapper.recover("s1", utc(NOW))).thenReturn(1);
+        when(mapper.recover("s1", utc(NOW), utc(NOW))).thenReturn(1);
         TerminalRelayLifecycle lifecycle = mock(TerminalRelayLifecycle.class);
-        when(lifecycle.closePersistedSessionIf(eq("s1"), any())).thenAnswer(invocation ->
-                ((java.util.function.BooleanSupplier) invocation.getArgument(1)).getAsBoolean());
+        when(lifecycle.closePersistedSessionConditionally(eq("s1"), any()))
+                .thenAnswer(TerminalSessionExpiryTest::runConditional);
         org.mockito.Mockito.doThrow(new IllegalStateException("audit unavailable")).when(audit)
                 .recordTerminal(eq("TERMINAL_RECOVERY"), any(String.class), any(String.class),
                         any(), any(String.class), any(String.class), any(String.class));
@@ -176,5 +287,18 @@ public class TerminalSessionExpiryTest {
 
     private static LocalDateTime utc(Instant value) {
         return LocalDateTime.ofInstant(value, ZoneOffset.UTC);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static TerminalRelayLifecycle.ConditionalCloseResult runConditional(
+            org.mockito.invocation.InvocationOnMock invocation) {
+        java.util.function.Supplier<TerminalRelayLifecycle.ConditionalCloseDecision> action =
+                invocation.getArgument(1);
+        TerminalRelayLifecycle.ConditionalCloseDecision decision = action.get();
+        return decision == TerminalRelayLifecycle.ConditionalCloseDecision.PERSISTED
+                ? TerminalRelayLifecycle.ConditionalCloseResult.PERSISTED
+                : decision == TerminalRelayLifecycle.ConditionalCloseDecision.LOCAL_ONLY
+                ? TerminalRelayLifecycle.ConditionalCloseResult.LOCAL_ONLY
+                : TerminalRelayLifecycle.ConditionalCloseResult.KEPT_OPEN;
     }
 }

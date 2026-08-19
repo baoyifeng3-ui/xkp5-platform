@@ -1,6 +1,7 @@
 package com.match.terminal.relay;
 
 import com.match.terminal.service.TerminalSessionService;
+import com.match.terminal.service.TerminalRelayLifecycle;
 import org.junit.Test;
 import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
@@ -30,6 +31,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -953,6 +955,127 @@ public class TerminalRelayCoordinatorTest {
         verify(fixture.sessions).recordRelayTraffic(SESSION_ID, 1L, 0L);
     }
 
+    @Test
+    public void absoluteExpiryClosesWithOneUnflushedByteWhenTrafficTimestampIsRejected() {
+        Fixture fixture = new Fixture();
+        TerminalPeer browser = fixture.peer(TerminalPeer.Role.BROWSER);
+        TerminalPeer agent = fixture.peer(TerminalPeer.Role.AGENT);
+        fixture.pair(browser, agent);
+        when(fixture.sessions.recordRelayTraffic(SESSION_ID, 1L, 0L)).thenReturn(false);
+        fixture.coordinator.onBinary(browser, ByteBuffer.wrap(new byte[]{7}));
+
+        assertEquals(TerminalRelayLifecycle.ConditionalCloseResult.PERSISTED,
+                fixture.coordinator.closePersistedSessionConditionally(SESSION_ID,
+                        () -> TerminalRelayLifecycle.ConditionalCloseDecision.PERSISTED));
+
+        assertEquals(0, fixture.coordinator.relayCount());
+        verify(fixture.sessions).recordRelayTraffic(SESSION_ID, 1L, 0L);
+    }
+
+    @Test
+    public void lostCasAgainstTerminalRowClosesLocalPeersWithoutPersistenceReplay() throws Exception {
+        Fixture fixture = new Fixture();
+        TerminalPeer browser = fixture.peer(TerminalPeer.Role.BROWSER);
+        TerminalPeer agent = fixture.peer(TerminalPeer.Role.AGENT);
+        fixture.pair(browser, agent);
+
+        assertEquals(TerminalRelayLifecycle.ConditionalCloseResult.LOCAL_ONLY,
+                fixture.coordinator.closePersistedSessionConditionally(SESSION_ID,
+                        () -> TerminalRelayLifecycle.ConditionalCloseDecision.LOCAL_ONLY));
+
+        assertEquals(0, fixture.coordinator.relayCount());
+        verify(browser.session()).close(any(CloseStatus.class));
+        verify(agent.session()).close(any(CloseStatus.class));
+        verify(fixture.sessions, never()).finishRelay(any(String.class), anyBoolean(), any(String.class));
+    }
+
+    @Test
+    public void conditionalPersistenceFailureClosesLocalPeersFailClosed() throws Exception {
+        Fixture fixture = new Fixture();
+        TerminalPeer browser = fixture.peer(TerminalPeer.Role.BROWSER);
+        TerminalPeer agent = fixture.peer(TerminalPeer.Role.AGENT);
+        fixture.pair(browser, agent);
+
+        boolean failed = false;
+        try {
+            fixture.coordinator.closePersistedSessionConditionally(SESSION_ID, () -> {
+                throw new IllegalStateException("audit unavailable");
+            });
+        } catch (IllegalStateException expected) {
+            failed = true;
+        }
+
+        assertTrue(failed);
+        assertEquals(0, fixture.coordinator.relayCount());
+        verify(browser.session()).close(any(CloseStatus.class));
+        verify(agent.session()).close(any(CloseStatus.class));
+    }
+
+    @Test
+    public void locallyClosedRelayWithPendingPersistenceIsNotReportedAsRemoteTerminal() {
+        Fixture fixture = new Fixture();
+        TerminalPeer browser = fixture.peer(TerminalPeer.Role.BROWSER);
+        assertTrue(fixture.coordinator.attach(SESSION_ID, browser));
+        doThrow(new IllegalStateException("db unavailable")).when(fixture.sessions)
+                .finishRelay(SESSION_ID, false, "PEER_DISCONNECTED");
+        fixture.coordinator.detach(browser,
+                TerminalRelayCoordinator.CloseReason.PEER_DISCONNECTED);
+        AtomicBoolean invoked = new AtomicBoolean();
+
+        assertEquals(TerminalRelayLifecycle.ConditionalCloseResult.KEPT_OPEN,
+                fixture.coordinator.closePersistedSessionConditionally(SESSION_ID, () -> {
+                    invoked.set(true);
+                    return TerminalRelayLifecycle.ConditionalCloseDecision.PERSISTED;
+                }));
+
+        assertFalse(invoked.get());
+        assertEquals(1, fixture.coordinator.relayCount());
+    }
+
+    @Test
+    public void maintenanceClosesRelayTerminalizedByAnotherManager() throws Exception {
+        TerminalSessionService sessions = mock(TerminalSessionService.class);
+        allowAttachments(sessions);
+        AtomicLong ticker = new AtomicLong();
+        AtomicReference<Runnable> periodic = new AtomicReference<>();
+        TerminalRelayCoordinator coordinator = new TerminalRelayCoordinator(
+                sessions, Runnable::run, ticker::get, periodic::set);
+        TerminalPeer browser = peer(TerminalPeer.Role.BROWSER);
+        TerminalPeer agent = peer(TerminalPeer.Role.AGENT);
+        when(sessions.markRelayActive(SESSION_ID)).thenReturn(true);
+        assertTrue(coordinator.attach(SESSION_ID, browser));
+        assertTrue(coordinator.attach(SESSION_ID, agent));
+        when(sessions.isRelayStillOpen(SESSION_ID)).thenReturn(false);
+
+        ticker.set(TimeUnit.SECONDS.toNanos(5));
+        periodic.get().run();
+
+        assertEquals(0, coordinator.relayCount());
+        verify(browser.session()).close(any(CloseStatus.class));
+        verify(agent.session()).close(any(CloseStatus.class));
+        verify(sessions, never()).finishRelay(any(String.class), anyBoolean(), any(String.class));
+    }
+
+    @Test
+    public void eligibilityReconciliationWaitsForIntervalFromCoordinatorStartup() {
+        TerminalSessionService sessions = mock(TerminalSessionService.class);
+        allowAttachments(sessions);
+        AtomicLong ticker = new AtomicLong(TimeUnit.HOURS.toNanos(20));
+        AtomicReference<Runnable> periodic = new AtomicReference<>();
+        TerminalRelayCoordinator coordinator = new TerminalRelayCoordinator(
+                sessions, Runnable::run, ticker::get, periodic::set);
+        TerminalPeer browser = peer(TerminalPeer.Role.BROWSER);
+        assertTrue(coordinator.attach(SESSION_ID, browser));
+
+        ticker.addAndGet(TimeUnit.SECONDS.toNanos(4));
+        periodic.get().run();
+        verify(sessions, never()).isRelayStillOpen(any(String.class));
+
+        ticker.addAndGet(TimeUnit.SECONDS.toNanos(1));
+        periodic.get().run();
+        verify(sessions).isRelayStillOpen(SESSION_ID);
+    }
+
     private TerminalPeer peer(TerminalPeer.Role role) {
         WebSocketSession socket = mock(WebSocketSession.class);
         when(socket.isOpen()).thenReturn(true);
@@ -962,6 +1085,7 @@ public class TerminalRelayCoordinatorTest {
     private static void allowAttachments(TerminalSessionService sessions) {
         when(sessions.isRelayAttachmentEligible(any(String.class), any(String.class),
                 org.mockito.ArgumentMatchers.nullable(String.class))).thenReturn(true);
+        when(sessions.isRelayStillOpen(any(String.class))).thenReturn(true);
     }
 
     private static final class Fixture {

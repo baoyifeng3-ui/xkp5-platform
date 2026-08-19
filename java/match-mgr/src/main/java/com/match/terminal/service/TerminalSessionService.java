@@ -32,6 +32,7 @@ import java.util.Base64;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 
 @Service
 public class TerminalSessionService {
@@ -88,6 +89,16 @@ public class TerminalSessionService {
                 TerminalRelayLifecycle lifecycle = relayLifecycles.getIfAvailable();
                 return lifecycle == null ? persistenceClose.getAsBoolean()
                         : lifecycle.closePersistedSessionIf(sessionId, persistenceClose);
+            }
+
+            @Override
+            public ConditionalCloseResult closePersistedSessionConditionally(String sessionId,
+                    Supplier<ConditionalCloseDecision> persistenceClose) {
+                TerminalRelayLifecycle lifecycle = relayLifecycles.getIfAvailable();
+                return lifecycle == null
+                        ? TerminalRelayLifecycle.super.closePersistedSessionConditionally(
+                                sessionId, persistenceClose)
+                        : lifecycle.closePersistedSessionConditionally(sessionId, persistenceClose);
             }
         };
     }
@@ -146,6 +157,9 @@ public class TerminalSessionService {
     @Transactional
     public TerminalTicketView issueAgentTicket(ProcessingAgentRecord agent, String sessionId,
                                                 String commandId, String leaseToken) {
+        if (!startupRecoveryComplete.get()) {
+            throw ticketUnavailable();
+        }
         TerminalSessionRecord record = sessionMapper.selectById(sessionId);
         if (record == null || agent == null || !agent.getAgentId().equals(record.getAgentId())
                 || !agent.getAgentId().equals(record.getActiveAgentId())
@@ -166,6 +180,7 @@ public class TerminalSessionService {
         return ticket;
     }
 
+    @Transactional
     public boolean consumeAgentTicket(ProcessingAgentRecord agent, String sessionId, String ticket) {
         if (!startupRecoveryComplete.get()) {
             return false;
@@ -213,8 +228,12 @@ public class TerminalSessionService {
                 && record.getAgentConnectedAt() != null;
     }
 
+    @Transactional
     public TerminalTicketView issueBrowserTicket(String sessionId, User actor) {
         requireSuperAdmin(actor);
+        if (!startupRecoveryComplete.get()) {
+            throw ticketUnavailable();
+        }
         TerminalSessionRecord record = requireSession(sessionId);
         if (!"WAITING_BROWSER".equals(record.getState()) || record.getAgentConnectedAt() == null
                 || record.getBrowserTicketConsumedAt() != null
@@ -233,6 +252,7 @@ public class TerminalSessionService {
         return ticket;
     }
 
+    @Transactional
     public boolean consumeBrowserTicket(String sessionId, String ticket) {
         if (!startupRecoveryComplete.get() || sessionId == null || ticket == null) {
             return false;
@@ -257,6 +277,7 @@ public class TerminalSessionService {
         return consumed;
     }
 
+    @Transactional
     public boolean markRelayActive(String sessionId) {
         boolean active = sessionId != null
                 && sessionMapper.markActive(sessionId, utc(clock.instant())) == 1;
@@ -276,6 +297,12 @@ public class TerminalSessionService {
                 utc(clock.instant())) == 1;
     }
 
+    public boolean isRelayStillOpen(String sessionId) {
+        TerminalSessionRecord record = sessionId == null ? null : sessionMapper.selectById(sessionId);
+        return record != null && !isTerminal(record.getState());
+    }
+
+    @Transactional
     public void finishRelay(String sessionId, boolean operatorClosed, String reason) {
         String state = operatorClosed ? "CLOSED" : "FAILED";
         String stableReason = operatorClosed ? "OPERATOR_CLOSED" : stableRelayFailure(reason);
@@ -296,6 +323,7 @@ public class TerminalSessionService {
         return "RELAY_FAILURE";
     }
 
+    @Transactional
     public void close(String sessionId, User actor) {
         requireSuperAdmin(actor);
         TerminalSessionRecord record = requireSession(sessionId);
@@ -320,6 +348,11 @@ public class TerminalSessionService {
     @Transactional
     public TerminalSessionView create(String agentId, User actor, String confirmation) {
         requireSuperAdmin(actor);
+        if (!startupRecoveryComplete.get()) {
+            throw new TerminalSessionException("TERMINAL_STARTUP_RECOVERY",
+                    "Terminal management startup recovery is in progress",
+                    HttpStatus.SERVICE_UNAVAILABLE);
+        }
         if (!CONFIRMATION.equals(confirmation)) {
             throw error("TERMINAL_CONFIRMATION_REQUIRED",
                     "Exact root terminal confirmation is required");
@@ -448,12 +481,8 @@ public class TerminalSessionService {
         if (auditService == null || record == null) {
             return;
         }
-        try {
-            auditService.recordTerminal(action, result, reason, record.getRequesterUserId(),
-                    record.getAgentId(), record.getSessionId(), record.getCommandId());
-        } catch (RuntimeException ignored) {
-            // Terminal transition remains authoritative; audit must not retain a root socket.
-        }
+        auditService.recordTerminal(action, result, reason, record.getRequesterUserId(),
+                record.getAgentId(), record.getSessionId(), record.getCommandId());
     }
 
     private String digest(String ticket) {

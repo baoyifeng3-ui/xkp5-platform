@@ -21,6 +21,10 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.LongSupplier;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 
 public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
     @FunctionalInterface
@@ -51,6 +55,8 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
     private static final long TRAFFIC_FLUSH_NANOS = 1_000_000_000L;
     private static final long CLOSE_RETRY_INITIAL_NANOS = 1_000_000_000L;
     private static final long CLOSE_RETRY_MAX_NANOS = 30_000_000_000L;
+    private static final long ELIGIBILITY_RECONCILE_NANOS = 5_000_000_000L;
+    private static final int ELIGIBILITY_RECONCILE_BATCH = 100;
     private static final long RATE_BYTES_PER_SECOND = 2L * 1024 * 1024;
     private static final long RATE_BURST_BYTES = 8L * 1024 * 1024;
     private static final ObjectMapper CONTROL_JSON = new ObjectMapper()
@@ -64,6 +70,8 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
     private final Object overflowCloseExecutionLock = new Object();
     private String overflowSessionId;
     private PendingClose overflowPendingClose;
+    private long lastEligibilityReconcileNanos;
+    private String eligibilityReconcileCursor;
 
     public TerminalRelayCoordinator(TerminalSessionService sessions, Executor writerExecutor,
                                     LongSupplier ticker) {
@@ -75,6 +83,7 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
         this.sessions = sessions;
         this.writerExecutor = writerExecutor;
         this.ticker = ticker;
+        this.lastEligibilityReconcileNanos = ticker.getAsLong();
         scheduler.schedule(this::flushDueTraffic);
     }
 
@@ -339,40 +348,74 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
 
     @Override
     public boolean closePersistedSessionIf(String sessionId, BooleanSupplier persistenceClose) {
+        return closePersistedSessionConditionally(sessionId, () -> persistenceClose.getAsBoolean()
+                ? ConditionalCloseDecision.PERSISTED : ConditionalCloseDecision.KEEP_OPEN)
+                == ConditionalCloseResult.PERSISTED;
+    }
+
+    @Override
+    public ConditionalCloseResult closePersistedSessionConditionally(
+            String sessionId, Supplier<ConditionalCloseDecision> persistenceClose) {
         Relay relay = relays.get(sessionId);
         if (relay == null) {
-            return persistenceClose.getAsBoolean();
+            return result(persistenceClose.get());
         }
         synchronized (relay.closeExecutionLock) {
             boolean wasActive;
             TrafficBatch traffic;
             synchronized (relay) {
                 if (relay.closed.get()) {
-                    return false;
+                    return ConditionalCloseResult.KEPT_OPEN;
                 }
                 wasActive = relay.active;
                 traffic = gateRelayClosed(relay);
             }
             TrafficPersistence trafficResult = persistTraffic(traffic);
-            boolean closed = trafficResult == TrafficPersistence.SUCCESS
-                    && persistenceClose.getAsBoolean();
-            if (!closed) {
-                synchronized (relay) {
-                    relay.closed.set(false);
-                    relay.active = wasActive;
-                    if (traffic != null && trafficResult == TrafficPersistence.SUCCESS) {
-                        relay.browserToAgentAcknowledged = traffic.browserBytes;
-                        relay.agentToBrowserAcknowledged = traffic.agentBytes;
-                    }
-                }
-                return false;
+            if (trafficResult == TrafficPersistence.RETRY) {
+                restoreRelay(relay, wasActive, traffic, false);
+                return ConditionalCloseResult.KEPT_OPEN;
             }
-            closePeer(relay.browser, CloseReason.SESSION_REJECTED);
-            closePeer(relay.agent, CloseReason.SESSION_REJECTED);
-            synchronized (lifecycleLock) {
-                relays.remove(sessionId, relay);
+            ConditionalCloseDecision decision;
+            try {
+                decision = persistenceClose.get();
+            } catch (RuntimeException exception) {
+                terminateLocalRelay(sessionId, relay);
+                throw exception;
             }
-            return true;
+            if (decision == ConditionalCloseDecision.KEEP_OPEN) {
+                restoreRelay(relay, wasActive, traffic,
+                        trafficResult == TrafficPersistence.SUCCESS);
+                return ConditionalCloseResult.KEPT_OPEN;
+            }
+            terminateLocalRelay(sessionId, relay);
+            return result(decision);
+        }
+    }
+
+    private void restoreRelay(Relay relay, boolean wasActive, TrafficBatch traffic,
+                              boolean trafficPersisted) {
+        synchronized (relay) {
+            relay.closed.set(false);
+            relay.active = wasActive;
+            if (traffic != null && trafficPersisted) {
+                relay.browserToAgentAcknowledged = traffic.browserBytes;
+                relay.agentToBrowserAcknowledged = traffic.agentBytes;
+            }
+        }
+    }
+
+    private ConditionalCloseResult result(ConditionalCloseDecision decision) {
+        return decision == ConditionalCloseDecision.PERSISTED
+                ? ConditionalCloseResult.PERSISTED
+                : decision == ConditionalCloseDecision.LOCAL_ONLY
+                ? ConditionalCloseResult.LOCAL_ONLY : ConditionalCloseResult.KEPT_OPEN;
+    }
+
+    private void terminateLocalRelay(String sessionId, Relay relay) {
+        closePeer(relay.browser, CloseReason.SESSION_REJECTED);
+        closePeer(relay.agent, CloseReason.SESSION_REJECTED);
+        synchronized (lifecycleLock) {
+            removeRelayAndMigrateUnderLock(sessionId, relay);
         }
     }
 
@@ -496,6 +539,57 @@ public class TerminalRelayCoordinator implements TerminalRelayLifecycle {
                 retries++;
                 attemptPendingClose(relay, false);
             }
+        }
+        reconcileLocalEligibility(now);
+    }
+
+    private void reconcileLocalEligibility(long now) {
+        if (now - lastEligibilityReconcileNanos < ELIGIBILITY_RECONCILE_NANOS) {
+            return;
+        }
+        lastEligibilityReconcileNanos = now;
+        List<Relay> candidates = new ArrayList<>();
+        for (Relay relay : relays.values()) {
+            if (!relay.closed.get()) {
+                candidates.add(relay);
+            }
+        }
+        candidates.sort(Comparator.comparing(value -> value.sessionId));
+        if (candidates.isEmpty()) {
+            eligibilityReconcileCursor = null;
+            return;
+        }
+        int start = 0;
+        if (eligibilityReconcileCursor != null) {
+            while (start < candidates.size()
+                    && candidates.get(start).sessionId.compareTo(eligibilityReconcileCursor) <= 0) {
+                start++;
+            }
+            if (start == candidates.size()) {
+                start = 0;
+            }
+        }
+        int count = Math.min(ELIGIBILITY_RECONCILE_BATCH, candidates.size());
+        for (int index = 0; index < count; index++) {
+            Relay relay = candidates.get((start + index) % candidates.size());
+            eligibilityReconcileCursor = relay.sessionId;
+            boolean open;
+            try {
+                open = sessions.isRelayStillOpen(relay.sessionId);
+            } catch (RuntimeException exception) {
+                continue;
+            }
+            if (!open) {
+                synchronized (relay.closeExecutionLock) {
+                    if (!relay.closed.get()) {
+                        gateRelayClosed(relay);
+                        terminateLocalRelay(relay.sessionId, relay);
+                    }
+                }
+            }
+        }
+        if (candidates.size() <= ELIGIBILITY_RECONCILE_BATCH) {
+            eligibilityReconcileCursor = null;
         }
     }
 

@@ -51,7 +51,7 @@ public class AgentAuditService {
         insert(action, "FAILURE", safeReason, actorUserId, agentId, null, commandId);
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public void recordTerminal(String action, String result, String reasonCode,
                                Integer actorUserId, String agentId, String sessionId,
                                String commandId) {

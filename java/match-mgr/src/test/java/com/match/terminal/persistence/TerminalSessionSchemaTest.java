@@ -219,15 +219,17 @@ public class TerminalSessionSchemaTest {
     @Test
     public void recoveryAndCommandReconciliationAreGuardedAndReleaseSecrets() {
         Class<?> mapper = load("com.match.terminal.persistence.TerminalSessionMapper");
-        String recoverable = sql(assertMethod(mapper, "selectRecoverable", 1, Select.class));
+        String recoverable = sql(assertMethod(mapper, "selectRecoverable", 2, Select.class));
         assertContainsAll(recoverable,
                 "state IN ('WAITING_AGENT', 'WAITING_BROWSER', 'ACTIVE')",
+                "requested_at <= #{recoveryStartedAt}",
                 "ORDER BY requested_at, session_id", "LIMIT #{limit}");
 
-        String recover = sql(assertMethod(mapper, "recover", 2, Update.class));
+        String recover = sql(assertMethod(mapper, "recover", 3, Update.class));
         assertContainsAll(recover, "state = 'FAILED'", "active_agent_id = NULL",
                 "agent_ticket_digest = NULL", "browser_ticket_digest = NULL",
                 "end_reason = 'MANAGEMENT_RESTARTED'",
+                "requested_at <= #{recoveryStartedAt}",
                 "state IN ('WAITING_AGENT', 'WAITING_BROWSER', 'ACTIVE')");
 
         String command = sql(assertMethod(mapper, "closeCommandSession", 7, Update.class));
