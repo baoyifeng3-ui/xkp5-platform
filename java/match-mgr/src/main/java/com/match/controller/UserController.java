@@ -4,6 +4,7 @@ import cn.dev33.satoken.stp.SaTokenInfo;
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.match.dto.PasswordChangeRequest;
+import com.match.dashboard.service.UserActivityService;
 import com.match.entity.User;
 import com.match.security.UserRole;
 import com.match.security.PasswordCodec;
@@ -26,13 +27,16 @@ public class UserController {
     private final UserServiceImpl userService;
     private final ParticipantLoginGate participantLoginGate;
     private final PasswordCodec passwordCodec;
+    private final UserActivityService userActivityService;
 
     public UserController(UserServiceImpl userService,
                           ParticipantLoginGate participantLoginGate,
-                          PasswordCodec passwordCodec) {
+                          PasswordCodec passwordCodec,
+                          UserActivityService userActivityService) {
         this.userService = userService;
         this.participantLoginGate = participantLoginGate;
         this.passwordCodec = passwordCodec;
+        this.userActivityService = userActivityService;
     }
 
     @PostMapping("login")
@@ -60,6 +64,7 @@ public class UserController {
 
         StpUtil.login(user.getUserId());
         SaTokenInfo tokenInfo = StpUtil.getTokenInfo();
+        userActivityService.recordLogin(user.getUserId(), tokenInfo.getTokenValue(), StpUtil.getTokenTimeout());
         Map<String, Object> data = currentUserData(user);
         data.put("tokenName", tokenInfo.getTokenName());
         data.put("tokenValue", tokenInfo.getTokenValue());
@@ -97,8 +102,15 @@ public class UserController {
 
     @PostMapping("logout")
     public ResponseResult<Object> logout() {
+        userActivityService.logout(StpUtil.getTokenValue());
         StpUtil.logout();
         return Response.makeOKRsp("已退出登录");
+    }
+
+    @PostMapping("activity")
+    public ResponseResult<Object> activity() {
+        userActivityService.touch(StpUtil.getLoginIdAsInt(), StpUtil.getTokenValue(), StpUtil.getTokenTimeout());
+        return Response.makeOKRsp("ok");
     }
 
     private Map<String, Object> currentUserData(User user) {

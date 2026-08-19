@@ -5,7 +5,6 @@ import com.match.service.impl.ParticipantLoginGate;
 import com.match.service.impl.UserServiceImpl;
 import com.match.security.PasswordCodec;
 import org.junit.Test;
-
 import java.lang.reflect.Method;
 import java.util.Map;
 
@@ -14,12 +13,20 @@ import static org.mockito.Mockito.mock;
 
 public class UserControllerTest {
     @Test
+    public void constructorIncludesActivityService() throws Exception {
+        UserController.class.getConstructor(
+                UserServiceImpl.class, ParticipantLoginGate.class, PasswordCodec.class,
+                com.match.dashboard.service.UserActivityService.class);
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     public void currentUserDataIncludesCanonicalRole() throws Exception {
         UserController controller = new UserController(
                 mock(UserServiceImpl.class),
                 mock(ParticipantLoginGate.class),
-                mock(PasswordCodec.class));
+                mock(PasswordCodec.class),
+                mock(com.match.dashboard.service.UserActivityService.class));
         User user = new User();
         user.setUserId(9);
         user.setUserName("manager");
