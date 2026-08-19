@@ -1,0 +1,196 @@
+package com.match.terminal.persistence;
+
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.match.Application;
+import org.apache.ibatis.annotations.Insert;
+import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
+import org.junit.Test;
+import org.mybatis.spring.annotation.MapperScan;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
+public class TerminalSessionSchemaTest {
+    @Test
+    public void migrationDefinesTerminalSessionsWithoutTranscriptStorage() throws Exception {
+        String sql = read("/db/migration/V24__processing_agent_terminal_sessions.sql");
+
+        assertTrue(sql.contains("CREATE TABLE processing_agent_terminal_session"));
+        for (String column : new String[]{"session_id VARCHAR(36) NOT NULL",
+                "agent_id VARCHAR(36) NOT NULL", "requester_user_id INT NOT NULL",
+                "requester_role VARCHAR(32) NOT NULL", "state VARCHAR(24) NOT NULL",
+                "active_agent_id VARCHAR(36) NULL", "agent_ticket_digest CHAR(64) NULL",
+                "agent_ticket_expires_at DATETIME(3) NULL", "agent_ticket_consumed_at DATETIME(3) NULL",
+                "browser_ticket_digest CHAR(64) NULL", "browser_ticket_expires_at DATETIME(3) NULL",
+                "browser_ticket_consumed_at DATETIME(3) NULL", "command_id VARCHAR(36) NULL",
+                "requested_at DATETIME(3) NOT NULL", "agent_connected_at DATETIME(3) NULL",
+                "browser_connected_at DATETIME(3) NULL", "active_at DATETIME(3) NULL",
+                "last_io_at DATETIME(3) NULL", "absolute_expires_at DATETIME(3) NOT NULL",
+                "ended_at DATETIME(3) NULL", "end_reason VARCHAR(64) NULL",
+                "end_message VARCHAR(512) NULL", "browser_to_agent_bytes BIGINT UNSIGNED NOT NULL DEFAULT 0",
+                "agent_to_browser_bytes BIGINT UNSIGNED NOT NULL DEFAULT 0",
+                "updated_at DATETIME(3) NOT NULL"}) {
+            assertTrue("missing terminal session column " + column, sql.contains(column));
+        }
+
+        assertUniqueIndex(sql, "uk_terminal_active_agent", "active_agent_id");
+        assertIndex(sql, "idx_terminal_state_expiry", "state", "absolute_expires_at");
+        assertIndex(sql, "idx_terminal_agent_history", "agent_id", "requested_at");
+        assertFalse(sql.contains("terminal_input"));
+        assertFalse(sql.contains("terminal_output"));
+    }
+
+    @Test
+    public void recordMapsEveryTerminalSessionColumn() throws Exception {
+        Class<?> record = load("com.match.terminal.persistence.TerminalSessionRecord");
+
+        assertEquals("processing_agent_terminal_session",
+                record.getAnnotation(TableName.class).value());
+        Field id = record.getDeclaredField("sessionId");
+        assertEquals("session_id", id.getAnnotation(TableId.class).value());
+
+        Set<String> fields = new HashSet<>();
+        for (Field field : record.getDeclaredFields()) {
+            fields.add(field.getName());
+        }
+        assertTrue(fields.containsAll(Arrays.asList("sessionId", "agentId", "requesterUserId",
+                "requesterRole", "state", "activeAgentId", "agentTicketDigest",
+                "agentTicketExpiresAt", "agentTicketConsumedAt", "browserTicketDigest",
+                "browserTicketExpiresAt", "browserTicketConsumedAt", "commandId", "requestedAt",
+                "agentConnectedAt", "browserConnectedAt", "activeAt", "lastIoAt",
+                "absoluteExpiresAt", "endedAt", "endReason", "endMessage",
+                "browserToAgentBytes", "agentToBrowserBytes", "updatedAt")));
+    }
+
+    @Test
+    public void mapperExposesAtomicStateGuardedLifecycleOperations() throws Exception {
+        Class<?> mapper = load("com.match.terminal.persistence.TerminalSessionMapper");
+        assertMethod(mapper, "selectById", 1, Select.class);
+        assertMethod(mapper, "selectActiveByAgent", 1, Select.class);
+        assertMethod(mapper, "selectByCommandId", 1, Select.class);
+        assertMethod(mapper, "insert", 1, Insert.class);
+
+        String setCommand = sql(assertMethod(mapper, "setCommand", 3, Update.class));
+        assertContainsAll(setCommand, "state = 'WAITING_AGENT'", "command_id IS NULL",
+                "absolute_expires_at > #{now}");
+
+        String issueAgent = sql(assertMethod(mapper, "issueAgentTicket", 4, Update.class));
+        assertContainsAll(issueAgent, "state = 'WAITING_AGENT'", "agent_ticket_digest = #{digest}",
+                "agent_ticket_consumed_at = NULL", "absolute_expires_at > #{now}");
+
+        String consumeAgent = sql(assertMethod(mapper, "consumeAgentTicket", 3, Update.class));
+        assertContainsAll(consumeAgent, "state = 'WAITING_AGENT'", "agent_ticket_digest = #{digest}",
+                "agent_ticket_consumed_at IS NULL", "agent_ticket_expires_at > #{now}",
+                "absolute_expires_at > #{now}", "state = 'WAITING_BROWSER'");
+
+        String issueBrowser = sql(assertMethod(mapper, "issueBrowserTicket", 4, Update.class));
+        assertContainsAll(issueBrowser, "state IN ('WAITING_AGENT', 'WAITING_BROWSER')",
+                "browser_ticket_digest = #{digest}", "browser_ticket_consumed_at = NULL",
+                "absolute_expires_at > #{now}");
+
+        String consumeBrowser = sql(assertMethod(mapper, "consumeBrowserTicket", 3, Update.class));
+        assertContainsAll(consumeBrowser, "state IN ('WAITING_AGENT', 'WAITING_BROWSER')",
+                "browser_ticket_digest = #{digest}", "browser_ticket_consumed_at IS NULL",
+                "browser_ticket_expires_at > #{now}", "absolute_expires_at > #{now}");
+
+        String markActive = sql(assertMethod(mapper, "markActive", 2, Update.class));
+        assertContainsAll(markActive, "state IN ('WAITING_AGENT', 'WAITING_BROWSER')",
+                "agent_ticket_consumed_at IS NOT NULL", "browser_ticket_consumed_at IS NOT NULL",
+                "absolute_expires_at > #{now}");
+
+        String addTraffic = sql(assertMethod(mapper, "addTraffic", 4, Update.class));
+        assertContainsAll(addTraffic, "state = 'ACTIVE'", "browser_to_agent_bytes + #{browserToAgent}",
+                "agent_to_browser_bytes + #{agentToBrowser}", "absolute_expires_at > #{ioAt}");
+
+        String close = sql(assertMethod(mapper, "close", 5, Update.class));
+        assertContainsAll(close, "active_agent_id = NULL",
+                "state IN ('WAITING_AGENT', 'WAITING_BROWSER', 'ACTIVE')",
+                "#{state} IN ('CLOSED', 'FAILED', 'EXPIRED')");
+
+        String expired = sql(assertMethod(mapper, "selectExpired", 3, Select.class));
+        assertContainsAll(expired, "state IN ('WAITING_AGENT', 'WAITING_BROWSER', 'ACTIVE')",
+                "absolute_expires_at <= #{now}", "last_io_at", "#{idleBefore}",
+                "ORDER BY absolute_expires_at, requested_at, session_id", "LIMIT #{limit}");
+    }
+
+    @Test
+    public void applicationScansTerminalMappers() {
+        MapperScan mapperScan = Application.class.getAnnotation(MapperScan.class);
+
+        assertNotNull(mapperScan);
+        assertTrue(Arrays.asList(mapperScan.value()).contains("com.match.terminal.persistence"));
+    }
+
+    private Class<?> load(String name) {
+        try {
+            return Class.forName(name);
+        } catch (ClassNotFoundException exception) {
+            fail("missing class " + name);
+            return null;
+        }
+    }
+
+    private Method assertMethod(Class<?> type, String name, int parameterCount,
+                                Class<? extends java.lang.annotation.Annotation> annotation) {
+        for (Method method : type.getDeclaredMethods()) {
+            if (method.getName().equals(name) && method.getParameterCount() == parameterCount) {
+                assertNotNull("missing @" + annotation.getSimpleName() + " on " + name,
+                        method.getAnnotation(annotation));
+                return method;
+            }
+        }
+        fail("missing mapper method " + name + " with " + parameterCount + " parameters");
+        return null;
+    }
+
+    private String sql(Method method) {
+        Select select = method.getAnnotation(Select.class);
+        if (select != null) {
+            return String.join(" ", select.value());
+        }
+        Update update = method.getAnnotation(Update.class);
+        if (update != null) {
+            return String.join(" ", update.value());
+        }
+        Insert insert = method.getAnnotation(Insert.class);
+        return String.join(" ", insert.value());
+    }
+
+    private void assertContainsAll(String sql, String... fragments) {
+        for (String fragment : fragments) {
+            assertTrue("missing SQL guard " + fragment, sql.contains(fragment));
+        }
+    }
+
+    private void assertUniqueIndex(String sql, String name, String... columns) {
+        assertTrue(sql.contains("UNIQUE KEY " + name + " (" + String.join(", ", columns) + ")"));
+    }
+
+    private void assertIndex(String sql, String name, String... columns) {
+        assertTrue(sql.contains("KEY " + name + " (" + String.join(", ", columns) + ")"));
+    }
+
+    private String read(String path) throws IOException {
+        InputStream input = getClass().getResourceAsStream(path);
+        assertNotNull("missing migration " + path, input);
+        try (InputStream closeable = input) {
+            byte[] bytes = new byte[closeable.available()];
+            int count = closeable.read(bytes);
+            return new String(bytes, 0, count, StandardCharsets.UTF_8);
+        }
+    }
+}

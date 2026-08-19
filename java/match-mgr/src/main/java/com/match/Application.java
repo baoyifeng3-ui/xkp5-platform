@@ -9,7 +9,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @SpringBootApplication //springboot的全局的自动配置注解
 @EnableScheduling
 @MapperScan({"com.match.mapper", "com.match.licensing.persistence", "com.match.agent.persistence",
-        "com.match.environment.persistence", "com.match.dashboard.persistence"})
+        "com.match.environment.persistence", "com.match.dashboard.persistence",
+        "com.match.terminal.persistence"})
 public class Application {
 
     public static void main(String[] args) {
