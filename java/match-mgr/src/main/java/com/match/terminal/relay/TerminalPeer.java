@@ -59,6 +59,14 @@ public final class TerminalPeer {
     }
 
     boolean enqueue(WebSocketMessage<?> message, Executor executor, Runnable failed) {
+        if (!offer(message)) {
+            return false;
+        }
+        scheduleWriter(executor, failed);
+        return !closed.get();
+    }
+
+    boolean offer(WebSocketMessage<?> message) {
         int size = messageSize(message);
         synchronized (outbound) {
             if (closed.get() || outbound.size() >= MAX_QUEUED_MESSAGES
@@ -68,8 +76,11 @@ public final class TerminalPeer {
             outbound.addLast(new QueuedMessage(message, size));
             queuedBytes += size;
         }
+        return true;
+    }
+
+    void scheduleWriter(Executor executor, Runnable failed) {
         schedule(executor, failed);
-        return !closed.get();
     }
 
     void close(CloseStatus status) {

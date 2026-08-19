@@ -7,7 +7,6 @@ import com.match.terminal.service.TerminalSessionService;
 import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
-import org.springframework.web.socket.WebSocketMessage;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -115,32 +114,48 @@ public class TerminalRelayCoordinator {
             return;
         }
         if (!relay.active) {
+            if (!relay.bucket(source.role()).tryConsume(payload.remaining(), ticker.getAsLong())) {
+                close(relay, CloseReason.RATE_LIMITED);
+            }
             return;
         }
         int size = payload.remaining();
-        if (!relay.bucket(source.role()).tryConsume(size, ticker.getAsLong())) {
-            close(relay, CloseReason.RATE_LIMITED);
-            return;
-        }
         byte[] copy = new byte[size];
         payload.slice().get(copy);
-        if (!forward(relay, source, new BinaryMessage(copy))) {
-            close(relay, CloseReason.BACKPRESSURE);
-            return;
-        }
+        TerminalPeer scheduledPeer = null;
+        CloseReason closeReason = null;
         boolean trafficRecorded = true;
         synchronized (relay) {
-            if (source.role() == TerminalPeer.Role.BROWSER) {
-                relay.browserToAgent += size;
-            } else {
-                relay.agentToBrowser += size;
+            if (relay.closed.get() || !relay.active) {
+                return;
             }
-            if (relay.browserToAgent + relay.agentToBrowser >= TRAFFIC_FLUSH_BYTES) {
-                trafficRecorded = flushTraffic(relay, ticker.getAsLong());
+            if (!relay.bucket(source.role()).tryConsume(size, ticker.getAsLong())) {
+                closeReason = CloseReason.RATE_LIMITED;
+            } else {
+                TerminalPeer target = oppositePeer(relay, source);
+                if (target == null || !target.offer(new BinaryMessage(copy))) {
+                    closeReason = CloseReason.BACKPRESSURE;
+                } else {
+                    scheduledPeer = target;
+                    if (source.role() == TerminalPeer.Role.BROWSER) {
+                        relay.browserToAgent += size;
+                    } else {
+                        relay.agentToBrowser += size;
+                    }
+                    if (relay.browserToAgent + relay.agentToBrowser >= TRAFFIC_FLUSH_BYTES) {
+                        trafficRecorded = flushTraffic(relay, ticker.getAsLong());
+                    }
+                }
             }
         }
+        if (scheduledPeer != null) {
+            scheduledPeer.scheduleWriter(writerExecutor, () -> close(relay, CloseReason.IO_ERROR));
+        }
         if (!trafficRecorded) {
-            close(relay, CloseReason.SESSION_REJECTED);
+            closeReason = CloseReason.SESSION_REJECTED;
+        }
+        if (closeReason != null) {
+            close(relay, closeReason);
         }
     }
 
@@ -151,18 +166,31 @@ public class TerminalRelayCoordinator {
             closeIfPresent(relay, CloseReason.PROTOCOL_ERROR);
             return;
         }
-        if (!relay.active) {
-            return;
-        }
         Control control = parseControl(payload);
         if (control == null) {
             close(relay, CloseReason.PROTOCOL_ERROR);
             return;
         }
-        if (!forward(relay, source, new TextMessage(payload))) {
+        if (!relay.active) {
+            return;
+        }
+        TerminalPeer scheduledPeer;
+        synchronized (relay) {
+            if (relay.closed.get() || !relay.active) {
+                return;
+            }
+            TerminalPeer target = oppositePeer(relay, source);
+            if (target == null || !target.offer(new TextMessage(payload))) {
+                scheduledPeer = null;
+            } else {
+                scheduledPeer = target;
+            }
+        }
+        if (scheduledPeer == null) {
             close(relay, CloseReason.BACKPRESSURE);
             return;
         }
+        scheduledPeer.scheduleWriter(writerExecutor, () -> close(relay, CloseReason.IO_ERROR));
         if (control.close) {
             close(relay, CloseReason.OPERATOR_CLOSED);
         }
@@ -191,10 +219,8 @@ public class TerminalRelayCoordinator {
         return null;
     }
 
-    private boolean forward(Relay relay, TerminalPeer source, WebSocketMessage<?> message) {
-        TerminalPeer target = source.role() == TerminalPeer.Role.BROWSER ? relay.agent : relay.browser;
-        return target != null && target.enqueue(message, writerExecutor,
-                () -> close(relay, CloseReason.IO_ERROR));
+    private TerminalPeer oppositePeer(Relay relay, TerminalPeer source) {
+        return source.role() == TerminalPeer.Role.BROWSER ? relay.agent : relay.browser;
     }
 
     private void closeIfPresent(Relay relay, CloseReason reason) {
@@ -204,15 +230,15 @@ public class TerminalRelayCoordinator {
     }
 
     private void close(Relay relay, CloseReason reason) {
-        if (!relay.closed.compareAndSet(false, true)) {
-            return;
+        synchronized (relay) {
+            if (!relay.closed.compareAndSet(false, true)) {
+                return;
+            }
+            relay.active = false;
+            flushTraffic(relay, ticker.getAsLong());
         }
-        relay.active = false;
         synchronized (relays) {
             relays.remove(relay.sessionId, relay);
-        }
-        synchronized (relay) {
-            flushTraffic(relay, ticker.getAsLong());
         }
         closePeer(relay.browser, reason);
         closePeer(relay.agent, reason);

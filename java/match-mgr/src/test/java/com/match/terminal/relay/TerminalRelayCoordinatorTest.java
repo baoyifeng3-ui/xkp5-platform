@@ -290,6 +290,8 @@ public class TerminalRelayCoordinatorTest {
             assertTrue(attached.get(5, TimeUnit.SECONDS));
             coordinator.onBinary(browser, ByteBuffer.wrap(new byte[]{8}));
             verify(agent.session(), times(1)).sendMessage(any(WebSocketMessage.class));
+            coordinator.detach(browser, TerminalRelayCoordinator.CloseReason.PEER_DISCONNECTED);
+            verify(sessions).recordRelayTraffic(SESSION_ID, 1L, 0L);
         } finally {
             releaseActivation.countDown();
             attaching.shutdownNow();
@@ -312,6 +314,98 @@ public class TerminalRelayCoordinatorTest {
 
         verify(agent.session(), never()).sendMessage(any(WebSocketMessage.class));
         assertEquals(0, coordinator.relayCount());
+    }
+
+    @Test
+    public void preActivationControlsAreValidatedBeforeTheyAreDropped() {
+        Fixture fixture = new Fixture();
+        TerminalPeer browser = fixture.peer(TerminalPeer.Role.BROWSER);
+        assertTrue(fixture.coordinator.attach(SESSION_ID, browser));
+
+        fixture.coordinator.onText(browser, "{\"type\":\"ping\"}");
+        assertEquals(1, fixture.coordinator.relayCount());
+        verify(fixture.sessions, never()).recordRelayTraffic(any(String.class), anyLong(), anyLong());
+
+        fixture.coordinator.onText(browser, "{\"type\":\"ping\",\"extra\":true}");
+
+        assertEquals(0, fixture.coordinator.relayCount());
+        verify(fixture.sessions).finishRelay(SESSION_ID, false, "PROTOCOL_ERROR");
+    }
+
+    @Test
+    public void preActivationBinaryConsumesRateBudgetWithoutForwardingOrTrafficAccounting() {
+        Fixture fixture = new Fixture();
+        TerminalPeer browser = fixture.peer(TerminalPeer.Role.BROWSER);
+        assertTrue(fixture.coordinator.attach(SESSION_ID, browser));
+        byte[] frame = new byte[TerminalRelayCoordinator.MAX_BINARY_BYTES];
+
+        for (int i = 0; i < 128; i++) {
+            fixture.coordinator.onBinary(browser, ByteBuffer.wrap(frame));
+        }
+        assertEquals(1, fixture.coordinator.relayCount());
+        verify(fixture.sessions, never()).recordRelayTraffic(any(String.class), anyLong(), anyLong());
+
+        fixture.coordinator.onBinary(browser, ByteBuffer.wrap(new byte[]{1}));
+
+        assertEquals(0, fixture.coordinator.relayCount());
+        verify(fixture.sessions).finishRelay(SESSION_ID, false, "RATE_LIMITED");
+        verify(fixture.sessions, never()).recordRelayTraffic(any(String.class), anyLong(), anyLong());
+    }
+
+    @Test
+    public void preActivationOversizedBinaryClosesAsAProtocolViolation() {
+        Fixture fixture = new Fixture();
+        TerminalPeer browser = fixture.peer(TerminalPeer.Role.BROWSER);
+        assertTrue(fixture.coordinator.attach(SESSION_ID, browser));
+
+        fixture.coordinator.onBinary(browser,
+                ByteBuffer.wrap(new byte[TerminalRelayCoordinator.MAX_BINARY_BYTES + 1]));
+
+        assertEquals(0, fixture.coordinator.relayCount());
+        verify(fixture.sessions).finishRelay(SESSION_ID, false, "PROTOCOL_ERROR");
+        verify(fixture.sessions, never()).recordRelayTraffic(any(String.class), anyLong(), anyLong());
+    }
+
+    @Test
+    public void acceptedBinaryIsAccountedWhenDetachOverlapsWriterScheduling() throws Exception {
+        TerminalSessionService sessions = mock(TerminalSessionService.class);
+        CountDownLatch schedulingEntered = new CountDownLatch(1);
+        CountDownLatch releaseScheduling = new CountDownLatch(1);
+        Executor blockedScheduler = command -> {
+            schedulingEntered.countDown();
+            try {
+                assertTrue(releaseScheduling.await(5, TimeUnit.SECONDS));
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(exception);
+            }
+        };
+        TerminalRelayCoordinator coordinator = new TerminalRelayCoordinator(
+                sessions, blockedScheduler, () -> 0L);
+        TerminalPeer browser = peer(TerminalPeer.Role.BROWSER);
+        TerminalPeer agent = peer(TerminalPeer.Role.AGENT);
+        when(sessions.markRelayActive(SESSION_ID)).thenReturn(true);
+        when(sessions.recordRelayTraffic(SESSION_ID, 1L, 0L)).thenReturn(true);
+        assertTrue(coordinator.attach(SESSION_ID, browser));
+        assertTrue(coordinator.attach(SESSION_ID, agent));
+        ExecutorService caller = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> forwarding = caller.submit(
+                    () -> coordinator.onBinary(browser, ByteBuffer.wrap(new byte[]{7})));
+            assertTrue(schedulingEntered.await(5, TimeUnit.SECONDS));
+
+            coordinator.detach(agent, TerminalRelayCoordinator.CloseReason.PEER_DISCONNECTED);
+            releaseScheduling.countDown();
+            forwarding.get(5, TimeUnit.SECONDS);
+
+            verify(sessions, times(1)).recordRelayTraffic(SESSION_ID, 1L, 0L);
+            verify(sessions, times(1)).finishRelay(SESSION_ID, false, "PEER_DISCONNECTED");
+            assertEquals(0, coordinator.relayCount());
+        } finally {
+            releaseScheduling.countDown();
+            caller.shutdownNow();
+            assertTrue(caller.awaitTermination(5, TimeUnit.SECONDS));
+        }
     }
 
     @Test
