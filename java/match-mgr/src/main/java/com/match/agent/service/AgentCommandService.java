@@ -117,7 +117,8 @@ public class AgentCommandService {
         ProcessingAgentCommandRecord existing = mapper.selectActiveByDedup(agentId,
                 OPEN_ROOT_TERMINAL, dedupKey);
         if (existing != null) {
-            return toView(existing);
+            return requireMatchingTerminalCommand(existing, normalizedSessionId,
+                    agentConnectionDeadline, absoluteExpiresAt);
         }
         String payloadJson = terminalPayload(normalizedSessionId, agentConnectionDeadline,
                 absoluteExpiresAt);
@@ -147,7 +148,8 @@ public class AgentCommandService {
             ProcessingAgentCommandRecord concurrent = mapper.selectActiveByDedup(agentId,
                     OPEN_ROOT_TERMINAL, dedupKey);
             if (concurrent != null) {
-                return toView(concurrent);
+                return requireMatchingTerminalCommand(concurrent, normalizedSessionId,
+                        agentConnectionDeadline, absoluteExpiresAt);
             }
             throw collision;
         }
@@ -505,6 +507,44 @@ public class AgentCommandService {
         } catch (IOException exception) {
             throw new IllegalStateException("Terminal command payload cannot be serialized", exception);
         }
+    }
+
+    private AgentCommandView requireMatchingTerminalCommand(ProcessingAgentCommandRecord record,
+                                                             String sessionId,
+                                                             Instant connectionDeadline,
+                                                             Instant absoluteExpiresAt) {
+        try {
+            String payloadJson = record.getPayloadJson();
+            if (payloadJson == null
+                    || payloadJson.getBytes(StandardCharsets.UTF_8).length > MAX_TERMINAL_PAYLOAD_BYTES) {
+                throw terminalSessionConflict();
+            }
+            JsonNode payload = objectMapper.readTree(payloadJson);
+            if (payload == null || !payload.isObject() || payload.size() != 5
+                    || !textEquals(payload, "sessionId", sessionId)
+                    || !textEquals(payload, "relayUrl", terminalRelayBaseUrl + "/" + sessionId)
+                    || !textEquals(payload, "agentConnectionDeadline", connectionDeadline.toString())
+                    || payload.get("idleTimeoutSeconds") == null
+                    || !payload.get("idleTimeoutSeconds").isIntegralNumber()
+                    || payload.get("idleTimeoutSeconds").asInt() != 600
+                    || !textEquals(payload, "absoluteExpiresAt", absoluteExpiresAt.toString())) {
+                throw terminalSessionConflict();
+            }
+            return toView(record);
+        } catch (IOException | IllegalArgumentException invalidPayload) {
+            throw terminalSessionConflict();
+        }
+    }
+
+    private boolean textEquals(JsonNode payload, String field, String expected) {
+        JsonNode value = payload.get(field);
+        return value != null && value.isTextual() && expected.equals(value.textValue());
+    }
+
+    private AgentProtocolException terminalSessionConflict() {
+        return new AgentProtocolException("TERMINAL_COMMAND_SESSION_CONFLICT",
+                "Active terminal command belongs to another session or has an invalid payload",
+                HttpStatus.CONFLICT);
     }
 
     private static String validateTerminalRelayBaseUrl(String value, boolean insecureAllowed) {

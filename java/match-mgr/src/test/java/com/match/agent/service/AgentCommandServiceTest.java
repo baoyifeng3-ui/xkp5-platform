@@ -147,6 +147,7 @@ public class AgentCommandServiceTest {
         ProcessingAgentCommandRecord existing = command("PENDING");
         existing.setCommandType("OPEN_ROOT_TERMINAL");
         existing.setActiveDedupKey(dedupKey);
+        existing.setPayloadJson(terminalPayload(sessionId));
         when(mapper.selectActiveByDedup(agent.getAgentId(), "OPEN_ROOT_TERMINAL", dedupKey))
                 .thenReturn(null, existing);
         doThrow(new DuplicateKeyException("duplicate active command"))
@@ -156,6 +157,62 @@ public class AgentCommandServiceTest {
                 NOW.plusSeconds(90), NOW.plusSeconds(7200), 7, "SUPER_ADMIN");
 
         assertEquals(existing.getCommandId(), view.getCommandId());
+    }
+
+    @Test
+    public void sameSessionTerminalCommandIsReusedOnlyWithExactApprovedPayload() {
+        String sessionId = "44444444-4444-4444-8444-444444444444";
+        ProcessingAgentCommandRecord existing = activeTerminalCommand(sessionId,
+                terminalPayload(sessionId));
+        when(mapper.selectActiveByDedup(agent.getAgentId(), "OPEN_ROOT_TERMINAL",
+                agent.getAgentId() + ":OPEN_ROOT_TERMINAL")).thenReturn(existing);
+
+        AgentCommandView view = requestTerminal(sessionId);
+
+        assertEquals(existing.getCommandId(), view.getCommandId());
+        verify(mapper, never()).insert(any(ProcessingAgentCommandRecord.class));
+    }
+
+    @Test
+    public void activeTerminalCommandForDifferentSessionIsRejected() {
+        String requestedSession = "44444444-4444-4444-8444-444444444444";
+        String foreignSession = "55555555-5555-4555-8555-555555555555";
+        stubActiveTerminal(activeTerminalCommand(foreignSession, terminalPayload(foreignSession)));
+
+        expectTerminalSessionConflict(() -> requestTerminal(requestedSession));
+
+        verify(mapper, never()).insert(any(ProcessingAgentCommandRecord.class));
+    }
+
+    @Test
+    public void malformedOrNonSchemaTerminalPayloadIsRejected() {
+        String sessionId = "44444444-4444-4444-8444-444444444444";
+        String[] invalidPayloads = new String[]{
+                "{}",
+                "{not-json",
+                terminalPayload(sessionId).replace("}", ",\"unknownField\":true}")
+        };
+        for (String payload : invalidPayloads) {
+            org.mockito.Mockito.reset(mapper);
+            when(mapper.selectEnabledAgentForUpdate(agent.getAgentId())).thenReturn(agent.getAgentId());
+            stubActiveTerminal(activeTerminalCommand(sessionId, payload));
+            expectTerminalSessionConflict(() -> requestTerminal(sessionId));
+        }
+    }
+
+    @Test
+    public void duplicateTerminalCollisionWithForeignSessionIsRejected() {
+        String requestedSession = "44444444-4444-4444-8444-444444444444";
+        String foreignSession = "55555555-5555-4555-8555-555555555555";
+        ProcessingAgentCommandRecord foreign = activeTerminalCommand(foreignSession,
+                terminalPayload(foreignSession));
+        String dedupKey = agent.getAgentId() + ":OPEN_ROOT_TERMINAL";
+        when(mapper.selectActiveByDedup(agent.getAgentId(), "OPEN_ROOT_TERMINAL", dedupKey))
+                .thenReturn(null, foreign);
+        doThrow(new DuplicateKeyException("duplicate active command"))
+                .when(mapper).insert(any(ProcessingAgentCommandRecord.class));
+
+        expectTerminalSessionConflict(() -> requestTerminal(requestedSession));
     }
 
     @Test
@@ -452,6 +509,43 @@ public class AgentCommandServiceTest {
         record.setDeliveredAt(LocalDateTime.ofInstant(NOW.minusSeconds(1), ZoneOffset.UTC));
         record.setAttemptCount(1);
         return record;
+    }
+
+    private ProcessingAgentCommandRecord activeTerminalCommand(String sessionId, String payload) {
+        ProcessingAgentCommandRecord record = command("PENDING");
+        record.setCommandType("OPEN_ROOT_TERMINAL");
+        record.setActiveDedupKey(agent.getAgentId() + ":OPEN_ROOT_TERMINAL");
+        record.setPayloadJson(payload);
+        return record;
+    }
+
+    private void stubActiveTerminal(ProcessingAgentCommandRecord record) {
+        when(mapper.selectActiveByDedup(agent.getAgentId(), "OPEN_ROOT_TERMINAL",
+                agent.getAgentId() + ":OPEN_ROOT_TERMINAL")).thenReturn(record);
+    }
+
+    private AgentCommandView requestTerminal(String sessionId) {
+        return service.requestTerminalCommand(agent, sessionId, NOW.plusSeconds(90),
+                NOW.plusSeconds(7200), 7, "SUPER_ADMIN");
+    }
+
+    private String terminalPayload(String sessionId) {
+        return "{\"sessionId\":\"" + sessionId + "\","
+                + "\"relayUrl\":\"wss://127.0.0.1:19147/terminal/v1/agent/" + sessionId + "\","
+                + "\"agentConnectionDeadline\":\"" + NOW.plusSeconds(90) + "\","
+                + "\"idleTimeoutSeconds\":600,"
+                + "\"absoluteExpiresAt\":\"" + NOW.plusSeconds(7200) + "\"}";
+    }
+
+    private void expectTerminalSessionConflict(Runnable action) {
+        try {
+            action.run();
+        } catch (AgentProtocolException exception) {
+            assertEquals("TERMINAL_COMMAND_SESSION_CONFLICT", exception.getCode());
+            assertEquals(org.springframework.http.HttpStatus.CONFLICT, exception.getStatus());
+            return;
+        }
+        throw new AssertionError("expected terminal command session conflict");
     }
 
     private AgentCommandResultRequest result(boolean success, String code, String message) {
