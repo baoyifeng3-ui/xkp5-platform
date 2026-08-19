@@ -619,6 +619,53 @@ public class TerminalRelayCoordinatorTest {
     }
 
     @Test
+    public void trafficSnapshotsAreAbsoluteAndIncreaseMonotonically() {
+        TerminalSessionService sessions = mock(TerminalSessionService.class);
+        allowAttachments(sessions);
+        AtomicLong ticker = new AtomicLong();
+        AtomicReference<Runnable> periodic = new AtomicReference<>();
+        TerminalRelayCoordinator coordinator = new TerminalRelayCoordinator(
+                sessions, Runnable::run, ticker::get, periodic::set);
+        TerminalPeer browser = peer(TerminalPeer.Role.BROWSER);
+        TerminalPeer agent = peer(TerminalPeer.Role.AGENT);
+        when(sessions.markRelayActive(SESSION_ID)).thenReturn(true);
+        when(sessions.recordRelayTraffic(SESSION_ID, 3L, 0L)).thenReturn(true);
+        when(sessions.recordRelayTraffic(SESSION_ID, 5L, 0L)).thenReturn(true);
+        assertTrue(coordinator.attach(SESSION_ID, browser));
+        assertTrue(coordinator.attach(SESSION_ID, agent));
+
+        coordinator.onBinary(browser, ByteBuffer.wrap(new byte[]{1, 2, 3}));
+        ticker.set(TimeUnit.SECONDS.toNanos(1));
+        periodic.get().run();
+        coordinator.onBinary(browser, ByteBuffer.wrap(new byte[]{4, 5}));
+        coordinator.detach(browser, TerminalRelayCoordinator.CloseReason.PEER_DISCONNECTED);
+
+        verify(sessions).recordRelayTraffic(SESSION_ID, 3L, 0L);
+        verify(sessions).recordRelayTraffic(SESSION_ID, 5L, 0L);
+        verify(sessions, never()).recordRelayTraffic(SESSION_ID, 2L, 0L);
+    }
+
+    @Test
+    public void terminalTrafficWriteResultDoesNotStrandCloseTombstone() {
+        TerminalSessionService sessions = mock(TerminalSessionService.class);
+        allowAttachments(sessions);
+        TerminalRelayCoordinator coordinator = new TerminalRelayCoordinator(
+                sessions, Runnable::run, () -> 0L);
+        TerminalPeer browser = peer(TerminalPeer.Role.BROWSER);
+        TerminalPeer agent = peer(TerminalPeer.Role.AGENT);
+        when(sessions.markRelayActive(SESSION_ID)).thenReturn(true);
+        when(sessions.recordRelayTraffic(SESSION_ID, 1L, 0L)).thenReturn(false);
+        assertTrue(coordinator.attach(SESSION_ID, browser));
+        assertTrue(coordinator.attach(SESSION_ID, agent));
+        coordinator.onBinary(browser, ByteBuffer.wrap(new byte[]{1}));
+
+        coordinator.detach(browser, TerminalRelayCoordinator.CloseReason.PEER_DISCONNECTED);
+
+        verify(sessions).finishRelay(SESSION_ID, false, "PEER_DISCONNECTED");
+        assertEquals(0, coordinator.relayCount());
+    }
+
+    @Test
     public void cleanupCompletesWhenTrafficAndSocketCleanupThrow() throws Exception {
         TerminalSessionService sessions = mock(TerminalSessionService.class);
         allowAttachments(sessions);
@@ -661,10 +708,13 @@ public class TerminalRelayCoordinatorTest {
         TerminalRelayCoordinator coordinator = new TerminalRelayCoordinator(
                 sessions, Runnable::run, ticker::get, periodic::set);
         TerminalPeer first = null;
+        TerminalPeer second = null;
         for (int i = 0; i < TerminalRelayCoordinator.MAX_RELAYS; i++) {
             TerminalPeer browser = peer(TerminalPeer.Role.BROWSER);
             if (i == 0) {
                 first = browser;
+            } else if (i == 1) {
+                second = browser;
             }
             assertTrue(coordinator.attach(String.format("%08d-3333-4333-8333-333333333333", i),
                     browser));
@@ -682,15 +732,23 @@ public class TerminalRelayCoordinatorTest {
         } catch (IllegalStateException expected) {
             assertEquals("db unavailable", expected.getMessage());
         }
-        TerminalPeer rejected = peer(TerminalPeer.Role.BROWSER);
-        assertFalse(coordinator.attach("blocked-during-overflow-close", rejected));
+        String firstSession = "00000000-3333-4333-8333-333333333333";
+        when(sessions.markRelayActive(firstSession)).thenReturn(true);
+        assertTrue(coordinator.attach(firstSession, peer(TerminalPeer.Role.AGENT)));
+        assertFalse(coordinator.attach("overflow-session", peer(TerminalPeer.Role.BROWSER)));
+        assertFalse(coordinator.attach("capacity-still-full", peer(TerminalPeer.Role.BROWSER)));
+
+        coordinator.detach(second, TerminalRelayCoordinator.CloseReason.PEER_DISCONNECTED);
+        assertEquals(TerminalRelayCoordinator.MAX_RELAYS, coordinator.relayCount());
+        assertFalse(coordinator.attach("overflow-session", peer(TerminalPeer.Role.BROWSER)));
 
         coordinator.detach(first, TerminalRelayCoordinator.CloseReason.PEER_DISCONNECTED);
+        assertTrue(coordinator.attach("unrelated-after-slot-freed",
+                peer(TerminalPeer.Role.BROWSER)));
         ticker.set(TimeUnit.SECONDS.toNanos(1));
         periodic.get().run();
         assertEquals(2, attempts.get());
-        assertTrue(coordinator.attach("accepted-after-overflow-retry",
-                peer(TerminalPeer.Role.BROWSER)));
+        assertEquals(TerminalRelayCoordinator.MAX_RELAYS - 1, coordinator.relayCount());
     }
 
     @Test

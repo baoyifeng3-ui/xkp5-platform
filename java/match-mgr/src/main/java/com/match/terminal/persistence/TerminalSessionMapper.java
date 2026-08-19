@@ -104,16 +104,19 @@ public interface TerminalSessionMapper {
                    @Param("now") LocalDateTime now);
 
     @Update("UPDATE processing_agent_terminal_session "
-            + "SET browser_to_agent_bytes = browser_to_agent_bytes + #{browserToAgent}, "
-            + "agent_to_browser_bytes = agent_to_browser_bytes + #{agentToBrowser}, "
-            + "last_io_at = GREATEST(COALESCE(last_io_at, active_at, #{ioAt}), #{ioAt}), "
-            + "updated_at = GREATEST(updated_at, #{ioAt}) WHERE session_id = #{sessionId} "
+            + "SET last_io_at = CASE WHEN #{browserToAgentTotal} > browser_to_agent_bytes "
+            + "OR #{agentToBrowserTotal} > agent_to_browser_bytes "
+            + "THEN GREATEST(COALESCE(last_io_at, active_at, #{ioAt}), #{ioAt}) "
+            + "ELSE last_io_at END, updated_at = GREATEST(updated_at, #{ioAt}), "
+            + "browser_to_agent_bytes = GREATEST(browser_to_agent_bytes, #{browserToAgentTotal}), "
+            + "agent_to_browser_bytes = GREATEST(agent_to_browser_bytes, #{agentToBrowserTotal}) "
+            + "WHERE session_id = #{sessionId} "
             + "AND state = 'ACTIVE' AND absolute_expires_at > #{ioAt} "
-            + "AND #{browserToAgent} >= 0 AND #{agentToBrowser} >= 0")
-    int addTraffic(@Param("sessionId") String sessionId,
-                   @Param("browserToAgent") long browserToAgent,
-                   @Param("agentToBrowser") long agentToBrowser,
-                   @Param("ioAt") LocalDateTime ioAt);
+            + "AND #{browserToAgentTotal} >= 0 AND #{agentToBrowserTotal} >= 0")
+    int setTrafficTotals(@Param("sessionId") String sessionId,
+                         @Param("browserToAgentTotal") long browserToAgentTotal,
+                         @Param("agentToBrowserTotal") long agentToBrowserTotal,
+                         @Param("ioAt") LocalDateTime ioAt);
 
     @Update("UPDATE processing_agent_terminal_session SET state = #{state}, active_agent_id = NULL, "
             + "agent_ticket_digest = NULL, browser_ticket_digest = NULL, ended_at = #{now}, "

@@ -194,12 +194,13 @@ public class TerminalSessionService {
         return sessionId != null && sessionMapper.markActive(sessionId, utc(clock.instant())) == 1;
     }
 
-    public boolean recordRelayTraffic(String sessionId, long browserToAgent, long agentToBrowser) {
-        if (sessionId == null || browserToAgent < 0 || agentToBrowser < 0
-                || (browserToAgent == 0 && agentToBrowser == 0)) {
+    public boolean recordRelayTraffic(String sessionId, long browserToAgentTotal,
+                                      long agentToBrowserTotal) {
+        if (sessionId == null || browserToAgentTotal < 0 || agentToBrowserTotal < 0
+                || (browserToAgentTotal == 0 && agentToBrowserTotal == 0)) {
             return false;
         }
-        return sessionMapper.addTraffic(sessionId, browserToAgent, agentToBrowser,
+        return sessionMapper.setTrafficTotals(sessionId, browserToAgentTotal, agentToBrowserTotal,
                 utc(clock.instant())) == 1;
     }
 

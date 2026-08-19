@@ -127,9 +127,11 @@ public class TerminalSessionSchemaTest {
                 "absolute_expires_at > #{now}");
         assertFalse(markActive.contains("WAITING_AGENT"));
 
-        String addTraffic = sql(assertMethod(mapper, "addTraffic", 4, Update.class));
-        assertContainsAll(addTraffic, "state = 'ACTIVE'", "browser_to_agent_bytes + #{browserToAgent}",
-                "agent_to_browser_bytes + #{agentToBrowser}", "absolute_expires_at > #{ioAt}");
+        String setTraffic = sql(assertMethod(mapper, "setTrafficTotals", 4, Update.class));
+        assertContainsAll(setTraffic, "state = 'ACTIVE'",
+                "GREATEST(browser_to_agent_bytes, #{browserToAgentTotal})",
+                "GREATEST(agent_to_browser_bytes, #{agentToBrowserTotal})",
+                "absolute_expires_at > #{ioAt}");
 
         String close = sql(assertMethod(mapper, "close", 5, Update.class));
         assertContainsAll(close, "active_agent_id = NULL",
@@ -189,11 +191,14 @@ public class TerminalSessionSchemaTest {
     public void trafficFlushesCannotMoveTimestampsBackward() {
         Class<?> mapper = load("com.match.terminal.persistence.TerminalSessionMapper");
 
-        String addTraffic = sql(assertMethod(mapper, "addTraffic", 4, Update.class));
-        assertContainsAll(addTraffic,
-                "last_io_at = GREATEST(COALESCE(last_io_at, active_at, #{ioAt}), #{ioAt})",
+        String setTraffic = sql(assertMethod(mapper, "setTrafficTotals", 4, Update.class));
+        assertContainsAll(setTraffic,
+                "CASE WHEN #{browserToAgentTotal} > browser_to_agent_bytes",
+                "#{agentToBrowserTotal} > agent_to_browser_bytes",
+                "THEN GREATEST(COALESCE(last_io_at, active_at, #{ioAt}), #{ioAt})",
+                "ELSE last_io_at END",
                 "updated_at = GREATEST(updated_at, #{ioAt})",
-                "#{browserToAgent} >= 0", "#{agentToBrowser} >= 0");
+                "#{browserToAgentTotal} >= 0", "#{agentToBrowserTotal} >= 0");
     }
 
     @Test
