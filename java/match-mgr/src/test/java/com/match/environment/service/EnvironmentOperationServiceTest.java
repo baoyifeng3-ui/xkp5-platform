@@ -122,6 +122,30 @@ public class EnvironmentOperationServiceTest {
     }
 
     @Test
+    public void systemCanStopEnvironmentAfterLicenseExpires() {
+        TrainingEnvironmentRecord selected = environment("env-selected", 21, 32, "RUNNING", "RUNNING", 7L);
+        when(environmentMapper.selectUserId("env-selected")).thenReturn(21);
+        when(environmentMapper.selectUserEnvironmentsForUpdate(21)).thenReturn(Collections.singletonList(selected));
+
+        service.stop("env-selected", 0, "SYSTEM");
+
+        verify(licenseGuard, never()).requireActive();
+        verify(commandService).requestEnvironmentCommand(eq(agent), eq("STOP_TRAINING_ENVIRONMENT"),
+                eq("{}"), eq(0), eq("SYSTEM"), eq("env-selected:STOP"));
+    }
+
+    @Test
+    public void systemCannotStartEnvironment() {
+        TrainingEnvironmentRecord selected = environment("env-selected", 21, 32, "STOPPED", "STOPPED", 7L);
+        when(environmentMapper.selectUserId("env-selected")).thenReturn(21);
+        when(environmentMapper.selectUserEnvironmentsForUpdate(21)).thenReturn(Collections.singletonList(selected));
+
+        expectIllegalArgument(() -> service.start("env-selected", 0, "SYSTEM"), "只能停止");
+
+        verify(commandService, never()).requestEnvironmentCommand(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
     public void restoreRequiresLicenseAndFinishesStopped() {
         TrainingEnvironmentRecord selected = environment("env-selected", 21, 32, "STOPPED", "STOPPED", 7L);
         when(environmentMapper.selectUserId("env-selected")).thenReturn(21);
