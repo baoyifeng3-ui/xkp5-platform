@@ -102,7 +102,9 @@ public class TerminalSessionService {
     public TerminalTicketView issueBrowserTicket(String sessionId, User actor) {
         requireSuperAdmin(actor);
         TerminalSessionRecord record = requireSession(sessionId);
-        if (!"WAITING_BROWSER".equals(record.getState()) || record.getAgentConnectedAt() == null) {
+        if (!"WAITING_BROWSER".equals(record.getState()) || record.getAgentConnectedAt() == null
+                || record.getBrowserTicketConsumedAt() != null
+                || record.getBrowserConnectedAt() != null) {
             throw ticketUnavailable();
         }
         Instant now = clock.instant();

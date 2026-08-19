@@ -103,8 +103,10 @@ public class TerminalSessionSchemaTest {
 
         String issueBrowser = sql(assertMethod(mapper, "issueBrowserTicket", 4, Update.class));
         assertContainsAll(issueBrowser, "state = 'WAITING_BROWSER'",
-                "browser_ticket_digest = #{digest}", "browser_ticket_consumed_at = NULL",
+                "browser_ticket_digest = #{digest}",
+                "browser_ticket_consumed_at IS NULL", "browser_connected_at IS NULL",
                 "absolute_expires_at > #{now}");
+        assertFalse(issueBrowser.contains("browser_ticket_consumed_at = NULL"));
         assertFalse(issueBrowser.contains("WAITING_AGENT"));
 
         String consumeBrowser = sql(assertMethod(mapper, "consumeBrowserTicket", 3, Update.class));

@@ -63,9 +63,10 @@ public interface TerminalSessionMapper {
                            @Param("now") LocalDateTime now);
 
     @Update("UPDATE processing_agent_terminal_session SET browser_ticket_digest = #{digest}, "
-            + "browser_ticket_expires_at = #{expiresAt}, browser_ticket_consumed_at = NULL, "
-            + "updated_at = #{now} WHERE session_id = #{sessionId} "
-            + "AND state = 'WAITING_BROWSER' AND absolute_expires_at > #{now} "
+            + "browser_ticket_expires_at = #{expiresAt}, updated_at = #{now} "
+            + "WHERE session_id = #{sessionId} AND state = 'WAITING_BROWSER' "
+            + "AND browser_ticket_consumed_at IS NULL AND browser_connected_at IS NULL "
+            + "AND absolute_expires_at > #{now} "
             + "AND DATE_ADD(agent_connected_at, INTERVAL 60 SECOND) > #{now} AND #{expiresAt} > #{now} "
             + "AND #{expiresAt} <= LEAST(DATE_ADD(agent_connected_at, INTERVAL 60 SECOND), "
             + "absolute_expires_at)")

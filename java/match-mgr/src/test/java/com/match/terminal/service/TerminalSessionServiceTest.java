@@ -292,6 +292,39 @@ public class TerminalSessionServiceTest {
     }
 
     @Test
+    public void consumedBrowserTicketCannotBeRotatedBeforeActivation() {
+        TerminalSessionRecord record = waitingBrowser(NOW.minusSeconds(1), NOW.plusSeconds(120));
+        record.setBrowserTicketExpiresAt(utc(NOW.plusSeconds(10)));
+        when(sessions.selectById(record.getSessionId())).thenReturn(record);
+        when(sessions.consumeBrowserTicket(eq(record.getSessionId()), any(String.class), eq(utc(NOW))))
+                .thenAnswer(invocation -> {
+                    record.setBrowserTicketConsumedAt(utc(NOW));
+                    record.setBrowserConnectedAt(utc(NOW));
+                    return 1;
+                });
+
+        assertTrue(service.consumeBrowserTicket(record.getSessionId(), "ticket"));
+        expectCode("TERMINAL_TICKET_UNAVAILABLE",
+                () -> service.issueBrowserTicket(record.getSessionId(), actor));
+
+        verify(sessions, never()).issueBrowserTicket(any(String.class), any(String.class),
+                any(LocalDateTime.class), any(LocalDateTime.class));
+    }
+
+    @Test
+    public void browserConnectionWithoutConsumedTimestampAlsoPreventsRotation() {
+        TerminalSessionRecord record = waitingBrowser(NOW.minusSeconds(1), NOW.plusSeconds(120));
+        record.setBrowserConnectedAt(utc(NOW));
+        when(sessions.selectById(record.getSessionId())).thenReturn(record);
+
+        expectCode("TERMINAL_TICKET_UNAVAILABLE",
+                () -> service.issueBrowserTicket(record.getSessionId(), actor));
+
+        verify(sessions, never()).issueBrowserTicket(any(String.class), any(String.class),
+                any(LocalDateTime.class), any(LocalDateTime.class));
+    }
+
+    @Test
     public void consumesValidBrowserTicketOnceAndReplayOrInvalidTicketReturnsFalse() {
         String sessionId = "33333333-3333-4333-8333-333333333333";
         TerminalSessionRecord record = waitingBrowser(NOW.minusSeconds(1), NOW.plusSeconds(120));
