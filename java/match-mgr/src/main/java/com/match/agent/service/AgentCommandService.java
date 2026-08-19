@@ -332,7 +332,7 @@ public class AgentCommandService {
     }
 
     private String requireEnvironmentRole(String role) {
-        if ("USER".equals(role)) {
+        if ("USER".equals(role) || "SYSTEM".equals(role)) {
             return role;
         }
         return requireRole(role);

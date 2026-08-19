@@ -215,6 +215,12 @@ public class EnvironmentOperationService {
 
     private void requireAccess(TrainingEnvironmentRecord environment, int actorUserId,
                                String actorRole, String operationType) {
+        if ("SYSTEM".equals(actorRole)) {
+            if (!"STOP".equals(operationType)) {
+                throw new IllegalArgumentException("系统角色只能停止实训环境");
+            }
+            return;
+        }
         if (!"SUPER_ADMIN".equals(actorRole) && !"ADMIN".equals(actorRole) && !"USER".equals(actorRole)) {
             throw new IllegalArgumentException("环境操作角色无效");
         }
