@@ -105,10 +105,13 @@ public class TerminalSessionServiceTest {
 
     @Test
     public void rejectsAdminAndUserActors() {
-        expectCode("TERMINAL_SUPER_ADMIN_REQUIRED",
-                () -> service.create(AGENT_ID, user(8, "admin", "ADMIN", true), "OPEN_ROOT_TERMINAL"));
-        expectCode("TERMINAL_SUPER_ADMIN_REQUIRED",
-                () -> service.create(AGENT_ID, user(9, "user", "USER", false), "OPEN_ROOT_TERMINAL"));
+        for (User forbidden : new User[]{user(8, "admin", "ADMIN", true),
+                user(9, "user", "USER", false)}) {
+            TerminalSessionException exception = expectCode("TERMINAL_SUPER_ADMIN_REQUIRED",
+                    () -> service.create(AGENT_ID, forbidden, "wrong-confirmation"));
+            assertEquals(HttpStatus.FORBIDDEN, exception.getStatus());
+        }
+        verify(agents, never()).selectForManagement(any(String.class));
     }
 
     @Test
@@ -255,6 +258,27 @@ public class TerminalSessionServiceTest {
     }
 
     @Test
+    public void rejectsAgentIssuanceForWrongCommandStateTypeOrPayloadBinding() {
+        TerminalSessionRecord record = waitingAgent(NOW.minusSeconds(1), NOW.plusSeconds(100));
+        when(sessions.selectById(record.getSessionId())).thenReturn(record);
+
+        for (String rejectedBinding : new String[]{"wrong-command", "lowercase-state",
+                "mixed-case-type", "foreign-payload-session"}) {
+            expectCode("TERMINAL_TICKET_UNAVAILABLE", () -> service.issueAgentTicket(
+                    agent, record.getSessionId(), rejectedBinding, "lease"));
+        }
+        when(commands.hasRunningTerminalLease(record.getCommandId(), AGENT_ID,
+                "lease", record.getSessionId())).thenReturn(false);
+        expectCode("TERMINAL_TICKET_UNAVAILABLE", () -> service.issueAgentTicket(
+                agent, record.getSessionId(), record.getCommandId(), "lease"));
+        record.setState("WAITING_BROWSER");
+        expectCode("TERMINAL_TICKET_UNAVAILABLE", () -> service.issueAgentTicket(
+                agent, record.getSessionId(), record.getCommandId(), "lease"));
+        verify(sessions, never()).issueAgentTicket(any(String.class), any(String.class),
+                any(LocalDateTime.class), any(LocalDateTime.class));
+    }
+
+    @Test
     public void rotatesBrowserTicketAndCapsExpiryByBrowserDeadline() {
         TerminalSessionRecord record = waitingBrowser(NOW.minusSeconds(45), NOW.plusSeconds(120));
         when(sessions.selectById(record.getSessionId())).thenReturn(record);
@@ -268,6 +292,19 @@ public class TerminalSessionServiceTest {
         assertEquals(43, second.getTicket().length());
         verify(sessions, org.mockito.Mockito.times(2)).issueBrowserTicket(eq(record.getSessionId()),
                 any(String.class), eq(utc(NOW.plusSeconds(15))), eq(utc(NOW)));
+    }
+
+    @Test
+    public void consumesBrowserTicketOnceAndBindsFailureToSessionAndExpiry() {
+        String sessionId = "33333333-3333-4333-8333-333333333333";
+        when(sessions.consumeBrowserTicket(eq(sessionId), any(String.class), eq(utc(NOW))))
+                .thenReturn(1, 0, 0);
+
+        assertTrue(service.consumeBrowserTicket(sessionId, "ticket"));
+        assertFalse(service.consumeBrowserTicket(sessionId, "ticket"));
+        assertFalse(service.consumeBrowserTicket(sessionId, "invalid-or-expired"));
+        assertFalse(service.consumeBrowserTicket("foreign-session", "ticket"));
+        verify(sessions).consumeBrowserTicket(eq("foreign-session"), any(String.class), eq(utc(NOW)));
     }
 
     @Test
@@ -290,6 +327,40 @@ public class TerminalSessionServiceTest {
     }
 
     @Test
+    public void usesNominalSixtySecondTtlWhenBothPhaseAndAbsoluteDeadlinesAllowIt() {
+        TerminalSessionRecord agentRecord = waitingAgent(NOW, NOW.plusSeconds(300));
+        when(sessions.selectById(agentRecord.getSessionId())).thenReturn(agentRecord);
+        when(commands.hasRunningTerminalLease(agentRecord.getCommandId(), AGENT_ID, "lease",
+                agentRecord.getSessionId())).thenReturn(true);
+        when(sessions.issueAgentTicket(eq(agentRecord.getSessionId()), any(String.class),
+                eq(utc(NOW.plusSeconds(60))), eq(utc(NOW)))).thenReturn(1);
+        assertEquals(NOW.plusSeconds(60), service.issueAgentTicket(agent, agentRecord.getSessionId(),
+                agentRecord.getCommandId(), "lease").getExpiresAt());
+
+        TerminalSessionRecord browserRecord = waitingBrowser(NOW, NOW.plusSeconds(300));
+        when(sessions.selectById(browserRecord.getSessionId())).thenReturn(browserRecord);
+        when(sessions.issueBrowserTicket(eq(browserRecord.getSessionId()), any(String.class),
+                eq(utc(NOW.plusSeconds(60))), eq(utc(NOW)))).thenReturn(1);
+        assertEquals(NOW.plusSeconds(60),
+                service.issueBrowserTicket(browserRecord.getSessionId(), actor).getExpiresAt());
+    }
+
+    @Test
+    public void refusesBrowserTicketAtPhaseOrAbsoluteDeadline() {
+        TerminalSessionRecord phaseExpired = waitingBrowser(NOW.minusSeconds(60), NOW.plusSeconds(60));
+        when(sessions.selectById(phaseExpired.getSessionId())).thenReturn(phaseExpired);
+        expectCode("TERMINAL_TICKET_UNAVAILABLE",
+                () -> service.issueBrowserTicket(phaseExpired.getSessionId(), actor));
+
+        phaseExpired.setAgentConnectedAt(utc(NOW));
+        phaseExpired.setAbsoluteExpiresAt(utc(NOW));
+        expectCode("TERMINAL_TICKET_UNAVAILABLE",
+                () -> service.issueBrowserTicket(phaseExpired.getSessionId(), actor));
+        verify(sessions, never()).issueBrowserTicket(any(String.class), any(String.class),
+                any(LocalDateTime.class), any(LocalDateTime.class));
+    }
+
+    @Test
     public void operatorApisIndependentlyRequireSuperAdminAndCloseIsIdempotent() {
         TerminalSessionRecord record = waitingBrowser(NOW.minusSeconds(1), NOW.plusSeconds(120));
         when(sessions.selectById(record.getSessionId())).thenReturn(record);
@@ -299,9 +370,9 @@ public class TerminalSessionServiceTest {
         User user = user(9, "user", "USER", false);
 
         for (User forbidden : new User[]{admin, user}) {
-            expectCode("TERMINAL_SUPER_ADMIN_REQUIRED", () -> service.view(record.getSessionId(), forbidden));
-            expectCode("TERMINAL_SUPER_ADMIN_REQUIRED", () -> service.issueBrowserTicket(record.getSessionId(), forbidden));
-            expectCode("TERMINAL_SUPER_ADMIN_REQUIRED", () -> service.close(record.getSessionId(), forbidden));
+            assertForbidden(() -> service.view(record.getSessionId(), forbidden));
+            assertForbidden(() -> service.issueBrowserTicket(record.getSessionId(), forbidden));
+            assertForbidden(() -> service.close(record.getSessionId(), forbidden));
         }
         assertEquals(record.getSessionId(), service.view(record.getSessionId(), actor).getSessionId());
         service.close(record.getSessionId(), actor);
@@ -309,6 +380,20 @@ public class TerminalSessionServiceTest {
         service.close(record.getSessionId(), actor);
         verify(sessions, org.mockito.Mockito.times(1)).close(record.getSessionId(), "CLOSED",
                 "OPERATOR_CLOSED", "Terminal session closed by operator", utc(NOW));
+    }
+
+    @Test
+    public void missingCloseFailsNotFoundAndConcurrentForeignStateFailsSafely() {
+        when(sessions.selectById("missing")).thenReturn(null);
+        TerminalSessionException missing = expectCode("TERMINAL_SESSION_NOT_FOUND",
+                () -> service.close("missing", actor));
+        assertEquals(HttpStatus.NOT_FOUND, missing.getStatus());
+
+        TerminalSessionRecord record = waitingBrowser(NOW.minusSeconds(1), NOW.plusSeconds(120));
+        when(sessions.selectById(record.getSessionId())).thenReturn(record, record);
+        when(sessions.close(eq(record.getSessionId()), eq("CLOSED"), any(String.class),
+                any(String.class), eq(utc(NOW)))).thenReturn(0);
+        expectCode("TERMINAL_SESSION_CLOSE_FAILED", () -> service.close(record.getSessionId(), actor));
     }
 
     private TerminalSessionRecord waitingAgent(Instant requestedAt, Instant absoluteExpiry) {
@@ -362,6 +447,11 @@ public class TerminalSessionServiceTest {
             return exception;
         }
         throw new AssertionError("expected terminal session exception " + code);
+    }
+
+    private void assertForbidden(Runnable action) {
+        assertEquals(HttpStatus.FORBIDDEN,
+                expectCode("TERMINAL_SUPER_ADMIN_REQUIRED", action).getStatus());
     }
 
     private static class DeterministicSecureRandom extends SecureRandom {

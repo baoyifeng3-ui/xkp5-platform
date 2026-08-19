@@ -25,4 +25,18 @@ public class GlobalTerminalExceptionHandlerTest {
         assertEquals("TERMINAL_SESSION_NOT_FOUND",
                 ((Map) response.getBody().getData()).get("reasonCode"));
     }
+
+    @Test
+    public void preservesForbiddenStatusForDirectServiceAuthorizationFailure() {
+        TerminalSessionException exception = new TerminalSessionException(
+                "TERMINAL_SUPER_ADMIN_REQUIRED", "Super administrator required", HttpStatus.FORBIDDEN);
+
+        ResponseEntity<ResponseResult<Object>> response =
+                new GlobalExceptionHandler().handleTerminalSession(exception);
+
+        assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+        assertEquals(403, response.getBody().getCode());
+        assertEquals("TERMINAL_SUPER_ADMIN_REQUIRED",
+                ((Map) response.getBody().getData()).get("reasonCode"));
+    }
 }

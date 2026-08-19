@@ -11,9 +11,9 @@ import java.util.List;
 public interface ProcessingAgentCommandMapper extends BaseMapper<ProcessingAgentCommandRecord> {
     @Select("SELECT command_id FROM processing_agent_command "
             + "WHERE BINARY command_id = BINARY #{commandId} "
-            + "AND BINARY agent_id = BINARY #{agentId} AND state = 'RUNNING' "
+            + "AND BINARY agent_id = BINARY #{agentId} AND BINARY state = BINARY 'RUNNING' "
             + "AND BINARY lease_token = BINARY #{leaseToken} "
-            + "AND command_type = 'OPEN_ROOT_TERMINAL' "
+            + "AND BINARY command_type = BINARY 'OPEN_ROOT_TERMINAL' "
             + "AND BINARY JSON_UNQUOTE(JSON_EXTRACT(payload_json, '$.sessionId')) "
             + "= BINARY #{sessionId} LIMIT 1 FOR UPDATE")
     String selectRunningTerminalLeaseForUpdate(@Param("commandId") String commandId,

@@ -165,11 +165,12 @@ public class TerminalSessionSchemaTest {
     }
 
     @Test
-    public void runningTerminalLeaseLookupUsesExactSecretAndIdentityMatching() {
+    public void lowercaseOrMixedCaseStateAndTypeCannotAuthorizeTerminalLease() {
         String query = sql(assertMethod(ProcessingAgentCommandMapper.class,
                 "selectRunningTerminalLeaseForUpdate", 4, Select.class));
 
-        assertContainsAll(query, "state = 'RUNNING'", "command_type = 'OPEN_ROOT_TERMINAL'",
+        assertContainsAll(query, "BINARY state = BINARY 'RUNNING'",
+                "BINARY command_type = BINARY 'OPEN_ROOT_TERMINAL'",
                 "BINARY command_id = BINARY #{commandId}",
                 "BINARY agent_id = BINARY #{agentId}",
                 "BINARY lease_token = BINARY #{leaseToken}",

@@ -92,6 +92,14 @@ public class AgentCommandServiceTest {
     }
 
     @Test
+    public void rejectsTerminalAuthorizationWhenExactRunningTypeOrPayloadQueryDoesNotMatch() {
+        assertFalse(service.hasRunningTerminalLease("command", agent.getAgentId(), "lease", "session"));
+
+        verify(mapper).selectRunningTerminalLeaseForUpdate(
+                "command", agent.getAgentId(), "lease", "session");
+    }
+
+    @Test
     public void secondShutdownReturnsExistingNonTerminalCommand() {
         ProcessingAgentCommandRecord existing = command("PENDING");
         when(mapper.selectActive(agent.getAgentId(), "SHUTDOWN_SERVER")).thenReturn(existing);

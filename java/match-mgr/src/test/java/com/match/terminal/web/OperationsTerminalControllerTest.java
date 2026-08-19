@@ -2,6 +2,10 @@ package com.match.terminal.web;
 
 import com.match.entity.User;
 import com.match.security.RoleGuard;
+import com.match.security.LoginSession;
+import com.match.security.AdminAccessException;
+import com.match.service.impl.UserServiceImpl;
+import com.match.config.GlobalExceptionHandler;
 import com.match.terminal.model.CreateTerminalSessionRequest;
 import com.match.terminal.model.TerminalSessionView;
 import com.match.terminal.model.TerminalTicketView;
@@ -11,6 +15,8 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 
 import java.lang.reflect.Method;
 
@@ -18,6 +24,8 @@ import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
+import static org.mockito.ArgumentMatchers.any;
 
 public class OperationsTerminalControllerTest {
     @Test
@@ -46,6 +54,44 @@ public class OperationsTerminalControllerTest {
         assertPath("view", GetMapping.class, "/terminal-sessions/{sessionId}");
         assertPath("browserTicket", PostMapping.class, "/terminal-sessions/{sessionId}/browser-ticket");
         assertPath("close", DeleteMapping.class, "/terminal-sessions/{sessionId}");
+    }
+
+    @Test
+    public void adminAndUserReceiveForbiddenFromEveryOperatorEndpoint() {
+        for (String role : new String[]{"ADMIN", "USER"}) {
+            UserServiceImpl users = mock(UserServiceImpl.class);
+            LoginSession login = mock(LoginSession.class);
+            User forbidden = new User();
+            forbidden.setUserId(8);
+            forbidden.setUserName(role.toLowerCase());
+            forbidden.setRole(role);
+            forbidden.setEnabled(true);
+            forbidden.setMustChangePassword(false);
+            when(login.loginId()).thenReturn(8);
+            when(users.getById(8)).thenReturn(forbidden);
+            TerminalSessionService service = mock(TerminalSessionService.class);
+            OperationsTerminalController controller = new OperationsTerminalController(
+                    new RoleGuard(users, login), service);
+            CreateTerminalSessionRequest request = new CreateTerminalSessionRequest();
+            request.setConfirmation("OPEN_ROOT_TERMINAL");
+
+            assertControllerForbidden(() -> controller.create("agent", request));
+            assertControllerForbidden(() -> controller.view("session"));
+            assertControllerForbidden(() -> controller.browserTicket("session"));
+            assertControllerForbidden(() -> controller.close("session"));
+            verify(service, never()).create(any(String.class), any(User.class), any(String.class));
+        }
+    }
+
+    private void assertControllerForbidden(Runnable call) {
+        try {
+            call.run();
+        } catch (AdminAccessException exception) {
+            ResponseEntity<?> response = new GlobalExceptionHandler().handleAdminAccess(exception);
+            assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+            return;
+        }
+        throw new AssertionError("operator endpoint accepted a non-super-admin");
     }
 
     private void assertPath(String methodName, Class annotation, String expected) throws Exception {

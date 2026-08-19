@@ -140,13 +140,10 @@ public class TerminalSessionService {
 
     @Transactional
     public TerminalSessionView create(String agentId, User actor, String confirmation) {
+        requireSuperAdmin(actor);
         if (!CONFIRMATION.equals(confirmation)) {
             throw error("TERMINAL_CONFIRMATION_REQUIRED",
                     "Exact root terminal confirmation is required");
-        }
-        if (!isSuperAdmin(actor)) {
-            throw error("TERMINAL_SUPER_ADMIN_REQUIRED",
-                    "Only a super administrator can open a root terminal");
         }
 
         ProcessingAgentRecord agent = agentMapper.selectForManagement(agentId);
@@ -220,8 +217,8 @@ public class TerminalSessionService {
 
     private void requireSuperAdmin(User actor) {
         if (!isSuperAdmin(actor)) {
-            throw error("TERMINAL_SUPER_ADMIN_REQUIRED",
-                    "Only a super administrator can access a root terminal");
+            throw new TerminalSessionException("TERMINAL_SUPER_ADMIN_REQUIRED",
+                    "Only a super administrator can access a root terminal", HttpStatus.FORBIDDEN);
         }
     }
 
