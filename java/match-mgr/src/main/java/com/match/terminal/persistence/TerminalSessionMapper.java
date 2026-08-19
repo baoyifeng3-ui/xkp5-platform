@@ -55,10 +55,12 @@ public interface TerminalSessionMapper {
     @Update("UPDATE processing_agent_terminal_session SET state = 'WAITING_BROWSER', "
             + "agent_ticket_consumed_at = #{now}, agent_connected_at = #{now}, updated_at = #{now} "
             + "WHERE session_id = #{sessionId} AND state = 'WAITING_AGENT' "
+            + "AND BINARY agent_id = BINARY #{agentId} "
             + "AND agent_ticket_digest = #{digest} AND agent_ticket_consumed_at IS NULL "
             + "AND agent_ticket_expires_at > #{now} AND absolute_expires_at > #{now} "
             + "AND DATE_ADD(requested_at, INTERVAL 90 SECOND) > #{now}")
     int consumeAgentTicket(@Param("sessionId") String sessionId,
+                           @Param("agentId") String agentId,
                            @Param("digest") String digest,
                            @Param("now") LocalDateTime now);
 

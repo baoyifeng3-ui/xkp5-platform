@@ -84,7 +84,7 @@ public final class TerminalPeer {
         if (socket != null) {
             try {
                 socket.close(status);
-            } catch (IOException ignored) {
+            } catch (IOException | RuntimeException ignored) {
                 // The relay is already terminal; close failures cannot be recovered here.
             }
         }

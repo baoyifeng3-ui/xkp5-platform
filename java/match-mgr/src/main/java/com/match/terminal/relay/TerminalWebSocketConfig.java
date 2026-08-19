@@ -15,6 +15,9 @@ import org.springframework.web.socket.server.standard.ServletServerContainerFact
 
 import java.util.Arrays;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 @Configuration
 @EnableWebSocket
@@ -52,8 +55,23 @@ public class TerminalWebSocketConfig implements WebSocketConfigurer {
 
     @Bean
     public TerminalRelayCoordinator terminalRelayCoordinator(
-            @Qualifier("terminalWriterExecutor") Executor executor) {
-        return new TerminalRelayCoordinator(sessions, executor, System::nanoTime);
+            @Qualifier("terminalWriterExecutor") Executor executor,
+            @Qualifier("terminalRelayScheduler") ScheduledExecutorService scheduler) {
+        return new TerminalRelayCoordinator(sessions, executor, System::nanoTime,
+                task -> scheduler.scheduleAtFixedRate(task, 250, 250, TimeUnit.MILLISECONDS));
+    }
+
+    @Bean(name = "terminalRelayScheduler", destroyMethod = "shutdownNow")
+    public ScheduledExecutorService terminalRelayScheduler() {
+        ScheduledThreadPoolExecutor scheduler = new ScheduledThreadPoolExecutor(1, runnable -> {
+            Thread thread = new Thread(runnable, "terminal-relay-flush");
+            thread.setDaemon(true);
+            return thread;
+        });
+        scheduler.setRemoveOnCancelPolicy(true);
+        scheduler.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
+        scheduler.setContinueExistingPeriodicTasksAfterShutdownPolicy(false);
+        return scheduler;
     }
 
     @Bean
@@ -72,7 +90,8 @@ public class TerminalWebSocketConfig implements WebSocketConfigurer {
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registerWebSocketHandlers(registry,
-                terminalWebSocketHandler(terminalRelayCoordinator(terminalWriterExecutor())));
+                terminalWebSocketHandler(terminalRelayCoordinator(
+                        terminalWriterExecutor(), terminalRelayScheduler())));
     }
 
     void registerWebSocketHandlers(WebSocketHandlerRegistry registry,

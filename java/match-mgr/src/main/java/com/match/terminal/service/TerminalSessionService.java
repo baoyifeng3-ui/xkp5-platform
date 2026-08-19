@@ -96,7 +96,8 @@ public class TerminalSessionService {
                 || !agent.getAgentId().equals(record.getActiveAgentId())) {
             return false;
         }
-        return sessionMapper.consumeAgentTicket(sessionId, digest(ticket), utc(clock.instant())) == 1;
+        return sessionMapper.consumeAgentTicket(sessionId, agent.getAgentId(),
+                digest(ticket), utc(clock.instant())) == 1;
     }
 
     public TerminalTicketView issueBrowserTicket(String sessionId, User actor) {

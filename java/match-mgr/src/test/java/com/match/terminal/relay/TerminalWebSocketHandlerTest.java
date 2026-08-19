@@ -5,11 +5,14 @@ import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
+import org.springframework.web.socket.WebSocketHandler;
+import org.springframework.web.socket.server.support.DefaultHandshakeHandler;
 
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Arrays;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -88,6 +91,20 @@ public class TerminalWebSocketHandlerTest {
         verify(coordinator, never()).attach(any(String.class), any(TerminalPeer.class));
     }
 
+    @Test
+    public void protocolNegotiationSelectsOnlyTheStableNonSecretProtocol() {
+        TerminalWebSocketHandler handler = new TerminalWebSocketHandler(
+                mock(TerminalRelayCoordinator.class));
+        String ticketProtocol = "xkp-terminal-ticket.abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO12";
+
+        String selected = new ExposedHandshakeHandler().select(
+                Arrays.asList(TerminalHandshakeInterceptor.SAFE_SUBPROTOCOL, ticketProtocol),
+                handler);
+
+        assertEquals(TerminalHandshakeInterceptor.SAFE_SUBPROTOCOL, selected);
+        assertFalse(ticketProtocol.equals(selected));
+    }
+
     private WebSocketSession socket(TerminalPeer peer) {
         WebSocketSession socket = mock(WebSocketSession.class);
         Map<String, Object> attributes = new HashMap<>();
@@ -96,5 +113,11 @@ public class TerminalWebSocketHandlerTest {
         when(socket.getAttributes()).thenReturn(attributes);
         when(socket.isOpen()).thenReturn(true);
         return socket;
+    }
+
+    private static final class ExposedHandshakeHandler extends DefaultHandshakeHandler {
+        private String select(List<String> requested, WebSocketHandler handler) {
+            return selectProtocol(requested, handler);
+        }
     }
 }

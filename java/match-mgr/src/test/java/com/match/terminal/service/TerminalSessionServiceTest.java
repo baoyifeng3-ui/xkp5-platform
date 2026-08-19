@@ -243,7 +243,8 @@ public class TerminalSessionServiceTest {
     public void consumesAgentTicketAtomicallyAndRequiresAuthenticatedRelationship() {
         TerminalSessionRecord record = waitingAgent(NOW.minusSeconds(1), NOW.plusSeconds(100));
         when(sessions.selectById(record.getSessionId())).thenReturn(record);
-        when(sessions.consumeAgentTicket(eq(record.getSessionId()), any(String.class), eq(utc(NOW))))
+        when(sessions.consumeAgentTicket(eq(record.getSessionId()), eq(AGENT_ID),
+                any(String.class), eq(utc(NOW))))
                 .thenReturn(1, 0);
 
         assertTrue(service.consumeAgentTicket(agent, record.getSessionId(), "secret"));
@@ -253,7 +254,7 @@ public class TerminalSessionServiceTest {
         assertFalse(service.consumeAgentTicket(other, record.getSessionId(), "secret"));
         ArgumentCaptor<String> digest = ArgumentCaptor.forClass(String.class);
         verify(sessions, org.mockito.Mockito.times(2)).consumeAgentTicket(
-                eq(record.getSessionId()), digest.capture(), eq(utc(NOW)));
+                eq(record.getSessionId()), eq(AGENT_ID), digest.capture(), eq(utc(NOW)));
         assertTrue(Pattern.matches("[0-9a-f]{64}", digest.getValue()));
     }
 

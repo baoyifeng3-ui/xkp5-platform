@@ -7,6 +7,12 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistra
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.socket.server.standard.ServletServerContainerFactoryBean;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
@@ -60,5 +66,28 @@ public class TerminalWebSocketConfigTest {
             return;
         }
         fail("wildcard terminal origin was accepted");
+    }
+
+    @Test
+    public void sharedPeriodicSchedulerHasExplicitShutdownLifecycle() throws Exception {
+        TerminalWebSocketConfig config = new TerminalWebSocketConfig(
+                mock(TerminalSessionService.class), mock(AgentCredentialService.class),
+                "https://management.example");
+        ScheduledExecutorService scheduler = config.terminalRelayScheduler();
+        ThreadPoolTaskExecutor writers = config.terminalWriterExecutor();
+        writers.initialize();
+        CountDownLatch writerRan = new CountDownLatch(1);
+        writers.execute(writerRan::countDown);
+        assertEquals(true, writerRan.await(5, TimeUnit.SECONDS));
+        config.terminalRelayCoordinator(writers, scheduler);
+        assertEquals(false, scheduler.isShutdown());
+        assertEquals(1, ((ScheduledThreadPoolExecutor) scheduler).getQueue().size());
+
+        scheduler.shutdownNow();
+        writers.shutdown();
+
+        assertEquals(true, scheduler.awaitTermination(5, TimeUnit.SECONDS));
+        assertEquals(true, scheduler.isShutdown());
+        assertEquals(true, writers.getThreadPoolExecutor().isShutdown());
     }
 }

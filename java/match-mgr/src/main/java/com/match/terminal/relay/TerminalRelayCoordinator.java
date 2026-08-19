@@ -22,6 +22,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.LongSupplier;
 
 public class TerminalRelayCoordinator {
+    @FunctionalInterface
+    public interface PeriodicScheduler {
+        void schedule(Runnable task);
+    }
+
     public enum CloseReason {
         OPERATOR_CLOSED(true), PEER_DISCONNECTED(false), PROTOCOL_ERROR(false),
         BACKPRESSURE(false), RATE_LIMITED(false), SESSION_REJECTED(false), IO_ERROR(false);
@@ -37,6 +42,7 @@ public class TerminalRelayCoordinator {
     public static final int MAX_TEXT_BYTES = 4 * 1024;
     public static final int MAX_RELAYS = 1024;
     private static final long TRAFFIC_FLUSH_BYTES = 256 * 1024;
+    private static final long TRAFFIC_FLUSH_NANOS = 1_000_000_000L;
     private static final long RATE_BYTES_PER_SECOND = 2L * 1024 * 1024;
     private static final long RATE_BURST_BYTES = 8L * 1024 * 1024;
     private static final ObjectMapper CONTROL_JSON = new ObjectMapper()
@@ -49,9 +55,15 @@ public class TerminalRelayCoordinator {
 
     public TerminalRelayCoordinator(TerminalSessionService sessions, Executor writerExecutor,
                                     LongSupplier ticker) {
+        this(sessions, writerExecutor, ticker, task -> { });
+    }
+
+    public TerminalRelayCoordinator(TerminalSessionService sessions, Executor writerExecutor,
+                                    LongSupplier ticker, PeriodicScheduler scheduler) {
         this.sessions = sessions;
         this.writerExecutor = writerExecutor;
         this.ticker = ticker;
+        scheduler.schedule(this::flushDueTraffic);
     }
 
     public boolean attach(String sessionId, TerminalPeer peer) {
@@ -70,25 +82,28 @@ public class TerminalRelayCoordinator {
                 relays.put(sessionId, relay);
             }
         }
-        boolean activate;
+        boolean activationFailed = false;
         synchronized (relay) {
             if (relay.closed.get() || relay.peer(peer.role()) != null) {
                 peer.close(policyStatus(CloseReason.SESSION_REJECTED));
                 return false;
             }
             relay.setPeer(peer);
-            activate = relay.browser != null && relay.agent != null;
-        }
-        if (activate) {
-            try {
-                if (!sessions.markRelayActive(sessionId)) {
-                    close(relay, CloseReason.SESSION_REJECTED);
-                    return false;
+            if (relay.browser != null && relay.agent != null) {
+                try {
+                    if (sessions.markRelayActive(sessionId)) {
+                        relay.active = true;
+                    } else {
+                        activationFailed = true;
+                    }
+                } catch (RuntimeException exception) {
+                    activationFailed = true;
                 }
-            } catch (RuntimeException exception) {
-                close(relay, CloseReason.SESSION_REJECTED);
-                return false;
             }
+        }
+        if (activationFailed) {
+            close(relay, CloseReason.SESSION_REJECTED);
+            return false;
         }
         return true;
     }
@@ -97,6 +112,9 @@ public class TerminalRelayCoordinator {
         Relay relay = relayFor(source);
         if (relay == null || payload == null || payload.remaining() > MAX_BINARY_BYTES) {
             closeIfPresent(relay, CloseReason.PROTOCOL_ERROR);
+            return;
+        }
+        if (!relay.active) {
             return;
         }
         int size = payload.remaining();
@@ -118,7 +136,7 @@ public class TerminalRelayCoordinator {
                 relay.agentToBrowser += size;
             }
             if (relay.browserToAgent + relay.agentToBrowser >= TRAFFIC_FLUSH_BYTES) {
-                trafficRecorded = flushTraffic(relay);
+                trafficRecorded = flushTraffic(relay, ticker.getAsLong());
             }
         }
         if (!trafficRecorded) {
@@ -131,6 +149,9 @@ public class TerminalRelayCoordinator {
         if (relay == null || payload == null
                 || payload.getBytes(StandardCharsets.UTF_8).length > MAX_TEXT_BYTES) {
             closeIfPresent(relay, CloseReason.PROTOCOL_ERROR);
+            return;
+        }
+        if (!relay.active) {
             return;
         }
         Control control = parseControl(payload);
@@ -186,24 +207,23 @@ public class TerminalRelayCoordinator {
         if (!relay.closed.compareAndSet(false, true)) {
             return;
         }
+        relay.active = false;
         synchronized (relays) {
             relays.remove(relay.sessionId, relay);
         }
         synchronized (relay) {
-            flushTraffic(relay);
+            flushTraffic(relay, ticker.getAsLong());
         }
-        CloseStatus status = reason.operator
-                ? new CloseStatus(1000, reason.name()) : policyStatus(reason);
-        if (relay.browser != null) {
-            relay.browser.close(status);
+        closePeer(relay.browser, reason);
+        closePeer(relay.agent, reason);
+        try {
+            sessions.finishRelay(relay.sessionId, reason.operator, reason.name());
+        } catch (RuntimeException ignored) {
+            // In-memory teardown is final even when persistence is temporarily unavailable.
         }
-        if (relay.agent != null) {
-            relay.agent.close(status);
-        }
-        sessions.finishRelay(relay.sessionId, reason.operator, reason.name());
     }
 
-    private boolean flushTraffic(Relay relay) {
+    private boolean flushTraffic(Relay relay, long now) {
         long browserBytes = relay.browserToAgent;
         long agentBytes = relay.agentToBrowser;
         if (browserBytes == 0 && agentBytes == 0) {
@@ -211,7 +231,41 @@ public class TerminalRelayCoordinator {
         }
         relay.browserToAgent = 0;
         relay.agentToBrowser = 0;
-        return sessions.recordRelayTraffic(relay.sessionId, browserBytes, agentBytes);
+        relay.lastTrafficFlushNanos = now;
+        try {
+            return sessions.recordRelayTraffic(relay.sessionId, browserBytes, agentBytes);
+        } catch (RuntimeException exception) {
+            return false;
+        }
+    }
+
+    private void flushDueTraffic() {
+        long now = ticker.getAsLong();
+        for (Relay relay : relays.values()) {
+            boolean recorded = true;
+            synchronized (relay) {
+                if (relay.active && relay.browserToAgent + relay.agentToBrowser > 0
+                        && now - relay.lastTrafficFlushNanos >= TRAFFIC_FLUSH_NANOS) {
+                    recorded = flushTraffic(relay, now);
+                }
+            }
+            if (!recorded) {
+                close(relay, CloseReason.SESSION_REJECTED);
+            }
+        }
+    }
+
+    private void closePeer(TerminalPeer peer, CloseReason reason) {
+        if (peer == null) {
+            return;
+        }
+        CloseStatus status = reason.operator
+                ? new CloseStatus(1000, reason.name()) : policyStatus(reason);
+        try {
+            peer.close(status);
+        } catch (RuntimeException ignored) {
+            // Continue closing the other peer and finalizing the session.
+        }
     }
 
     private static CloseStatus policyStatus(CloseReason reason) {
@@ -281,15 +335,18 @@ public class TerminalRelayCoordinator {
         private final AtomicBoolean closed = new AtomicBoolean();
         private final TokenBucket browserRate;
         private final TokenBucket agentRate;
-        private TerminalPeer browser;
-        private TerminalPeer agent;
+        private volatile TerminalPeer browser;
+        private volatile TerminalPeer agent;
+        private volatile boolean active;
         private long browserToAgent;
         private long agentToBrowser;
+        private long lastTrafficFlushNanos;
 
         private Relay(String sessionId, long now) {
             this.sessionId = sessionId;
             this.browserRate = new TokenBucket(now);
             this.agentRate = new TokenBucket(now);
+            this.lastTrafficFlushNanos = now;
         }
 
         private TerminalPeer peer(TerminalPeer.Role role) {

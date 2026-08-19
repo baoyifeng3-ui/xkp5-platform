@@ -14,7 +14,14 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -25,6 +32,8 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -206,6 +215,142 @@ public class TerminalRelayCoordinatorTest {
 
         assertEquals(0, coordinator.relayCount());
         verify(sessions).finishRelay(SESSION_ID, false, "BACKPRESSURE");
+    }
+
+    @Test
+    public void lowVolumeBinaryTrafficFlushesOnTheSharedTimeBoundary() {
+        TerminalSessionService sessions = mock(TerminalSessionService.class);
+        AtomicLong ticker = new AtomicLong();
+        AtomicReference<Runnable> periodic = new AtomicReference<>();
+        TerminalRelayCoordinator coordinator = new TerminalRelayCoordinator(
+                sessions, Runnable::run, ticker::get, periodic::set);
+        TerminalPeer browser = peer(TerminalPeer.Role.BROWSER);
+        TerminalPeer agent = peer(TerminalPeer.Role.AGENT);
+        when(sessions.markRelayActive(SESSION_ID)).thenReturn(true);
+        when(sessions.recordRelayTraffic(SESSION_ID, 3L, 0L)).thenReturn(true);
+        assertTrue(coordinator.attach(SESSION_ID, browser));
+        assertTrue(coordinator.attach(SESSION_ID, agent));
+
+        coordinator.onBinary(browser, ByteBuffer.wrap(new byte[]{1, 2, 3}));
+        verify(sessions, never()).recordRelayTraffic(any(String.class), anyLong(), anyLong());
+        ticker.set(TimeUnit.SECONDS.toNanos(1));
+        periodic.get().run();
+
+        verify(sessions).recordRelayTraffic(SESSION_ID, 3L, 0L);
+        assertEquals(1, coordinator.relayCount());
+    }
+
+    @Test
+    public void cleanupCompletesWhenTrafficAndSocketCleanupThrow() throws Exception {
+        TerminalSessionService sessions = mock(TerminalSessionService.class);
+        TerminalRelayCoordinator coordinator = new TerminalRelayCoordinator(
+                sessions, Runnable::run, () -> 0L);
+        TerminalPeer browser = peer(TerminalPeer.Role.BROWSER);
+        TerminalPeer agent = peer(TerminalPeer.Role.AGENT);
+        when(sessions.markRelayActive(SESSION_ID)).thenReturn(true);
+        when(sessions.recordRelayTraffic(SESSION_ID, 1L, 0L))
+                .thenThrow(new IllegalStateException("db unavailable"));
+        doThrow(new IllegalStateException("socket close failed"))
+                .when(browser.session()).close(any(CloseStatus.class));
+        assertTrue(coordinator.attach(SESSION_ID, browser));
+        assertTrue(coordinator.attach(SESSION_ID, agent));
+        coordinator.onBinary(browser, ByteBuffer.wrap(new byte[]{1}));
+
+        coordinator.detach(browser, TerminalRelayCoordinator.CloseReason.PEER_DISCONNECTED);
+
+        verify(browser.session()).close(any(CloseStatus.class));
+        verify(agent.session()).close(any(CloseStatus.class));
+        verify(sessions).finishRelay(SESSION_ID, false, "PEER_DISCONNECTED");
+        assertEquals(0, coordinator.relayCount());
+    }
+
+    @Test
+    public void dataCannotCrossUntilActivationPersistenceCompletes() throws Exception {
+        TerminalSessionService sessions = mock(TerminalSessionService.class);
+        CountDownLatch activationEntered = new CountDownLatch(1);
+        CountDownLatch releaseActivation = new CountDownLatch(1);
+        when(sessions.markRelayActive(SESSION_ID)).thenAnswer(invocation -> {
+            activationEntered.countDown();
+            assertTrue(releaseActivation.await(5, TimeUnit.SECONDS));
+            return true;
+        });
+        TerminalRelayCoordinator coordinator = new TerminalRelayCoordinator(
+                sessions, Runnable::run, () -> 0L);
+        TerminalPeer browser = peer(TerminalPeer.Role.BROWSER);
+        TerminalPeer agent = peer(TerminalPeer.Role.AGENT);
+        assertTrue(coordinator.attach(SESSION_ID, browser));
+        ExecutorService attaching = Executors.newSingleThreadExecutor();
+        try {
+            Future<Boolean> attached = attaching.submit(() -> coordinator.attach(SESSION_ID, agent));
+            assertTrue(activationEntered.await(5, TimeUnit.SECONDS));
+
+            coordinator.onBinary(browser, ByteBuffer.wrap(new byte[]{7}));
+            verify(agent.session(), never()).sendMessage(any(WebSocketMessage.class));
+            releaseActivation.countDown();
+            assertTrue(attached.get(5, TimeUnit.SECONDS));
+            coordinator.onBinary(browser, ByteBuffer.wrap(new byte[]{8}));
+            verify(agent.session(), times(1)).sendMessage(any(WebSocketMessage.class));
+        } finally {
+            releaseActivation.countDown();
+            attaching.shutdownNow();
+            assertTrue(attaching.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    public void activationFailureNeverOpensTheForwardingGate() throws Exception {
+        TerminalSessionService sessions = mock(TerminalSessionService.class);
+        when(sessions.markRelayActive(SESSION_ID)).thenReturn(false);
+        TerminalRelayCoordinator coordinator = new TerminalRelayCoordinator(
+                sessions, Runnable::run, () -> 0L);
+        TerminalPeer browser = peer(TerminalPeer.Role.BROWSER);
+        TerminalPeer agent = peer(TerminalPeer.Role.AGENT);
+        assertTrue(coordinator.attach(SESSION_ID, browser));
+
+        assertFalse(coordinator.attach(SESSION_ID, agent));
+        coordinator.onBinary(browser, ByteBuffer.wrap(new byte[]{1}));
+
+        verify(agent.session(), never()).sendMessage(any(WebSocketMessage.class));
+        assertEquals(0, coordinator.relayCount());
+    }
+
+    @Test
+    public void outboundWriterRemainsSerializedOnAMultithreadedExecutor() throws Exception {
+        ExecutorService writers = Executors.newFixedThreadPool(2);
+        WebSocketSession socket = mock(WebSocketSession.class);
+        when(socket.isOpen()).thenReturn(true);
+        AtomicInteger active = new AtomicInteger();
+        AtomicInteger maximum = new AtomicInteger();
+        AtomicInteger completed = new AtomicInteger();
+        CountDownLatch firstEntered = new CountDownLatch(1);
+        CountDownLatch releaseFirst = new CountDownLatch(1);
+        CountDownLatch bothCompleted = new CountDownLatch(2);
+        doAnswer(invocation -> {
+            int current = active.incrementAndGet();
+            maximum.accumulateAndGet(current, Math::max);
+            if (completed.get() == 0) {
+                firstEntered.countDown();
+                assertTrue(releaseFirst.await(5, TimeUnit.SECONDS));
+            }
+            completed.incrementAndGet();
+            active.decrementAndGet();
+            bothCompleted.countDown();
+            return null;
+        }).when(socket).sendMessage(any(WebSocketMessage.class));
+        TerminalPeer peer = new TerminalPeer(TerminalPeer.Role.AGENT, "agent-1", socket);
+        try {
+            assertTrue(peer.enqueue(new BinaryMessage(new byte[]{1}), writers, () -> { }));
+            assertTrue(firstEntered.await(5, TimeUnit.SECONDS));
+            assertTrue(peer.enqueue(new BinaryMessage(new byte[]{2}), writers, () -> { }));
+            releaseFirst.countDown();
+            assertTrue(bothCompleted.await(5, TimeUnit.SECONDS));
+            assertEquals(1, maximum.get());
+        } finally {
+            releaseFirst.countDown();
+            peer.close(CloseStatus.NORMAL);
+            writers.shutdownNow();
+            assertTrue(writers.awaitTermination(5, TimeUnit.SECONDS));
+        }
     }
 
     private TerminalPeer peer(TerminalPeer.Role role) {

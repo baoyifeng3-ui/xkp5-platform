@@ -96,10 +96,11 @@ public class TerminalSessionSchemaTest {
         assertContainsAll(issueAgent, "state = 'WAITING_AGENT'", "agent_ticket_digest = #{digest}",
                 "agent_ticket_consumed_at = NULL", "absolute_expires_at > #{now}");
 
-        String consumeAgent = sql(assertMethod(mapper, "consumeAgentTicket", 3, Update.class));
+        String consumeAgent = sql(assertMethod(mapper, "consumeAgentTicket", 4, Update.class));
         assertContainsAll(consumeAgent, "state = 'WAITING_AGENT'", "agent_ticket_digest = #{digest}",
                 "agent_ticket_consumed_at IS NULL", "agent_ticket_expires_at > #{now}",
-                "absolute_expires_at > #{now}", "state = 'WAITING_BROWSER'");
+                "absolute_expires_at > #{now}", "state = 'WAITING_BROWSER'",
+                "BINARY agent_id = BINARY #{agentId}");
 
         String issueBrowser = sql(assertMethod(mapper, "issueBrowserTicket", 4, Update.class));
         assertContainsAll(issueBrowser, "state = 'WAITING_BROWSER'",
@@ -153,9 +154,9 @@ public class TerminalSessionSchemaTest {
         assertContainsAll(issueAgent, "DATE_ADD(requested_at, INTERVAL 90 SECOND) > #{now}",
                 "#{expiresAt} <= LEAST(DATE_ADD(requested_at, INTERVAL 90 SECOND), absolute_expires_at)");
 
-        String consumeAgent = sql(assertMethod(mapper, "consumeAgentTicket", 3, Update.class));
+        String consumeAgent = sql(assertMethod(mapper, "consumeAgentTicket", 4, Update.class));
         assertContainsAll(consumeAgent, "DATE_ADD(requested_at, INTERVAL 90 SECOND) > #{now}",
-                "agent_ticket_expires_at > #{now}");
+                "agent_ticket_expires_at > #{now}", "BINARY agent_id = BINARY #{agentId}");
 
         String issueBrowser = sql(assertMethod(mapper, "issueBrowserTicket", 4, Update.class));
         assertContainsAll(issueBrowser, "DATE_ADD(agent_connected_at, INTERVAL 60 SECOND) > #{now}",
