@@ -32,6 +32,11 @@ module.exports = {
       '/api': {
         target: backendTarget,
         changeOrigin: true,
+        onProxyReq(proxyReq) {
+          // The dev server is same-origin to the browser; do not forward its
+          // development Origin to a backend with a production allowlist.
+          proxyReq.removeHeader('origin')
+        },
         pathRewrite: { '^/api': '' }
       },
       '/files': {
