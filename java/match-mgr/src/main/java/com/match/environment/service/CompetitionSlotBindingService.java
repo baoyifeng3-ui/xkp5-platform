@@ -1,7 +1,8 @@
 package com.match.environment.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.match.agent.persistence.ProcessingAgentMapper;
 import com.match.agent.persistence.ProcessingAgentRecord;
@@ -349,8 +350,12 @@ public class CompetitionSlotBindingService {
             return "COMPETITION_PAIR_NOT_VERIFIED";
         }
         JsonNode pair;
-        try {
-            JsonNode root = verificationMapper.readTree(environment.getLastComponentResultsJson());
+        try (JsonParser parser = verificationMapper.getFactory().createParser(
+                environment.getLastComponentResultsJson())) {
+            JsonNode root = verificationMapper.readTree(parser);
+            if (parser.nextToken() != null) {
+                return "COMPETITION_PAIR_NOT_VERIFIED";
+            }
             if (root == null || !root.isObject() || root.size() != 1 || !root.has("pair")) {
                 return "COMPETITION_PAIR_NOT_VERIFIED";
             }

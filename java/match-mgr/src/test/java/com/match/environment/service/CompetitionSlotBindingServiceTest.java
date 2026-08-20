@@ -204,6 +204,15 @@ public class CompetitionSlotBindingServiceTest {
     }
 
     @Test
+    public void refusesTrailingJsonAfterVerifiedPair() {
+        CompetitionEnvironmentRecord environment = readyEnvironment();
+        environment.setLastComponentResultsJson(environment.getLastComponentResultsJson() + " {}");
+        stubReadyInfrastructure(environment, 21);
+
+        assertCode("COMPETITION_PAIR_NOT_VERIFIED", () -> service.bind(SLOT_ID, 21, admin()));
+    }
+
+    @Test
     public void refusesIncompleteCreationMetadataAndMissingPinnedPorts() {
         CompetitionEnvironmentRecord missingMetadata = readyEnvironment();
         missingMetadata.setAnnotationTemplateId(null);
