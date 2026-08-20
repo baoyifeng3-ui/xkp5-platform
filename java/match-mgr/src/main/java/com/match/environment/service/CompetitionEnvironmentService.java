@@ -90,8 +90,9 @@ public class CompetitionEnvironmentService {
                 request.getAnnotationTemplateVersion(), "ANNOTATION");
         ContainerTemplateRecord editor = requireTemplate(request.getEditorTemplateId(),
                 request.getEditorTemplateVersion(), "EDITOR");
-        reservePorts(slot, annotation);
-        reservePorts(slot, editor);
+        List<EnvironmentPortAllocationRecord> existingAllocations = portMapper.selectBySlot(slot.getSlotId());
+        reservePorts(slot, annotation, existingAllocations);
+        reservePorts(slot, editor, existingAllocations);
 
         String environmentId = UUID.randomUUID().toString();
         String operationId = UUID.randomUUID().toString();
@@ -304,9 +305,20 @@ public class CompetitionEnvironmentService {
         }
     }
 
-    private void reservePorts(ProcessingEnvironmentSlotRecord slot, ContainerTemplateRecord template) {
+    private void reservePorts(ProcessingEnvironmentSlotRecord slot, ContainerTemplateRecord template,
+                              List<EnvironmentPortAllocationRecord> existingAllocations) {
         int index = 0;
         for (ContainerPortSpec port : templatePorts(template)) {
+            EnvironmentPortAllocationRecord slotAllocation = findSlotAllocation(
+                    existingAllocations, template.getComponentType(), port);
+            if (slotAllocation != null) {
+                if (!Objects.equals(slot.getAgentId(), slotAllocation.getAgentId())
+                        || !Objects.equals(slot.getSlotId(), slotAllocation.getSlotId())) {
+                    throw new IllegalStateException("environment port allocation identity is invalid");
+                }
+                index++;
+                continue;
+            }
             int hostPort = defaultHostPort(slot.getSlotNumber(), template.getComponentType(), index++);
             EnvironmentPortAllocationRecord existing = portMapper.selectAgentPortForUpdate(
                     slot.getAgentId(), hostPort, port.getProtocol());
@@ -332,6 +344,22 @@ public class CompetitionEnvironmentService {
         }
     }
 
+    private EnvironmentPortAllocationRecord findSlotAllocation(
+            List<EnvironmentPortAllocationRecord> allocations, String componentType,
+            ContainerPortSpec port) {
+        if (allocations == null) {
+            return null;
+        }
+        for (EnvironmentPortAllocationRecord allocation : allocations) {
+            if (Objects.equals(componentType, allocation.getComponentType())
+                    && Objects.equals(port.getContainerPort(), allocation.getContainerPort())
+                    && Objects.equals(port.getProtocol(), allocation.getProtocol())) {
+                return allocation;
+            }
+        }
+        return null;
+    }
+
     private List<ContainerPortSpec> templatePorts(ContainerTemplateRecord template) {
         try {
             List<ContainerPortSpec> ports = objectMapper.readValue(template.getPortsJson(),
@@ -347,7 +375,7 @@ public class CompetitionEnvironmentService {
 
     private int defaultHostPort(int slot, String componentType, int index) {
         if ("ANNOTATION".equals(componentType)) {
-            return 8080 + slot;
+            return index == 0 ? 8080 + slot : 18000 + slot * 32 + index;
         }
         if (index == 0) {
             return 9090 + slot;
@@ -355,7 +383,7 @@ public class CompetitionEnvironmentService {
         if (index == 1) {
             return 8880 + slot;
         }
-        return 5000 + slot;
+        return index == 2 ? 5000 + slot : 28000 + slot * 32 + index;
     }
 
     private int requireSuperAdmin(User actor) {

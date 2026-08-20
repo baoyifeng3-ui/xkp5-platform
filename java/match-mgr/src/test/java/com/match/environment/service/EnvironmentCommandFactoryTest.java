@@ -95,6 +95,75 @@ public class EnvironmentCommandFactoryTest {
         }
     }
 
+    @Test
+    public void rejectsCompetitionPayloadWhenPinnedFingerprintIsMissing() {
+        ContainerTemplateMapper templateMapper = mock(ContainerTemplateMapper.class);
+        EnvironmentPortAllocationMapper portMapper = mock(EnvironmentPortAllocationMapper.class);
+        EnvironmentCommandFactory factory = new EnvironmentCommandFactory(templateMapper, portMapper,
+                new ObjectMapper().findAndRegisterModules());
+        CompetitionEnvironmentRecord environment = competitionEnvironment();
+        when(templateMapper.selectVersion("annotation-template", 3))
+                .thenReturn(template("annotation-template", 3, "ANNOTATION", "/root/data"));
+        when(templateMapper.selectVersion("editor-template", 5))
+                .thenReturn(template("editor-template", 5, "EDITOR", "/home/student/data"));
+        environment.setAnnotationConfigFingerprint(null);
+
+        try {
+            factory.createPayloadJson(environment, "operation-2");
+            fail("expected missing pinned fingerprint");
+        } catch (IllegalStateException expected) {
+            assertEquals("环境固定模板指纹不匹配: ANNOTATION", expected.getMessage());
+        }
+    }
+
+    @Test
+    public void competitionPayloadUsesOnlyPortsDeclaredByPinnedTemplates() throws Exception {
+        ContainerTemplateMapper templateMapper = mock(ContainerTemplateMapper.class);
+        EnvironmentPortAllocationMapper portMapper = mock(EnvironmentPortAllocationMapper.class);
+        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+        EnvironmentCommandFactory factory = new EnvironmentCommandFactory(templateMapper, portMapper, objectMapper);
+        CompetitionEnvironmentRecord environment = competitionEnvironment();
+        when(templateMapper.selectVersion("annotation-template", 3))
+                .thenReturn(template("annotation-template", 3, "ANNOTATION", "/root/data"));
+        when(templateMapper.selectVersion("editor-template", 5))
+                .thenReturn(template("editor-template", 5, "EDITOR", "/home/student/data"));
+        when(portMapper.selectBySlot("slot-2")).thenReturn(Arrays.asList(
+                port("ANNOTATION", 8080, 8082), port("ANNOTATION", 8181, 8183),
+                port("EDITOR", 9090, 9092), port("EDITOR", 8887, 8882)));
+
+        EnvironmentCommandPayload payload = objectMapper.readValue(
+                factory.createPayloadJson(environment, "operation-2"), EnvironmentCommandPayload.class);
+
+        assertEquals(1, payload.getComponents().get(0).getPorts().size());
+        assertEquals(Integer.valueOf(8080),
+                payload.getComponents().get(0).getPorts().get(0).getContainerPort());
+        assertEquals(1, payload.getComponents().get(1).getPorts().size());
+        assertEquals(Integer.valueOf(9090),
+                payload.getComponents().get(1).getPorts().get(0).getContainerPort());
+    }
+
+    @Test
+    public void competitionPayloadRejectsMissingPinnedTemplatePortAllocation() {
+        ContainerTemplateMapper templateMapper = mock(ContainerTemplateMapper.class);
+        EnvironmentPortAllocationMapper portMapper = mock(EnvironmentPortAllocationMapper.class);
+        EnvironmentCommandFactory factory = new EnvironmentCommandFactory(templateMapper, portMapper,
+                new ObjectMapper().findAndRegisterModules());
+        CompetitionEnvironmentRecord environment = competitionEnvironment();
+        when(templateMapper.selectVersion("annotation-template", 3))
+                .thenReturn(template("annotation-template", 3, "ANNOTATION", "/root/data"));
+        when(templateMapper.selectVersion("editor-template", 5))
+                .thenReturn(template("editor-template", 5, "EDITOR", "/home/student/data"));
+        when(portMapper.selectBySlot("slot-2")).thenReturn(Arrays.asList(
+                port("ANNOTATION", 8080, 8082), port("EDITOR", 8887, 8882)));
+
+        try {
+            factory.createPayloadJson(environment, "operation-2");
+            fail("expected missing pinned port allocation");
+        } catch (IllegalStateException expected) {
+            assertEquals("environment port allocation is incomplete: EDITOR", expected.getMessage());
+        }
+    }
+
     private TrainingEnvironmentRecord environment() {
         TrainingEnvironmentRecord environment = new TrainingEnvironmentRecord();
         environment.setEnvironmentId("environment-1");
@@ -136,6 +205,8 @@ public class EnvironmentCommandFactoryTest {
         template.setMountTarget(mountTarget);
         template.setConfigFingerprint(type.toLowerCase() + "-fingerprint");
         template.setGpuEnabled("EDITOR".equals(type));
+        template.setPortsJson("[{\"containerPort\":"
+                + ("ANNOTATION".equals(type) ? 8080 : 9090) + ",\"protocol\":\"tcp\"}]");
         return template;
     }
 

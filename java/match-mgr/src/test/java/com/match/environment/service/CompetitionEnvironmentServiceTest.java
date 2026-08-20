@@ -32,6 +32,8 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -286,6 +288,34 @@ public class CompetitionEnvironmentServiceTest {
         verify(commands).requestEnvironmentCommand(any(ProcessingAgentRecord.class),
                 eq("RESTORE_COMPETITION_ENVIRONMENT"), eq("{\"payload\":true}"), eq(9),
                 eq("SUPER_ADMIN"), eq(existing.getEnvironmentId() + ":RESTORE"));
+    }
+
+    @Test
+    public void allocatesDistinctHostPortsForEveryValidTemplatePort() {
+        ContainerTemplateRecord annotation = template(ANNOTATION_ID, 3,
+                "ANNOTATION", ANNOTATION_FINGERPRINT);
+        annotation.setPortsJson("[{\"containerPort\":8080,\"protocol\":\"tcp\"},"
+                + "{\"containerPort\":8081,\"protocol\":\"tcp\"}]");
+        ContainerTemplateRecord editor = template(EDITOR_ID, 5, "EDITOR", EDITOR_FINGERPRINT);
+        editor.setPortsJson("[{\"containerPort\":9090,\"protocol\":\"tcp\"},"
+                + "{\"containerPort\":8887,\"protocol\":\"tcp\"},"
+                + "{\"containerPort\":5000,\"protocol\":\"tcp\"},"
+                + "{\"containerPort\":5001,\"protocol\":\"tcp\"}]");
+        when(templates.selectVersion(ANNOTATION_ID, 3)).thenReturn(annotation);
+        when(templates.selectVersion(EDITOR_ID, 5)).thenReturn(editor);
+        when(ports.selectAgentPortForUpdate(eq(AGENT_ID), anyInt(), eq("tcp"))).thenReturn(null);
+
+        service.create(request, superAdmin);
+
+        ArgumentCaptor<EnvironmentPortAllocationRecord> saved =
+                ArgumentCaptor.forClass(EnvironmentPortAllocationRecord.class);
+        verify(ports, org.mockito.Mockito.times(6)).insert(saved.capture());
+        Set<Integer> hostPorts = new HashSet<>();
+        for (EnvironmentPortAllocationRecord allocation : saved.getAllValues()) {
+            hostPorts.add(allocation.getHostPort());
+        }
+        assertEquals(6, hostPorts.size());
+        assertTrue(hostPorts.containsAll(Arrays.asList(8082, 9092, 8882, 5002)));
     }
 
     private CompetitionEnvironmentRecord existingEnvironment() {
