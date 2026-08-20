@@ -194,7 +194,12 @@ try {
     $summary.Add('final=TRAINING')
     Write-Host ('competition mode flow passed: ' + ($summary -join '; '))
 } finally {
-    if ($script:changedMode -and $script:adminToken) {
-        try { Set-PlatformMode 'TRAINING' } catch { Write-Warning 'Cleanup could not restore TRAINING mode' }
+    if ($script:adminToken) {
+        try {
+            $cleanupMode = Invoke-JsonApi -Method Get -Path 'admin/platform-mode' -Token $script:adminToken
+            if ($cleanupMode.data.mode -eq 'COMPETITION') { Set-PlatformMode 'TRAINING' }
+        } catch {
+            Write-Warning 'Cleanup could not confirm or restore TRAINING mode'
+        }
     }
 }
