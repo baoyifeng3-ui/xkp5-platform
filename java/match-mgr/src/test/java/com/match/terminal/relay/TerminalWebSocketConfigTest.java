@@ -8,6 +8,7 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.socket.server.standard.ServletServerContainerFactoryBean;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
@@ -108,5 +109,17 @@ public class TerminalWebSocketConfigTest {
         verify(scheduler, never()).scheduleAtFixedRate(any(Runnable.class),
                 org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong(),
                 any(TimeUnit.class));
+    }
+
+    @Test
+    public void applicationTaskSchedulerIsConcreteAndBounded() {
+        TerminalWebSocketConfig config = new TerminalWebSocketConfig(
+                mock(TerminalSessionService.class), mock(AgentCredentialService.class),
+                "https://management.example");
+
+        ThreadPoolTaskScheduler scheduler = config.taskScheduler();
+        assertEquals(true, scheduler.getScheduledExecutor() != null);
+
+        scheduler.shutdown();
     }
 }
