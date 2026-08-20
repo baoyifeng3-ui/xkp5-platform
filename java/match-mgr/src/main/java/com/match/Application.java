@@ -10,7 +10,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 @MapperScan({"com.match.mapper", "com.match.licensing.persistence", "com.match.agent.persistence",
         "com.match.environment.persistence", "com.match.dashboard.persistence",
-        "com.match.terminal.persistence"})
+        "com.match.terminal.persistence", "com.match.mode.persistence"})
 public class Application {
 
     public static void main(String[] args) {
