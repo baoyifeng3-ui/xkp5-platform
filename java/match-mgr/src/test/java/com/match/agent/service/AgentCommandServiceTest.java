@@ -418,6 +418,7 @@ public class AgentCommandServiceTest {
     @Test
     public void superAdminCanDispatchTaskFourCompetitionEnvironmentCommands() {
         for (String type : Arrays.asList("CREATE_COMPETITION_ENVIRONMENT",
+                "START_COMPETITION_ENVIRONMENT", "STOP_COMPETITION_ENVIRONMENT",
                 "RESTORE_COMPETITION_ENVIRONMENT")) {
             service.requestEnvironmentCommand(agent, type, "{}", 7, "SUPER_ADMIN",
                     "environment-1:" + type);
@@ -425,25 +426,14 @@ public class AgentCommandServiceTest {
 
         ArgumentCaptor<ProcessingAgentCommandRecord> saved =
                 ArgumentCaptor.forClass(ProcessingAgentCommandRecord.class);
-        verify(mapper, times(2)).insert(saved.capture());
+        verify(mapper, times(4)).insert(saved.capture());
         assertEquals(Arrays.asList("CREATE_COMPETITION_ENVIRONMENT",
+                        "START_COMPETITION_ENVIRONMENT", "STOP_COMPETITION_ENVIRONMENT",
                         "RESTORE_COMPETITION_ENVIRONMENT"),
                 saved.getAllValues().stream().map(ProcessingAgentCommandRecord::getCommandType)
                         .collect(Collectors.toList()));
     }
 
-
-    @Test(expected = IllegalArgumentException.class)
-    public void competitionStartWaitsForTheAgentContractTask() {
-        service.requestEnvironmentCommand(agent, "START_COMPETITION_ENVIRONMENT", "{}",
-                7, "SUPER_ADMIN", "environment-1:START");
-    }
-
-    @Test(expected = IllegalArgumentException.class)
-    public void competitionStopWaitsForTheAgentContractTask() {
-        service.requestEnvironmentCommand(agent, "STOP_COMPETITION_ENVIRONMENT", "{}",
-                7, "SUPER_ADMIN", "environment-1:STOP");
-    }
 
     @Test(expected = IllegalArgumentException.class)
     public void normalUserCannotRequestServerShutdown() {

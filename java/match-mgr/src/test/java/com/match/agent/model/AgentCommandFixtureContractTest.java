@@ -53,6 +53,32 @@ public class AgentCommandFixtureContractTest {
         }
     }
 
+    @Test
+    public void sharedCompetitionEnvironmentFixturesMatchVersionOneContract() throws Exception {
+        assertCompetitionFixture("create", "CREATE_COMPETITION_ENVIRONMENT", true);
+        assertCompetitionFixture("start", "START_COMPETITION_ENVIRONMENT", false);
+        assertCompetitionFixture("stop", "STOP_COMPETITION_ENVIRONMENT", false);
+        assertCompetitionFixture("restore", "RESTORE_COMPETITION_ENVIRONMENT", true);
+    }
+
+    private void assertCompetitionFixture(String operation, String type, boolean fullSpec) throws Exception {
+        String path = "/fixtures/agent-command-" + operation + "-competition-environment-v1.json";
+        try (InputStream input = getClass().getResourceAsStream(path)) {
+            assertNotNull(path, input);
+            AgentCommandEnvelope command = mapper.readValue(input, AgentCommandEnvelope.class);
+            assertEquals(type, command.getType());
+            assertEquals(Integer.valueOf(1), command.getVersion());
+            assertNotNull(command.getPayload());
+            assertEquals("77777777-2222-4333-8444-555555555551",
+                    command.getPayload().get("environmentId").textValue());
+            assertEquals(2, command.getPayload().get("components").size());
+            if (fullSpec) {
+                assertEquals("training/7/101",
+                        command.getPayload().get("workspaceRelativePath").textValue());
+            }
+        }
+    }
+
     @Test(expected = com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException.class)
     public void strictDeserializerRejectsUnknownCommandField() throws Exception {
         mapper.readValue("{\"commandId\":\"11111111-2222-4333-8444-555555555555\","
