@@ -5,6 +5,9 @@ import com.match.dto.AdministratorView;
 import com.match.entity.User;
 import com.match.mapper.UserMapper;
 import com.match.security.PasswordCodec;
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -30,6 +33,10 @@ public class AdministratorManagementServiceTest {
 
     @Before
     public void setUp() {
+        MapperBuilderAssistant assistant = new MapperBuilderAssistant(
+                new MybatisConfiguration(), "administrator-test");
+        assistant.setCurrentNamespace("com.match.mapper.UserMapper");
+        TableInfoHelper.initTableInfo(assistant, User.class);
         userMapper = mock(UserMapper.class);
         passwordCodec = mock(PasswordCodec.class);
         when(passwordCodec.encode(any(String.class))).thenReturn("{bcrypt}encoded");
