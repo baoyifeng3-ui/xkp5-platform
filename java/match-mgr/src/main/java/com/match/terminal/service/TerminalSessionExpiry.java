@@ -8,11 +8,13 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -26,6 +28,13 @@ public class TerminalSessionExpiry {
     private final Clock clock;
     private final TerminalSessionService sessionService;
     private final TransactionOperations transactions;
+
+    // A forward-only clock offset is available only to the development profile so
+    // disposable relay stacks can exercise idle expiry without rewriting session rows.
+    @Value("${MATCH_TERMINAL_TEST_CLOCK_OFFSET_SECONDS:0}")
+    private long testClockOffsetSeconds;
+    @Value("${xkp.licensing.environment:PRODUCTION}")
+    private String licensingEnvironment;
 
     public TerminalSessionExpiry(TerminalSessionMapper mapper, TerminalRelayLifecycle lifecycle,
                                  AgentAuditService auditService, Clock clock,
@@ -166,7 +175,12 @@ public class TerminalSessionExpiry {
     }
 
     private LocalDateTime utcNow() {
-        return LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
+        Instant instant = clock.instant();
+        if ("DEVELOPMENT".equalsIgnoreCase(licensingEnvironment)
+                && testClockOffsetSeconds != 0) {
+            instant = instant.plusSeconds(testClockOffsetSeconds);
+        }
+        return LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
     }
 
     private static TransactionOperations requiresNew(PlatformTransactionManager manager) {

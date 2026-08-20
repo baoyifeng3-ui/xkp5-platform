@@ -114,6 +114,7 @@ NVIDIA GPU 或物理开关机已经验收；这些项目仍须在 Ubuntu 处理�
 ```powershell
 $env:XKP_TEST_ALLOW_TERMINAL_RELAY = "YES"
 $env:XKP_TEST_TERMINAL_IDLE_SECONDS = "2"
+$env:MATCH_TERMINAL_TEST_CLOCK_OFFSET_SECONDS = "602"
 $env:XKP_TEST_LICENSE_FILE = "C:\temp\development.xkplic"
 $env:XKP_TEST_SUPER_ADMIN_USERNAME = "test-super-admin"
 $env:XKP_TEST_SUPER_ADMIN_PASSWORD = "change-me"
@@ -124,7 +125,9 @@ $env:XKP_TEST_DB_PASSWORD = "change-me"
 .\integration\agent\test-terminal-relay-flow.ps1
 ```
 
-该脚本会直接推进一次性数据库中的终端 I/O 时间，仅可用于可销毁的测试栈。
+开发配置中的 `MATCH_TERMINAL_TEST_CLOCK_OFFSET_SECONDS` 只在 `DEVELOPMENT` 授权环境生效，
+把管理服务 Clock 向前推进 `600 + XKP_TEST_TERMINAL_IDLE_SECONDS` 秒；生产环境始终忽略该值。
+脚本仍会通过 MySQL 只读查询检查 sentinel，不能用于修改生产会话数据。
 
 ## 管理主页概览口径
 

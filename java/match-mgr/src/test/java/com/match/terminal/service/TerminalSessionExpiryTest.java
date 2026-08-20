@@ -11,6 +11,7 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -32,6 +33,36 @@ import static org.mockito.Mockito.when;
 
 public class TerminalSessionExpiryTest {
     private static final Instant NOW = Instant.parse("2026-08-19T12:00:00Z");
+
+    @Test
+    public void testClockOffsetOnlyAppliesToDevelopmentProfile() {
+        TerminalSessionMapper mapper = mock(TerminalSessionMapper.class);
+        TerminalRelayLifecycle lifecycle = mock(TerminalRelayLifecycle.class);
+        AgentAuditService audit = mock(AgentAuditService.class);
+        TerminalSessionRecord row = row("clock-dev", "ACTIVE");
+        row.setAbsoluteExpiresAt(utc(NOW.plusSeconds(7200)));
+        LocalDateTime shiftedNow = utc(NOW.plusSeconds(601));
+        when(mapper.selectExpired(shiftedNow.minusMinutes(10), shiftedNow, 100))
+                .thenReturn(Collections.singletonList(row));
+        when(mapper.closeExpired(eq("clock-dev"), any(), any(), eq("CLOSED"),
+                eq("IDLE_TIMEOUT"), any())).thenReturn(1);
+        when(lifecycle.closePersistedSessionConditionally(eq("clock-dev"), any()))
+                .thenAnswer(TerminalSessionExpiryTest::runConditional);
+
+        TerminalSessionExpiry development = new TerminalSessionExpiry(mapper, lifecycle, audit,
+                Clock.fixed(NOW, ZoneOffset.UTC), null, (TransactionOperations) null);
+        ReflectionTestUtils.setField(development, "testClockOffsetSeconds", 601L);
+        ReflectionTestUtils.setField(development, "licensingEnvironment", "DEVELOPMENT");
+        development.expire();
+        verify(mapper).selectExpired(shiftedNow.minusMinutes(10), shiftedNow, 100);
+
+        TerminalSessionExpiry production = new TerminalSessionExpiry(mapper, lifecycle, audit,
+                Clock.fixed(NOW, ZoneOffset.UTC), null, (TransactionOperations) null);
+        ReflectionTestUtils.setField(production, "testClockOffsetSeconds", 601L);
+        ReflectionTestUtils.setField(production, "licensingEnvironment", "PRODUCTION");
+        production.expire();
+        verify(mapper).selectExpired(utc(NOW.minusSeconds(600)), utc(NOW), 100);
+    }
 
     @Test
     public void expiryUpdateAndAuditShareOnePerRowTransaction() {

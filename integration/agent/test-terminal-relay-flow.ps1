@@ -211,9 +211,11 @@ function Invoke-MySql([string]$Sql) {
     return ($output -join "`n").Trim()
 }
 
-function Inject-ShortIdleClock([string]$SessionId) {
-    $ageSeconds = 600 + $InjectedIdleSeconds
-    Invoke-MySql "UPDATE processing_agent_terminal_session SET last_io_at = DATE_SUB(UTC_TIMESTAMP(3), INTERVAL $ageSeconds SECOND) WHERE session_id = '$SessionId' AND state = 'ACTIVE';" | Out-Null
+function Assert-ShortIdleClockConfigured {
+    $expectedOffset = 600 + $InjectedIdleSeconds
+    $configuredOffset = [int]$env:MATCH_TERMINAL_TEST_CLOCK_OFFSET_SECONDS
+    Assert-True ($configuredOffset -eq $expectedOffset) `
+        "Development test clock offset must be $expectedOffset seconds"
 }
 
 function Assert-SentinelAbsent([string]$Sentinel) {
@@ -232,6 +234,8 @@ Assert-LoopbackTls $RelayBaseUrl 'wss' 'RelayBaseUrl'
 Assert-LoopbackTls $BrowserOrigin 'https' 'BrowserOrigin'
 Assert-True ($InjectedIdleSeconds -ge 1 -and $InjectedIdleSeconds -le 30) `
     'XKP_TEST_TERMINAL_IDLE_SECONDS must be between 1 and 30'
+Assert-True (-not [string]::IsNullOrWhiteSpace($env:MATCH_TERMINAL_TEST_CLOCK_OFFSET_SECONDS)) `
+    'MATCH_TERMINAL_TEST_CLOCK_OFFSET_SECONDS is required for the development test clock'
 Assert-True (-not [string]::IsNullOrWhiteSpace($DatabaseContainer)) 'XKP_TEST_MYSQL_CONTAINER is required'
 Assert-True (-not [string]::IsNullOrWhiteSpace($ManagementContainer)) 'XKP_TEST_MANAGEMENT_CONTAINER is required'
 Assert-True (-not [string]::IsNullOrWhiteSpace($DatabasePassword)) 'XKP_TEST_DB_PASSWORD is required'
@@ -340,7 +344,7 @@ try {
         -Protocols @('xkp-terminal-v1', "xkp-terminal-ticket.$($idleBrowserTicket.ticket)") `
         -Headers @{ Origin = $BrowserOrigin }
     Wait-TerminalState $superHeaders $idleSession.sessionId @('ACTIVE') | Out-Null
-    Inject-ShortIdleClock $idleSession.sessionId
+    Assert-ShortIdleClockConfigured
     Wait-TerminalState $superHeaders $idleSession.sessionId @('CLOSED', 'FAILED') | Out-Null
     Complete-TerminalCommand $agentHeaders $idleCommand 'TERMINAL_IDLE_TIMEOUT'
     Close-WebSocket $browserSocket

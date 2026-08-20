@@ -34,3 +34,7 @@ listed in `docs/operations/processing-agent.md`. The flow fails if ticket replay
 or a concurrent session is accepted, cleanup or injected idle expiry is
 unfinished, or its random terminal sentinel appears in MySQL metadata or
 management logs.
+
+The short idle case requires the development-only management clock offset
+`MATCH_TERMINAL_TEST_CLOCK_OFFSET_SECONDS=600+XKP_TEST_TERMINAL_IDLE_SECONDS`;
+the script does not rewrite terminal session timestamps.
