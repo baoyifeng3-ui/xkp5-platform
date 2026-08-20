@@ -8,6 +8,7 @@
       <el-tooltip content="通知在线 Agent 安全关闭处理服务器" placement="top"><el-button icon="el-icon-switch-button" :loading="busyAction === 'shutdown'" :disabled="actionBusy || !selected.online" @click="shutdownAgent">关机</el-button></el-tooltip>
       <el-button v-if="selected.enabled" icon="el-icon-video-pause" @click="disableProcessingAgentAction">停用</el-button>
       <el-button v-else type="success" icon="el-icon-video-play" @click="enableAgent">启用</el-button>
+      <el-tooltip v-if="canOpenRootTerminal" content="打开受控 root 终端" placement="top"><el-button type="warning" icon="el-icon-monitor" :loading="busyAction === 'terminal'" :disabled="actionBusy" @click="openRootTerminal">终端</el-button></el-tooltip>
       <el-button type="danger" plain icon="el-icon-delete" @click="removeAgent">移除</el-button>
     </div>
     <section v-if="selected" class="command-history">
@@ -24,15 +25,20 @@
       <div v-if="issuedToken" class="issued-token"><code>{{ issuedToken }}</code><el-button icon="el-icon-document-copy" @click="copyToken">复制</el-button></div>
       <span slot="footer"><el-button @click="tokenDialog = false">关闭</el-button><el-button type="primary" :loading="issuing" @click="issueToken">生成</el-button></span>
     </el-dialog>
+    <RootTerminalDialog v-if="terminalVisible" :visible.sync="terminalVisible" :session="terminalSession" :agent-name="selected && (selected.displayName || selected.hostname)" @closed="terminalSession = null" />
   </section>
 </template>
 <script>
 import AgentStatusTable from '@/components/agents/AgentStatusTable.vue'
+import RootTerminalDialog from '@/components/agents/RootTerminalDialog.vue'
 import { listProcessingAgents, createRegistrationToken, enableProcessingAgent, disableProcessingAgent, removeProcessingAgent, listProcessingAgentCommands, wakeProcessingAgent, shutdownProcessingAgent } from '@/api/ProcessingAgents'
+import { createTerminalSession } from '@/api/TerminalSessions'
+import { getRole } from '@/utils/auth'
+import { SUPER_ADMIN } from '@/navigation/roleNavigation'
 export default {
-  name: 'ProcessingAgents', components: { AgentStatusTable },
-  data: () => ({ agents: [], selected: null, commands: [], loading: false, busyAction: '', tokenDialog: false, label: '', issuedToken: '', issuing: false }),
-  computed: { actionBusy () { return Boolean(this.busyAction) } },
+  name: 'ProcessingAgents', components: { AgentStatusTable, RootTerminalDialog },
+  data: () => ({ agents: [], selected: null, commands: [], loading: false, busyAction: '', tokenDialog: false, label: '', issuedToken: '', issuing: false, terminalVisible: false, terminalSession: null }),
+  computed: { actionBusy () { return Boolean(this.busyAction) }, canOpenRootTerminal () { return getRole() === SUPER_ADMIN && Boolean(this.selected && this.selected.online && this.selected.enabled) } },
   mounted () { this.load() },
   methods: {
     async load () { this.loading = true; try { const result = await listProcessingAgents(); this.agents = result.data || [] } finally { this.loading = false } },
@@ -40,6 +46,12 @@ export default {
     async loadCommands () { if (!this.selected) return; const result = await listProcessingAgentCommands(this.selected.agentId); this.commands = result.data || [] },
     async wakeAgent () { this.busyAction = 'wake'; try { await wakeProcessingAgent(this.selected.agentId); this.$message.success('唤醒数据包已发送，请等待服务器上线') } finally { this.busyAction = '' } },
     async shutdownAgent () { await this.$confirm('服务器将安全关机，正在运行的环境会停止。是否继续？', '确认关机', { type: 'warning' }); this.busyAction = 'shutdown'; try { await shutdownProcessingAgent(this.selected.agentId); this.$message.success('关机命令已提交，等待服务器离线确认'); await this.loadCommands() } finally { this.busyAction = '' } },
+    async openRootTerminal () {
+      if (!this.canOpenRootTerminal) return
+      await this.$confirm(`将以 root 权限连接“${this.selected.displayName || this.selected.hostname}”，可执行主机级维护命令。确认继续？`, '打开 root 终端', { type: 'warning', confirmButtonText: '确认连接' })
+      this.busyAction = 'terminal'
+      try { const result = await createTerminalSession(this.selected.agentId); this.terminalSession = result.data || result; this.terminalVisible = true } finally { this.busyAction = '' }
+    },
     commandState (command) { return ({ PENDING: '等待 Agent 接收', LEASED: '已送达', RUNNING: '等待离线确认', SUCCEEDED: '已完成', FAILED: command.resultMessage || '执行失败' })[command.state] || command.state },
     commandTag (state) { return ({ PENDING: 'info', LEASED: '', RUNNING: 'warning', SUCCEEDED: 'success', FAILED: 'danger' })[state] || 'info' },
     async issueToken () { this.issuing = true; try { const result = await createRegistrationToken({ label: this.label }); this.issuedToken = (result.data || {}).token || '' } finally { this.issuing = false } },
