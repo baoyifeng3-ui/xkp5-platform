@@ -52,8 +52,8 @@ export async function connectRootTerminal (sessionId, callbacks = {}, options = 
 
 export function sendResize (socket, columns, rows) {
   if (!socket || socket.readyState !== WebSocket.OPEN) return false
-  const boundedColumns = Math.max(80, Math.min(300, Math.floor(Number(columns) || 80)))
-  const boundedRows = Math.max(24, Math.min(100, Math.floor(Number(rows) || 24)))
+  const boundedColumns = Math.max(20, Math.min(500, Math.floor(Number(columns) || 20)))
+  const boundedRows = Math.max(5, Math.min(200, Math.floor(Number(rows) || 5)))
   socket.send(JSON.stringify({ type: 'resize', columns: boundedColumns, rows: boundedRows }))
   return true
 }
