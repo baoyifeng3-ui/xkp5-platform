@@ -6,6 +6,7 @@ import com.match.security.CompetitionAccessException;
 import com.match.licensing.crypto.InvalidLicenseException;
 import com.match.licensing.guard.LicenseAccessException;
 import com.match.licensing.web.LicenseImportException;
+import com.match.mode.service.ModeConflictException;
 import com.match.service.impl.SubmissionValidationException;
 import com.match.terminal.service.TerminalSessionException;
 import com.match.util.result.Response;
@@ -50,6 +51,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(exception.getStatus())
                 .body(Response.makeRsp(exception.getStatus().value(), exception.getMessage(),
                         reason(exception.getCode())));
+    }
+
+    @ExceptionHandler(ModeConflictException.class)
+    public ResponseEntity<ResponseResult<Object>> handleModeConflict(ModeConflictException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Response.makeRsp(409, exception.getMessage(), reason(exception.getCode())));
     }
 
     @ExceptionHandler(SubmissionValidationException.class)

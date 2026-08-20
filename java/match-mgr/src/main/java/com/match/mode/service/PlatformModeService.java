@@ -61,7 +61,8 @@ public class PlatformModeService {
         int updated = mapper.compareAndSet(current.getMode(), current.getGeneration(), target,
                 nextGeneration, actorUserId, changedAt);
         if (updated != 1) {
-            throw new ModeConflictException("Platform mode changed concurrently");
+            throw new ModeConflictException("PLATFORM_MODE_CONFLICT",
+                    "Platform mode changed concurrently");
         }
 
         auditService.recordSuccess("PLATFORM_MODE_TO_" + target, actorUserId, null, null);

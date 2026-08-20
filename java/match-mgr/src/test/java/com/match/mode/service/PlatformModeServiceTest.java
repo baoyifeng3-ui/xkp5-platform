@@ -146,7 +146,13 @@ public class PlatformModeServiceTest {
         when(mapper.compareAndSet(anyString(), anyLong(), anyString(), anyLong(),
                 anyInt(), any(LocalDateTime.class))).thenReturn(0);
 
-        expect(ModeConflictException.class, () -> service.change("COMPETITION", actor));
+        try {
+            service.change("COMPETITION", actor);
+            fail("expected ModeConflictException");
+        } catch (ModeConflictException exception) {
+            assertEquals("PLATFORM_MODE_CONFLICT", exception.getCode());
+            assertEquals("Platform mode changed concurrently", exception.getMessage());
+        }
 
         verify(licenseGuard).requireActive();
         verifyZeroInteractions(auditService, events);
