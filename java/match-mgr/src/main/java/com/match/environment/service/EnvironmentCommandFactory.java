@@ -6,6 +6,7 @@ import com.match.environment.model.EnvironmentComponentSpec;
 import com.match.environment.model.EnvironmentPortBinding;
 import com.match.environment.persistence.ContainerTemplateMapper;
 import com.match.environment.persistence.ContainerTemplateRecord;
+import com.match.environment.persistence.CompetitionEnvironmentRecord;
 import com.match.environment.persistence.EnvironmentPortAllocationMapper;
 import com.match.environment.persistence.EnvironmentPortAllocationRecord;
 import com.match.environment.persistence.TrainingEnvironmentRecord;
@@ -30,18 +31,42 @@ public class EnvironmentCommandFactory {
     }
 
     public String createPayloadJson(TrainingEnvironmentRecord environment, String operationId) {
-        ContainerTemplateRecord annotation = requireTemplate(environment.getAnnotationTemplateId(),
-                environment.getAnnotationTemplateVersion(), "ANNOTATION");
-        ContainerTemplateRecord editor = requireTemplate(environment.getEditorTemplateId(),
-                environment.getEditorTemplateVersion(), "EDITOR");
-        List<EnvironmentPortAllocationRecord> allocations = portMapper.selectBySlot(environment.getSlotId());
+        return createPayloadJson(environment.getEnvironmentId(), operationId,
+                environment.getWorkspaceRelativePath(), environment.getSlotId(),
+                environment.getAnnotationTemplateId(), environment.getAnnotationTemplateVersion(),
+                environment.getAnnotationContainerName(), null, environment.getEditorTemplateId(),
+                environment.getEditorTemplateVersion(), environment.getEditorContainerName(), null);
+    }
+
+    public String createPayloadJson(CompetitionEnvironmentRecord environment, String operationId) {
+        return createPayloadJson(environment.getEnvironmentId(), operationId,
+                environment.getWorkspaceRelativePath(), environment.getSlotId(),
+                environment.getAnnotationTemplateId(), environment.getAnnotationTemplateVersion(),
+                environment.getAnnotationContainerName(), environment.getAnnotationConfigFingerprint(),
+                environment.getEditorTemplateId(), environment.getEditorTemplateVersion(),
+                environment.getEditorContainerName(), environment.getEditorConfigFingerprint());
+    }
+
+    private String createPayloadJson(String environmentId, String operationId, String workspaceRelativePath,
+                                     String slotId, String annotationTemplateId,
+                                     Integer annotationTemplateVersion, String annotationContainerName,
+                                     String annotationConfigFingerprint,
+                                     String editorTemplateId, Integer editorTemplateVersion,
+                                     String editorContainerName, String editorConfigFingerprint) {
+        ContainerTemplateRecord annotation = requireTemplate(annotationTemplateId,
+                annotationTemplateVersion, "ANNOTATION");
+        ContainerTemplateRecord editor = requireTemplate(editorTemplateId,
+                editorTemplateVersion, "EDITOR");
+        requirePinnedFingerprint(annotation, annotationConfigFingerprint, "ANNOTATION");
+        requirePinnedFingerprint(editor, editorConfigFingerprint, "EDITOR");
+        List<EnvironmentPortAllocationRecord> allocations = portMapper.selectBySlot(slotId);
         EnvironmentCommandPayload payload = new EnvironmentCommandPayload();
-        payload.setEnvironmentId(environment.getEnvironmentId());
+        payload.setEnvironmentId(environmentId);
         payload.setOperationId(operationId);
-        payload.setWorkspaceRelativePath(environment.getWorkspaceRelativePath());
+        payload.setWorkspaceRelativePath(workspaceRelativePath);
         payload.setComponents(Arrays.asList(
-                component(annotation, environment.getAnnotationContainerName(), allocations),
-                component(editor, environment.getEditorContainerName(), allocations)));
+                component(annotation, annotationContainerName, allocations),
+                component(editor, editorContainerName, allocations)));
         try {
             return objectMapper.writeValueAsString(payload);
         } catch (Exception exception) {
@@ -103,5 +128,12 @@ public class EnvironmentCommandFactory {
             throw new IllegalStateException("环境固定模板不存在: " + componentType);
         }
         return template;
+    }
+
+    private void requirePinnedFingerprint(ContainerTemplateRecord template, String pinned,
+                                          String componentType) {
+        if (pinned != null && !pinned.equals(template.getConfigFingerprint())) {
+            throw new IllegalStateException("环境固定模板指纹不匹配: " + componentType);
+        }
     }
 }

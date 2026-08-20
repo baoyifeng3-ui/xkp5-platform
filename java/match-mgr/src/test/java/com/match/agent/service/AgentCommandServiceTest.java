@@ -28,7 +28,9 @@ import java.util.List;
 import java.util.Iterator;
 import java.util.Set;
 import java.util.HashSet;
+import java.util.Arrays;
 import java.lang.reflect.Method;
+import java.util.stream.Collectors;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -40,6 +42,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -410,6 +413,36 @@ public class AgentCommandServiceTest {
         verify(mapper).insert(saved.capture());
         assertEquals("USER", saved.getValue().getRequesterRole());
         assertEquals("START_TRAINING_ENVIRONMENT", saved.getValue().getCommandType());
+    }
+
+    @Test
+    public void superAdminCanDispatchTaskFourCompetitionEnvironmentCommands() {
+        for (String type : Arrays.asList("CREATE_COMPETITION_ENVIRONMENT",
+                "RESTORE_COMPETITION_ENVIRONMENT")) {
+            service.requestEnvironmentCommand(agent, type, "{}", 7, "SUPER_ADMIN",
+                    "environment-1:" + type);
+        }
+
+        ArgumentCaptor<ProcessingAgentCommandRecord> saved =
+                ArgumentCaptor.forClass(ProcessingAgentCommandRecord.class);
+        verify(mapper, times(2)).insert(saved.capture());
+        assertEquals(Arrays.asList("CREATE_COMPETITION_ENVIRONMENT",
+                        "RESTORE_COMPETITION_ENVIRONMENT"),
+                saved.getAllValues().stream().map(ProcessingAgentCommandRecord::getCommandType)
+                        .collect(Collectors.toList()));
+    }
+
+
+    @Test(expected = IllegalArgumentException.class)
+    public void competitionStartWaitsForTheAgentContractTask() {
+        service.requestEnvironmentCommand(agent, "START_COMPETITION_ENVIRONMENT", "{}",
+                7, "SUPER_ADMIN", "environment-1:START");
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void competitionStopWaitsForTheAgentContractTask() {
+        service.requestEnvironmentCommand(agent, "STOP_COMPETITION_ENVIRONMENT", "{}",
+                7, "SUPER_ADMIN", "environment-1:STOP");
     }
 
     @Test(expected = IllegalArgumentException.class)

@@ -247,7 +247,9 @@ public class AgentCommandService {
         if (!"CREATE_TRAINING_ENVIRONMENT".equals(commandType)
                 && !"START_TRAINING_ENVIRONMENT".equals(commandType)
                 && !"STOP_TRAINING_ENVIRONMENT".equals(commandType)
-                && !"RESTORE_TRAINING_ENVIRONMENT".equals(commandType)) {
+                && !"RESTORE_TRAINING_ENVIRONMENT".equals(commandType)
+                && !"CREATE_COMPETITION_ENVIRONMENT".equals(commandType)
+                && !"RESTORE_COMPETITION_ENVIRONMENT".equals(commandType)) {
             throw new IllegalArgumentException("Environment command type is invalid");
         }
         if (payloadJson == null
