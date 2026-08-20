@@ -20,6 +20,9 @@ public interface ModeTransitionStepMapper extends BaseMapper<ModeTransitionStepR
     @Select("SELECT * FROM mode_transition_step WHERE command_id = #{commandId} FOR UPDATE")
     ModeTransitionStepRecord selectByCommandForUpdate(@Param("commandId") String commandId);
 
+    @Select("SELECT * FROM mode_transition_step WHERE step_id = #{stepId} FOR UPDATE")
+    ModeTransitionStepRecord selectForUpdate(@Param("stepId") String stepId);
+
     @Update("UPDATE mode_transition_step SET state = 'DISPATCHED', command_id = #{commandId}, "
             + "updated_at = #{updatedAt} WHERE step_id = #{stepId} AND state = 'PENDING'")
     int markDispatched(@Param("stepId") String stepId, @Param("commandId") String commandId,

@@ -14,6 +14,7 @@ import com.match.mode.persistence.ModeTransitionStepMapper;
 import com.match.mode.persistence.ModeTransitionStepRecord;
 import com.match.mode.persistence.ProcessingAgentModeMapper;
 import org.junit.Test;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
@@ -22,6 +23,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Collections;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
@@ -66,9 +68,11 @@ public class ModeTransitionDispatchWorkerTest {
         when(steps.markDispatched(eq(step.getStepId()), eq("command-1"),
                 any(LocalDateTime.class))).thenReturn(0);
 
-        assertNotNull(ModeTransitionDispatchWorker.class
+        Transactional transaction = ModeTransitionDispatchWorker.class
                 .getMethod("dispatchReadyPhase", String.class)
-                .getAnnotation(Transactional.class));
+                .getAnnotation(Transactional.class);
+        assertNotNull(transaction);
+        assertEquals(Propagation.REQUIRES_NEW, transaction.propagation());
         try {
             worker.dispatchReadyPhase("transition-1");
             fail("expected association conflict");

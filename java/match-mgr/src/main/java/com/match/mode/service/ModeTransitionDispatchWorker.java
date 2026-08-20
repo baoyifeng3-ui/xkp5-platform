@@ -15,6 +15,7 @@ import com.match.mode.persistence.ModeTransitionStepMapper;
 import com.match.mode.persistence.ModeTransitionStepRecord;
 import com.match.mode.persistence.ProcessingAgentModeMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
@@ -58,7 +59,7 @@ public class ModeTransitionDispatchWorker {
         this.clock = clock;
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void dispatchReadyPhase(String transitionId) {
         ModeTransitionRecord transition = transitionMapper.selectForUpdate(transitionId);
         if (transition == null || "SUCCEEDED".equals(transition.getState())) {
@@ -75,7 +76,7 @@ public class ModeTransitionDispatchWorker {
                 agent, transition.getActorUserId(), transition.getActorRole());
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void dispatchPlanned(ModeTransitionRecord transition,
                                 List<ModeTransitionStepRecord> steps,
                                 ProcessingAgentRecord agent,
@@ -109,27 +110,34 @@ public class ModeTransitionDispatchWorker {
                         step.getActionType(), payload, actorUserId == null ? 0 : actorUserId,
                         actorRole == null ? "ADMIN" : actorRole, step.getIdempotencyKey());
             } catch (RuntimeException failure) {
-                markDispatchFailed(transition, step, bounded(failure.getMessage()));
-                continue;
+                throw dispatchFailure(transition, step, failure.getMessage(), failure);
             }
             if (command == null || command.getCommandId() == null) {
-                markDispatchFailed(transition, step, null);
-                continue;
+                throw dispatchFailure(transition, step, null, null);
             }
             if (stepMapper.markDispatched(step.getStepId(), command.getCommandId(), utcNow()) != 1) {
-                throw new IllegalStateException("MODE_STEP_DISPATCH_CONFLICT");
+                throw dispatchFailure(transition, step, "MODE_STEP_DISPATCH_CONFLICT", null);
             }
             step.setCommandId(command.getCommandId());
             step.setState("DISPATCHED");
         }
     }
 
-    private void markDispatchFailed(ModeTransitionRecord transition,
-                                    ModeTransitionStepRecord step,
-                                    String message) {
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void markDispatchFailed(ModeTransitionDispatchException failure) {
+        ModeTransitionRecord transition = transitionMapper.selectForUpdate(failure.getTransitionId());
+        ModeTransitionStepRecord step = stepMapper.selectForUpdate(failure.getStepId());
+        if (transition == null || step == null
+                || !transition.getTransitionId().equals(step.getTransitionId())
+                || !"PENDING".equals(step.getState())) {
+            return;
+        }
         LocalDateTime now = utcNow();
-        stepMapper.markTerminal(step.getStepId(), "FAILED", "COMMAND_DISPATCH_FAILED",
-                message, null, now);
+        String message = bounded(failure.getFailureMessage());
+        if (stepMapper.markTerminal(step.getStepId(), "FAILED", "COMMAND_DISPATCH_FAILED",
+                message, null, now) != 1) {
+            throw new IllegalStateException("MODE_STEP_FAILURE_CONFLICT");
+        }
         step.setState("FAILED");
         step.setResultCode("COMMAND_DISPATCH_FAILED");
         step.setResultMessage(message);
@@ -139,6 +147,14 @@ public class ModeTransitionDispatchWorker {
         transition.setFailureSummary("COMMAND_DISPATCH_FAILED");
         modeMapper.updateTransition(transition.getAgentId(), transition.getTargetMode(),
                 "DEGRADED", transition.getTransitionId(), now);
+    }
+
+    private ModeTransitionDispatchException dispatchFailure(ModeTransitionRecord transition,
+                                                              ModeTransitionStepRecord step,
+                                                              String message,
+                                                              Throwable cause) {
+        return new ModeTransitionDispatchException(transition.getTransitionId(), step.getStepId(),
+                bounded(message), cause);
     }
 
     private void degradeUnavailable(ModeTransitionRecord transition) {

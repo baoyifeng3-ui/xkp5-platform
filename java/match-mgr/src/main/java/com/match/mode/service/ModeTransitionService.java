@@ -64,7 +64,7 @@ public class ModeTransitionService {
     private final CompetitionEnvironmentMapper competitionMapper;
     private final ProcessingEnvironmentSlotMapper slotMapper;
     private final EnvironmentOperationMapper operationMapper;
-    private final ModeTransitionDispatchWorker dispatchWorker;
+    private final ModeTransitionDispatchCoordinator dispatcher;
     private final AgentAuditService auditService;
     private final Clock clock;
     private final ObjectMapper verificationMapper;
@@ -85,9 +85,9 @@ public class ModeTransitionService {
         this(modeMapper, transitionMapper, stepMapper, snapshotMapper, agentMapper,
                 trainingMapper, competitionMapper, slotMapper, operationMapper, commandService,
                 commandFactory, auditService, clock,
-                new ModeTransitionDispatchWorker(transitionMapper, stepMapper, modeMapper,
-                        agentMapper, trainingMapper, competitionMapper, commandService,
-                        commandFactory, clock));
+                new ModeTransitionDispatchCoordinator(new ModeTransitionDispatchWorker(
+                        transitionMapper, stepMapper, modeMapper, agentMapper, trainingMapper,
+                        competitionMapper, commandService, commandFactory, clock)));
     }
 
     @Autowired
@@ -104,7 +104,7 @@ public class ModeTransitionService {
                                  EnvironmentCommandFactory commandFactory,
                                  AgentAuditService auditService,
                                  Clock clock,
-                                 ModeTransitionDispatchWorker dispatchWorker) {
+                                 ModeTransitionDispatchCoordinator dispatcher) {
         this.modeMapper = modeMapper;
         this.transitionMapper = transitionMapper;
         this.stepMapper = stepMapper;
@@ -114,7 +114,7 @@ public class ModeTransitionService {
         this.competitionMapper = competitionMapper;
         this.slotMapper = slotMapper;
         this.operationMapper = operationMapper;
-        this.dispatchWorker = dispatchWorker;
+        this.dispatcher = dispatcher;
         this.auditService = auditService;
         this.clock = clock;
         this.verificationMapper = new ObjectMapper();
@@ -352,7 +352,7 @@ public class ModeTransitionService {
 
     /** Re-dispatches the lowest phase that is not terminal; phase 2 never bypasses phase 1. */
     public void dispatchReadyPhase(String transitionId) {
-        dispatchWorker.dispatchReadyPhase(transitionId);
+        dispatcher.dispatchReadyPhase(transitionId);
     }
 
     @Transactional
@@ -432,12 +432,12 @@ public class ModeTransitionService {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    dispatchWorker.dispatchReadyPhase(transition.getTransitionId());
+                    dispatcher.dispatchReadyPhase(transition.getTransitionId());
                 }
             });
             return;
         }
-        dispatchWorker.dispatchPlanned(transition, created, agent, actor.userId, actor.role);
+        dispatcher.dispatchPlanned(transition, created, agent, actor.userId, actor.role);
     }
 
     private void dispatchAfterCommit(final String transitionId) {
@@ -446,12 +446,12 @@ public class ModeTransitionService {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    dispatchWorker.dispatchReadyPhase(transitionId);
+                    dispatcher.dispatchReadyPhase(transitionId);
                 }
             });
             return;
         }
-        dispatchWorker.dispatchReadyPhase(transitionId);
+        dispatcher.dispatchReadyPhase(transitionId);
     }
 
     private ModeTransitionStepRecord step(ModeTransitionRecord transition, int phase, int ordinal,
