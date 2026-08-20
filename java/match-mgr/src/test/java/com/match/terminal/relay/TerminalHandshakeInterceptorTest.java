@@ -80,7 +80,7 @@ public class TerminalHandshakeInterceptorTest {
     }
 
     @Test
-    public void agentAuthenticatesSingleBearerAndTicketWithoutOriginAndBindsIdentity() {
+    public void agentAuthenticatesSingleBearerAndSubprotocolTicketWithoutOriginAndBindsIdentity() {
         AgentCredentialService credentials = mock(AgentCredentialService.class);
         TerminalSessionService sessions = mock(TerminalSessionService.class);
         ProcessingAgentRecord agent = new ProcessingAgentRecord();
@@ -92,7 +92,8 @@ public class TerminalHandshakeInterceptorTest {
         Map<String, Object> attributes = new HashMap<>();
 
         HttpHeaders headers = header(HttpHeaders.AUTHORIZATION, "Bearer credential",
-                TerminalHandshakeInterceptor.AGENT_TICKET_HEADER, TICKET);
+                TerminalHandshakeInterceptor.WEBSOCKET_PROTOCOL_HEADER,
+                "xkp-terminal-v1, xkp-terminal-ticket." + TICKET);
         assertTrue(interceptor.beforeHandshake(request("/terminal/v1/agent/" + SESSION_ID, headers),
                 mock(ServerHttpResponse.class), null, attributes));
 
@@ -118,9 +119,14 @@ public class TerminalHandshakeInterceptorTest {
         origin.add(HttpHeaders.ORIGIN, "https://management.example");
         assertRejected(interceptor, "/terminal/v1/agent/" + SESSION_ID, origin);
         HttpHeaders multiple = validAgentHeaders();
-        multiple.add(TerminalHandshakeInterceptor.AGENT_TICKET_HEADER, TICKET);
+        multiple.add(TerminalHandshakeInterceptor.WEBSOCKET_PROTOCOL_HEADER,
+                "xkp-terminal-v1, xkp-terminal-ticket." + TICKET);
         assertRejected(interceptor, "/terminal/v1/agent/" + SESSION_ID, multiple);
         assertRejected(interceptor, "/terminal/v1/agent/" + SESSION_ID, validAgentHeaders());
+
+        assertRejected(interceptor, "/terminal/v1/agent/" + SESSION_ID,
+                header(HttpHeaders.AUTHORIZATION, "Bearer credential",
+                        TerminalHandshakeInterceptor.AGENT_TICKET_HEADER, TICKET));
 
         agent.setRemovedAt(java.time.LocalDateTime.now());
         when(sessions.consumeAgentTicket(agent, SESSION_ID, TICKET)).thenReturn(true);
@@ -158,7 +164,8 @@ public class TerminalHandshakeInterceptorTest {
 
     private HttpHeaders validAgentHeaders() {
         return header(HttpHeaders.AUTHORIZATION, "Bearer credential",
-                TerminalHandshakeInterceptor.AGENT_TICKET_HEADER, TICKET);
+                TerminalHandshakeInterceptor.WEBSOCKET_PROTOCOL_HEADER,
+                "xkp-terminal-v1, xkp-terminal-ticket." + TICKET);
     }
 
     private ServerHttpRequest request(String path, HttpHeaders headers) {

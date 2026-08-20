@@ -88,16 +88,8 @@ public final class TerminalHandshakeInterceptor implements HandshakeInterceptor 
                 || protocolHeader == null) {
             return null;
         }
-        String[] protocols = protocolHeader.split(",", -1);
-        if (protocols.length != 2 || !SAFE_SUBPROTOCOL.equals(protocols[0].trim())) {
-            return null;
-        }
-        String ticketProtocol = protocols[1].trim();
-        if (!ticketProtocol.startsWith(TICKET_PREFIX)) {
-            return null;
-        }
-        String ticket = ticketProtocol.substring(TICKET_PREFIX.length());
-        if (!TICKET.matcher(ticket).matches()) {
+        String ticket = ticketFromProtocols(protocolHeader);
+        if (ticket == null) {
             return null;
         }
         try {
@@ -113,8 +105,8 @@ public final class TerminalHandshakeInterceptor implements HandshakeInterceptor 
             return null;
         }
         String authorization = exactlyOne(headers, HttpHeaders.AUTHORIZATION);
-        String ticket = exactlyOne(headers, AGENT_TICKET_HEADER);
-        if (authorization == null || ticket == null || !TICKET.matcher(ticket).matches()) {
+        String ticket = ticketFromProtocols(exactlyOne(headers, WEBSOCKET_PROTOCOL_HEADER));
+        if (authorization == null || ticket == null || headers.containsKey(AGENT_TICKET_HEADER)) {
             return null;
         }
         try {
@@ -145,6 +137,22 @@ public final class TerminalHandshakeInterceptor implements HandshakeInterceptor 
         List<String> values = headers.get(name);
         return values != null && values.size() == 1 && values.get(0) != null
                 && !values.get(0).isEmpty() ? values.get(0) : null;
+    }
+
+    private static String ticketFromProtocols(String protocolHeader) {
+        if (protocolHeader == null) {
+            return null;
+        }
+        String[] protocols = protocolHeader.split(",", -1);
+        if (protocols.length != 2 || !SAFE_SUBPROTOCOL.equals(protocols[0].trim())) {
+            return null;
+        }
+        String ticketProtocol = protocols[1].trim();
+        if (!ticketProtocol.startsWith(TICKET_PREFIX)) {
+            return null;
+        }
+        String ticket = ticketProtocol.substring(TICKET_PREFIX.length());
+        return TICKET.matcher(ticket).matches() ? ticket : null;
     }
 
     private static Set<String> validateOrigins(String[] origins) {

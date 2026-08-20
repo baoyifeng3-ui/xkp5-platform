@@ -25,3 +25,12 @@ Run the script contract check independently:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\integration\agent\test-script-contract.ps1
 ```
+
+`test-terminal-relay-flow.ps1` is a destructive acceptance flow for a disposable
+loopback TLS stack. It imports the configured test license, enrolls a temporary
+Agent, and uses a non-privileged deterministic echo adapter instead of starting a
+host shell. Required environment variables and the container prerequisites are
+listed in `docs/operations/processing-agent.md`. The flow fails if ticket replay
+or a concurrent session is accepted, cleanup or injected idle expiry is
+unfinished, or its random terminal sentinel appears in MySQL metadata or
+management logs.

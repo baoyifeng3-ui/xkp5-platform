@@ -10,8 +10,8 @@ Agent 执行固定的 `/usr/bin/loginctl poweroff`。系统不接受任意命令
 2. 在处理服务器 BIOS/UEFI 和网卡中启用 Wake-on-LAN，并记录正确的有线网卡 MAC。
 3. 允许管理服务器向局域网广播地址的 UDP 9 端口发送数据包。需要时通过
    `xkp.agent.wol.broadcast-address` 和 `xkp.agent.wol.port` 修改目标。
-4. 在 Ubuntu 22.04 amd64 上以 systemd 安装 Agent，确认服务账号可以执行
-   `/usr/bin/loginctl poweroff`，且 Agent 身份文件和待上报命令文件保持 `0600`。
+4. 在 Ubuntu 22.04 amd64 上以 systemd 安装 Agent，确认常驻单元使用 `User=root`，
+   可以执行 `/usr/bin/loginctl poweroff`，且 Agent 身份文件和待上报命令文件保持 `0600`。
 5. Agent 只信任平台内部 CA。管理 URL 必须使用服务器证书 IP SAN 中的固定 IP，禁止
    关闭 TLS 校验。
 
@@ -34,6 +34,33 @@ Agent 执行固定的 `/usr/bin/loginctl poweroff`。系统不接受任意命令
 禁用或移除 Agent 会原子取消其待处理、已租赁和运行中的命令，重新启用后不会执行旧命令。
 Agent 在断网或重启后先重传本地结果，再继续长轮询；同一关机命令不会执行两次。
 
+## ROOT 维护终端
+
+ROOT 终端仅供超级管理员维护在线且已启用的 Ubuntu Agent。创建前必须确认
+`OPEN_ROOT_TERMINAL`；每台 Agent 同时只允许一个会话。会话连续 10 分钟无终端 I/O
+会关闭，最长运行 2 小时。Agent、浏览器任一方断开都会终止 PTY 并释放会话锁；会话
+不可重新连接，重新打开必须创建新会话并换取新的单次票据。
+
+生产部署必须同时满足以下条件：
+
+1. 管理 API 使用 HTTPS，两个 `/terminal/v1/agent/`、`/terminal/v1/browser/`
+   WebSocket 路径使用 WSS。反向代理必须使用 HTTP/1.1 并透传 `Upgrade`、
+   `Connection` 和 `Sec-WebSocket-Protocol`，关闭响应缓冲；访问日志不得记录
+   `Authorization` 或 WebSocket 子协议头。
+2. `TERMINAL_AGENT_RELAY_URL` 指向外部 WSS Agent 路径，`MATCH_ALLOWED_ORIGINS`
+   只列出浏览器实际使用的完整 HTTPS Origin。禁止 `*`、HTTP Origin 和关闭证书校验。
+3. Agent 的 systemd 单元必须为 `User=root`、`Group=root`，宿主机必须提供可执行的
+   `/bin/bash`、`/dev/ptmx` 和正常 PTY。Agent 只会启动固定的
+   `/bin/bash --noprofile --norc`，平台命令不能选择程序、参数或环境变量。
+4. 处理服务器防火墙只需允许到管理服务器 HTTPS/WSS 地址的出站连接。禁止为 Agent
+   开放入站管理端口，也禁止开放 Docker TCP API。
+
+自动化验收只使用非特权、确定性 echo PTY，不会启动 root shell。上线前另选一台隔离
+Ubuntu 主机，移除业务数据和凭据并限制网络，由超级管理员打开一次终端：运行 `id -u`
+确认结果为 `0`，检查二进制输入和窗口 resize，断开浏览器后确认 bash 进程组已被回收，
+再验证主动关闭和空闲超时都会释放单会话锁。不得在教室正在使用的处理服务器上执行这项
+真实 root 验收。
+
 ## 双容器实训环境
 
 每套课程环境固定由一个图像标注容器和一个代码编辑容器组成。Agent 在
@@ -43,7 +70,7 @@ Agent 在断网或重启后先重传本地结果，再继续长轮询；同一�
 处理服务器接入前必须确认：
 
 1. `docker info` 可看到 `sysbox-runc` 和 `nvidia` 两个 Runtime。
-2. `nvidia-smi` 能识别 RTX 2080，`xkp-agent` 用户属于 `docker`、`video`、`render` 组。
+2. `nvidia-smi` 能识别 RTX 2080，root systemd 服务可以访问 Docker、GPU 和所需设备。
 3. `zy-anno` 与 `zy-contestv2` 镜像已经加载到本机，生产环境不要依赖临时联网拉取。
 4. 规划的宿主机端口未被占用，共享数据盘容量和文件权限满足课程要求。
 5. 不开放 Docker TCP API；Agent 仅通过本机 Unix Socket 控制由 XKP 标签标识的容器。
@@ -78,6 +105,26 @@ $env:XKP_TEST_COURSE_ID = "201"
 脚本依次验证双容器创建、重复启动幂等、成对停止、保留共享目录的还原、重复结果上报，
 以及单组件失败后的 `DEGRADED` 状态和组件明细。测试通过不代表真实 Docker Runtime、
 NVIDIA GPU 或物理开关机已经验收；这些项目仍须在 Ubuntu 处理服务器执行。
+
+终端 relay 验收脚本只允许连接受信任证书的 loopback HTTPS/WSS 一次性容器环境。它会
+导入测试授权、注册临时 Agent，并用确定性 echo 适配器验证二进制回显、resize、票据
+重放拒绝、第二会话冲突、断连清理和注入的短空闲时钟，同时检查 MySQL 与管理容器日志
+中不存在随机 sentinel。示例：
+
+```powershell
+$env:XKP_TEST_ALLOW_TERMINAL_RELAY = "YES"
+$env:XKP_TEST_TERMINAL_IDLE_SECONDS = "2"
+$env:XKP_TEST_LICENSE_FILE = "C:\temp\development.xkplic"
+$env:XKP_TEST_SUPER_ADMIN_USERNAME = "test-super-admin"
+$env:XKP_TEST_SUPER_ADMIN_PASSWORD = "change-me"
+$env:XKP_TEST_MYSQL_CONTAINER = "xkp-terminal-mysql"
+$env:XKP_TEST_MANAGEMENT_CONTAINER = "xkp-terminal-management"
+$env:XKP_TEST_DB_PASSWORD = "change-me"
+
+.\integration\agent\test-terminal-relay-flow.ps1
+```
+
+该脚本会直接推进一次性数据库中的终端 I/O 时间，仅可用于可销毁的测试栈。
 
 ## 管理主页概览口径
 
