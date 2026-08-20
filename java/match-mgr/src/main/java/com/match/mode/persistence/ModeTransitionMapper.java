@@ -23,6 +23,9 @@ public interface ModeTransitionMapper extends BaseMapper<ModeTransitionRecord> {
             + "ORDER BY requested_at, transition_id LIMIT #{limit}")
     List<ModeTransitionRecord> selectActiveForRecovery(@Param("limit") int limit);
 
+    @Select("SELECT * FROM mode_transition ORDER BY requested_at DESC, transition_id DESC LIMIT #{limit}")
+    List<ModeTransitionRecord> selectRecent(@Param("limit") int limit);
+
     @Update("UPDATE mode_transition SET state = #{state}, failure_summary = #{failureSummary}, "
             + "completed_at = #{completedAt}, updated_at = #{completedAt}, active_transition_key = "
             + "CASE WHEN #{state} IN ('SUCCEEDED') THEN NULL ELSE active_transition_key END "

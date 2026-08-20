@@ -6,6 +6,7 @@ public class DashboardOverview {
     private Instant snapshotAt;
     private boolean fresh;
     private AgentSummary agents;
+    private AgentModeSummary agentModes;
     private EnvironmentSummary environments;
     private int onlineUsers;
     private DashboardAlertSummary alerts;
@@ -17,6 +18,8 @@ public class DashboardOverview {
     public void setFresh(boolean fresh) { this.fresh = fresh; }
     public AgentSummary getAgents() { return agents; }
     public void setAgents(AgentSummary agents) { this.agents = agents; }
+    public AgentModeSummary getAgentModes() { return agentModes; }
+    public void setAgentModes(AgentModeSummary agentModes) { this.agentModes = agentModes; }
     public EnvironmentSummary getEnvironments() { return environments; }
     public void setEnvironments(EnvironmentSummary environments) { this.environments = environments; }
     public int getOnlineUsers() { return onlineUsers; }
@@ -59,5 +62,24 @@ public class DashboardOverview {
         public void setDegraded(int degraded) { this.degraded = degraded; }
         public int getFailed() { return failed; }
         public void setFailed(int failed) { this.failed = failed; }
+    }
+
+    public static class AgentModeSummary {
+        private int normal;
+        private int entering;
+        private int competition;
+        private int exiting;
+        private int degraded;
+
+        public int getNormal() { return normal; }
+        public void setNormal(int normal) { this.normal = normal; }
+        public int getEntering() { return entering; }
+        public void setEntering(int entering) { this.entering = entering; }
+        public int getCompetition() { return competition; }
+        public void setCompetition(int competition) { this.competition = competition; }
+        public int getExiting() { return exiting; }
+        public void setExiting(int exiting) { this.exiting = exiting; }
+        public int getDegraded() { return degraded; }
+        public void setDegraded(int degraded) { this.degraded = degraded; }
     }
 }

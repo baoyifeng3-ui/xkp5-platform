@@ -343,11 +343,25 @@ public class ModeTransitionService {
 
     @Transactional(readOnly = true)
     public ModeTransitionView get(String transitionId) {
-        ModeTransitionRecord transition = transitionMapper.selectForUpdate(transitionId);
+        ModeTransitionRecord transition = transitionMapper.selectById(transitionId);
         if (transition == null) {
             throw new IllegalArgumentException("模式切换不存在");
         }
         return view(transition, safeSteps(transitionId));
+    }
+
+    @Transactional(readOnly = true)
+    public List<ModeTransitionView> list(int limit) {
+        int safeLimit = Math.max(1, Math.min(100, limit));
+        List<ModeTransitionRecord> records = transitionMapper.selectRecent(safeLimit);
+        List<ModeTransitionView> result = new ArrayList<>();
+        if (records == null) {
+            return result;
+        }
+        for (ModeTransitionRecord record : records) {
+            result.add(view(record, safeSteps(record.getTransitionId())));
+        }
+        return result;
     }
 
     /** Re-dispatches the lowest phase that is not terminal; phase 2 never bypasses phase 1. */

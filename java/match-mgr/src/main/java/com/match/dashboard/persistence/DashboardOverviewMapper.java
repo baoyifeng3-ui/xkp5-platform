@@ -14,6 +14,11 @@ public interface DashboardOverviewMapper {
             + "AND last_seen_at >= #{cutoff}")
     int countOnlineAgents(@Param("cutoff") LocalDateTime cutoff);
 
+    @Select("SELECT COUNT(*) FROM processing_agent a LEFT JOIN processing_agent_mode m "
+            + "ON m.agent_id = a.agent_id WHERE a.enabled = 1 AND a.removed_at IS NULL "
+            + "AND COALESCE(m.actual_mode, 'NORMAL') = #{state}")
+    int countAgentModesInState(@Param("state") String state);
+
     @Select("SELECT latest_metrics FROM processing_agent WHERE enabled = 1 AND removed_at IS NULL "
             + "AND last_seen_at >= #{cutoff} AND latest_metrics IS NOT NULL ORDER BY agent_id")
     List<String> selectOnlineMetricJson(@Param("cutoff") LocalDateTime cutoff);

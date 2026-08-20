@@ -69,11 +69,22 @@ public class DashboardOverviewService {
         overview.setSnapshotAt(snapshotAt);
         overview.setFresh(true);
         overview.setAgents(new DashboardOverview.AgentSummary(enabledAgents, onlineAgents));
+        overview.setAgentModes(agentModes());
         overview.setEnvironments(environments);
         overview.setOnlineUsers(activityService.onlineUserCount());
         overview.setAlerts(alerts);
         overview.setResources(resources(mapper.selectOnlineMetricJson(onlineCutoff)));
         return overview;
+    }
+
+    private DashboardOverview.AgentModeSummary agentModes() {
+        DashboardOverview.AgentModeSummary result = new DashboardOverview.AgentModeSummary();
+        result.setNormal(mapper.countAgentModesInState("NORMAL"));
+        result.setEntering(mapper.countAgentModesInState("ENTERING_COMPETITION"));
+        result.setCompetition(mapper.countAgentModesInState("COMPETITION"));
+        result.setExiting(mapper.countAgentModesInState("EXITING_COMPETITION"));
+        result.setDegraded(mapper.countAgentModesInState("DEGRADED"));
+        return result;
     }
 
     private void applyLicenseAlerts(DashboardAlertSummary alerts, LicenseStatus status) {
