@@ -14,6 +14,10 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.env.Environment;
 
 import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.nio.charset.StandardCharsets;
 import java.lang.reflect.Method;
 import java.time.Clock;
 import java.time.Instant;
@@ -65,7 +69,9 @@ public class AgentCommandFixtureContractTest {
         String path = "/fixtures/agent-command-" + operation + "-competition-environment-v1.json";
         try (InputStream input = getClass().getResourceAsStream(path)) {
             assertNotNull(path, input);
-            AgentCommandEnvelope command = mapper.readValue(input, AgentCommandEnvelope.class);
+            byte[] bytes = readAll(input);
+            assertFixtureDigest(operation, bytes);
+            AgentCommandEnvelope command = mapper.readValue(bytes, AgentCommandEnvelope.class);
             assertEquals(type, command.getType());
             assertEquals(Integer.valueOf(1), command.getVersion());
             assertNotNull(command.getPayload());
@@ -77,6 +83,50 @@ public class AgentCommandFixtureContractTest {
                         command.getPayload().get("workspaceRelativePath").textValue());
             }
         }
+    }
+
+    private byte[] readAll(InputStream input) throws Exception {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        byte[] buffer = new byte[1024];
+        int count;
+        while ((count = input.read(buffer)) >= 0) {
+            if (count > 0) {
+                output.write(buffer, 0, count);
+            }
+        }
+        return output.toByteArray();
+    }
+
+    private void assertFixtureDigest(String operation, byte[] bytes) throws NoSuchAlgorithmException {
+        String expected;
+        int expectedLength;
+        switch (operation) {
+            case "create":
+                expected = "85BA390292E619F9D86988FEF5B4B9176FD28BC3E63C5CE4624CC6530EF1B4E0";
+                expectedLength = 1365;
+                break;
+            case "start":
+                expected = "3147CC18DE9D73F2AE025E97913939EABE2388737CE53D69B25D1928E773C959";
+                expectedLength = 655;
+                break;
+            case "stop":
+                expected = "49506D85D9E5B57B4B31A7C51BAF923ADB611E23118B0BDD487CBD3749E96384";
+                expectedLength = 654;
+                break;
+            case "restore":
+                expected = "AE9F0911A04E8BEF4EB51CA8AA1E37AA3CE343309DD5E303B410C928B9F4C350";
+                expectedLength = 1366;
+                break;
+            default:
+                throw new AssertionError("Unknown competition fixture: " + operation);
+        }
+        assertEquals(expectedLength, bytes.length);
+        byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes);
+        StringBuilder actual = new StringBuilder();
+        for (byte value : digest) {
+            actual.append(String.format("%02X", value));
+        }
+        assertEquals(expected, actual.toString());
     }
 
     @Test(expected = com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException.class)
