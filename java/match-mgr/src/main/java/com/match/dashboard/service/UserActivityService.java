@@ -1,6 +1,7 @@
 package com.match.dashboard.service;
 
 import com.match.dashboard.persistence.UserSessionActivityMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -18,6 +19,7 @@ public class UserActivityService {
     private final UserSessionActivityMapper mapper;
     private final Clock clock;
 
+    @Autowired
     public UserActivityService(UserSessionActivityMapper mapper) {
         this(mapper, Clock.systemUTC());
     }

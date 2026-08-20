@@ -1,6 +1,7 @@
 package com.match.dashboard.service;
 
 import com.match.dashboard.persistence.UserSessionActivityMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -21,6 +22,13 @@ public class UserActivityServiceTest {
     private final UserSessionActivityMapper mapper = mock(UserSessionActivityMapper.class);
     private final Clock clock = Clock.fixed(Instant.parse("2026-08-19T10:15:30Z"), ZoneOffset.UTC);
     private final UserActivityService service = new UserActivityService(mapper, clock);
+
+    @Test
+    public void productionConstructorIsExplicitlyAutowiredForSpring() throws Exception {
+        assertEquals(true, UserActivityService.class
+                .getConstructor(UserSessionActivityMapper.class)
+                .isAnnotationPresent(Autowired.class));
+    }
 
     @Test
     public void loginStoresDigestAndFiveMinuteExpiry() {
