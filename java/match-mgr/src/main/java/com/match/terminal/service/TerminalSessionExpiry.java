@@ -177,7 +177,7 @@ public class TerminalSessionExpiry {
     private LocalDateTime utcNow() {
         Instant instant = clock.instant();
         if ("DEVELOPMENT".equalsIgnoreCase(licensingEnvironment)
-                && testClockOffsetSeconds != 0) {
+                && testClockOffsetSeconds > 0) {
             instant = instant.plusSeconds(testClockOffsetSeconds);
         }
         return LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
