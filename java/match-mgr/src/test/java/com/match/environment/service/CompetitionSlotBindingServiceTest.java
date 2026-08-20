@@ -225,6 +225,20 @@ public class CompetitionSlotBindingServiceTest {
     }
 
     @Test
+    public void refusesBindingWhenPinnedEndpointsDoNotUseFixedSlotHostPorts() {
+        CompetitionEnvironmentRecord environment = readyEnvironment();
+        stubReadyInfrastructure(environment, 21);
+        when(ports.selectBySlot(SLOT_ID)).thenReturn(Arrays.asList(
+                allocation(SLOT_ID, "ANNOTATION", 8080, 18081),
+                allocation(SLOT_ID, "EDITOR", 9090, 19091),
+                allocation(SLOT_ID, "ANNOTATION", 18000, 8081),
+                allocation(SLOT_ID, "EDITOR", 19000, 9091)));
+
+        assertCode("COMPETITION_PAIR_PORTS_INCOMPLETE",
+                () -> service.bind(SLOT_ID, 21, admin()));
+    }
+
+    @Test
     public void mapsOnlyUniqueConstraintAndDeadlockRacesToStableBindConflict() {
         stubReadyInfrastructure(readyEnvironment(), 21);
         doThrow(new DuplicateKeyException("unique agent user"))
@@ -443,6 +457,36 @@ public class CompetitionSlotBindingServiceTest {
     }
 
     @Test
+    public void participantNeverReceivesNonFixedOrStaleEndpointUrls() {
+        User participant = participant(21, true);
+        ProcessingEnvironmentSlotRecord bound = slot(21);
+        CompetitionEnvironmentRecord environment = readyEnvironment();
+        environment.setActualState("RUNNING");
+        environment.setAnnotationContainerState("RUNNING");
+        environment.setEditorContainerState("RUNNING");
+        environment.setLastComponentResultsJson(result(ANNOTATION_FP, EDITOR_FP,
+                "RUNNING", "RUNNING", environment.getAnnotationContainerName(),
+                environment.getEditorContainerName()));
+        when(roleGuard.roleOf(participant)).thenReturn(UserRole.USER);
+        when(slots.selectByUser(21)).thenReturn(Collections.singletonList(bound));
+        when(environments.selectBySlot(SLOT_ID)).thenReturn(environment);
+        when(agents.selectForManagement(AGENT_ID)).thenReturn(agent());
+        stubTemplates(environment);
+        when(ports.selectBySlot(SLOT_ID)).thenReturn(Arrays.asList(
+                allocation(SLOT_ID, "ANNOTATION", 8080, 18081),
+                allocation(SLOT_ID, "EDITOR", 9090, 19091),
+                allocation(SLOT_ID, "ANNOTATION", 18000, 8081),
+                allocation(SLOT_ID, "EDITOR", 19000, 9091)));
+
+        CompetitionSlotView result = service.currentForUser(participant);
+
+        assertEquals("DEGRADED", result.getReadiness());
+        assertEquals("COMPETITION_PAIR_PORTS_INCOMPLETE", result.getReadinessCode());
+        assertNull(result.getAnnotationUrl());
+        assertNull(result.getEditorUrl());
+    }
+
+    @Test
     public void unboundParticipantIsSuccessfulAndContainsNoUrls() {
         User participant = participant(21, true);
         when(roleGuard.roleOf(participant)).thenReturn(UserRole.USER);
@@ -460,6 +504,7 @@ public class CompetitionSlotBindingServiceTest {
     public void administrativeListReturnsFourSortedSlotsWithCompleteReadinessDetails() {
         User actor = admin();
         when(roleGuard.roleOf(actor)).thenReturn(UserRole.ADMIN);
+        when(agents.selectVisibleAgents()).thenReturn(Collections.singletonList(agent()));
         List<ProcessingEnvironmentSlotRecord> records = Arrays.asList(
                 slotRecord(4), slotRecord(2), slotRecord(1), slotRecord(3));
         when(slots.selectAll()).thenReturn(records);
@@ -476,7 +521,8 @@ public class CompetitionSlotBindingServiceTest {
         for (int index = 0; index < 4; index++) {
             CompetitionSlotView view = result.get(index);
             assertEquals(Integer.valueOf(index + 1), view.getSlotNumber());
-            assertEquals("READY", view.getReadiness());
+            assertEquals("slot " + view.getSlotNumber() + " code " + view.getReadinessCode(),
+                    "READY", view.getReadiness());
             assertEquals("READY", view.getReadinessCode());
             assertEquals(ANNOTATION_FP, view.getAnnotationConfigFingerprint());
             assertEquals(1, view.getAnnotationPorts().size());
@@ -488,14 +534,59 @@ public class CompetitionSlotBindingServiceTest {
     public void administrativeListMarksExistingRowsWhenFourSlotProvisioningIsIncomplete() {
         User actor = admin();
         when(roleGuard.roleOf(actor)).thenReturn(UserRole.ADMIN);
+        when(agents.selectVisibleAgents()).thenReturn(Collections.singletonList(agent()));
         when(slots.selectAll()).thenReturn(Arrays.asList(slotRecord(1), slotRecord(2), slotRecord(4)));
 
         List<CompetitionSlotView> result = service.list(actor);
 
-        assertEquals(3, result.size());
-        for (CompetitionSlotView view : result) {
+        assertEquals(4, result.size());
+        assertEquals(Integer.valueOf(3), result.get(2).getSlotNumber());
+        assertNull(result.get(2).getSlotId());
+        assertNull(result.get(2).getEnvironmentId());
+        assertNull(result.get(2).getUserId());
+        assertEquals("DEGRADED", result.get(2).getReadiness());
+        assertEquals("COMPETITION_SLOT_NOT_PROVISIONED", result.get(2).getReadinessCode());
+    }
+
+    @Test
+    public void administrativeListIncludesFourPlaceholdersForVisibleAgentWithNoSlots() {
+        User actor = admin();
+        when(roleGuard.roleOf(actor)).thenReturn(UserRole.ADMIN);
+        when(agents.selectVisibleAgents()).thenReturn(Collections.singletonList(agent()));
+        when(slots.selectAll()).thenReturn(Collections.emptyList());
+
+        List<CompetitionSlotView> result = service.list(actor);
+
+        assertEquals(4, result.size());
+        for (int index = 0; index < 4; index++) {
+            CompetitionSlotView view = result.get(index);
+            assertEquals(AGENT_ID, view.getAgentId());
+            assertEquals(Integer.valueOf(index + 1), view.getSlotNumber());
+            assertNull(view.getSlotId());
             assertEquals("DEGRADED", view.getReadiness());
-            assertEquals("COMPETITION_SLOT_PROVISIONING_INCOMPLETE", view.getReadinessCode());
+            assertEquals("COMPETITION_SLOT_NOT_PROVISIONED", view.getReadinessCode());
+        }
+    }
+
+    @Test
+    public void administrativeListFailsClosedForDuplicateOrIllegalSlots() {
+        User actor = admin();
+        when(roleGuard.roleOf(actor)).thenReturn(UserRole.ADMIN);
+        when(agents.selectVisibleAgents()).thenReturn(Collections.singletonList(agent()));
+        ProcessingEnvironmentSlotRecord duplicate = slotRecord(1);
+        duplicate.setSlotId("77777777-7777-4777-8777-777777777777");
+        ProcessingEnvironmentSlotRecord illegal = slotRecord(4);
+        illegal.setSlotNumber(5);
+        when(slots.selectAll()).thenReturn(Arrays.asList(slotRecord(1), duplicate,
+                slotRecord(2), slotRecord(3), illegal));
+
+        List<CompetitionSlotView> result = service.list(actor);
+
+        assertEquals(4, result.size());
+        for (CompetitionSlotView view : result) {
+            assertNull(view.getSlotId());
+            assertEquals("DEGRADED", view.getReadiness());
+            assertEquals("COMPETITION_SLOT_PROVISIONING_INVALID", view.getReadinessCode());
         }
     }
 
@@ -647,7 +738,7 @@ public class CompetitionSlotBindingServiceTest {
 
     private ProcessingEnvironmentSlotRecord slotRecord(int number) {
         ProcessingEnvironmentSlotRecord slot = new ProcessingEnvironmentSlotRecord();
-        slot.setSlotId("22222222-2222-4222-8222-22222222222" + number);
+        slot.setSlotId("82222222-2222-4222-8222-22222222222" + number);
         slot.setAgentId(AGENT_ID);
         slot.setSlotNumber(number);
         return slot;

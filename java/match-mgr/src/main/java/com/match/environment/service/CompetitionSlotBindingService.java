@@ -138,19 +138,30 @@ public class CompetitionSlotBindingService {
     @Transactional(readOnly = true)
     public List<CompetitionSlotView> list(User actor) {
         requireAdmin(actor);
-        List<ProcessingEnvironmentSlotRecord> records = new ArrayList<>(slotMapper.selectAll());
-        records.sort(Comparator.comparing(ProcessingEnvironmentSlotRecord::getAgentId)
-                .thenComparing(ProcessingEnvironmentSlotRecord::getSlotNumber));
-        List<CompetitionSlotView> result = new ArrayList<>();
-        for (ProcessingEnvironmentSlotRecord slot : records) {
-            CompetitionEnvironmentRecord environment = environmentMapper.selectBySlot(slot.getSlotId());
-            String readinessCode = readinessCode(slot, environment);
-            CompetitionSlotView view = view(slot, environment, readinessCode);
-            view.setReadiness("READY".equals(readinessCode) ? "READY" : "DEGRADED");
-            includePortDetails(view, portMapper.selectBySlot(slot.getSlotId()));
-            result.add(view);
+        List<ProcessingAgentRecord> visibleAgents = agentMapper.selectVisibleAgents();
+        if (visibleAgents == null) {
+            visibleAgents = Collections.emptyList();
         }
-        markIncompleteProvisioning(result);
+        visibleAgents = new ArrayList<>(visibleAgents);
+        visibleAgents.sort(Comparator.comparing(ProcessingAgentRecord::getAgentId));
+        List<ProcessingEnvironmentSlotRecord> records = slotMapper.selectAll();
+        if (records == null) {
+            records = Collections.emptyList();
+        }
+        Map<String, List<ProcessingEnvironmentSlotRecord>> recordsByAgent = new HashMap<>();
+        for (ProcessingEnvironmentSlotRecord record : records) {
+            if (record != null && !blank(record.getAgentId())) {
+                recordsByAgent.computeIfAbsent(record.getAgentId(), ignored -> new ArrayList<>())
+                        .add(record);
+            }
+        }
+        List<CompetitionSlotView> result = new ArrayList<>();
+        for (ProcessingAgentRecord agent : visibleAgents) {
+            if (agent == null || blank(agent.getAgentId())) {
+                continue;
+            }
+            appendAgentSlots(result, agent.getAgentId(), recordsByAgent.get(agent.getAgentId()));
+        }
         return result;
     }
 
@@ -531,8 +542,14 @@ public class CompetitionSlotBindingService {
                 return PortReadiness.failure("COMPETITION_PAIR_PORTS_INVALID");
             }
         }
-        Integer annotationEndpoint = endpoint(annotation, byKey);
-        Integer editorEndpoint = endpoint(editor, byKey);
+        if (environment.getSlotNumber() == null || environment.getSlotNumber() < 1
+                || environment.getSlotNumber() > 4) {
+            return PortReadiness.failure("COMPETITION_PAIR_PORTS_INVALID");
+        }
+        Integer annotationEndpoint = endpoint(annotation, byKey,
+                8080 + environment.getSlotNumber());
+        Integer editorEndpoint = endpoint(editor, byKey,
+                9090 + environment.getSlotNumber());
         if (annotationEndpoint == null || editorEndpoint == null
                 || !allDeclaredPresent(annotation, byKey) || !allDeclaredPresent(editor, byKey)) {
             return PortReadiness.failure("COMPETITION_PAIR_PORTS_INCOMPLETE");
@@ -574,11 +591,13 @@ public class CompetitionSlotBindingService {
     }
 
     private Integer endpoint(TemplatePorts template,
-                             Map<String, EnvironmentPortAllocationRecord> allocations) {
+                             Map<String, EnvironmentPortAllocationRecord> allocations,
+                             int expectedHostPort) {
         ContainerPortSpec first = template.ports.get(0);
         EnvironmentPortAllocationRecord allocation = allocations.get(portKey(template.type,
                 first.getContainerPort(), first.getProtocol()));
-        return allocation == null ? null : allocation.getHostPort();
+        return allocation == null || !Objects.equals(expectedHostPort, allocation.getHostPort())
+                ? null : allocation.getHostPort();
     }
 
     private boolean allDeclaredPresent(TemplatePorts template,
@@ -596,23 +615,46 @@ public class CompetitionSlotBindingService {
         return type + ":" + containerPort + "/" + protocol;
     }
 
-    private void markIncompleteProvisioning(List<CompetitionSlotView> views) {
-        Map<String, Set<Integer>> numbersByAgent = new HashMap<>();
-        Map<String, Integer> countByAgent = new HashMap<>();
-        for (CompetitionSlotView view : views) {
-            numbersByAgent.computeIfAbsent(view.getAgentId(), ignored -> new HashSet<>())
-                    .add(view.getSlotNumber());
-            countByAgent.put(view.getAgentId(), countByAgent.getOrDefault(view.getAgentId(), 0) + 1);
-        }
-        Set<Integer> expected = new HashSet<>();
-        Collections.addAll(expected, 1, 2, 3, 4);
-        for (CompetitionSlotView view : views) {
-            if (countByAgent.get(view.getAgentId()) != 4
-                    || !expected.equals(numbersByAgent.get(view.getAgentId()))) {
-                view.setReadiness("DEGRADED");
-                view.setReadinessCode("COMPETITION_SLOT_PROVISIONING_INCOMPLETE");
+    private void appendAgentSlots(List<CompetitionSlotView> result, String agentId,
+                                  List<ProcessingEnvironmentSlotRecord> records) {
+        Map<Integer, ProcessingEnvironmentSlotRecord> byNumber = new HashMap<>();
+        boolean invalid = false;
+        if (records != null) {
+            for (ProcessingEnvironmentSlotRecord record : records) {
+                Integer number = record.getSlotNumber();
+                if (number == null || number < 1 || number > 4
+                        || blank(record.getSlotId()) || byNumber.put(number, record) != null) {
+                    invalid = true;
+                }
             }
         }
+        for (int number = 1; number <= 4; number++) {
+            if (invalid) {
+                result.add(placeholder(agentId, number,
+                        "COMPETITION_SLOT_PROVISIONING_INVALID"));
+                continue;
+            }
+            ProcessingEnvironmentSlotRecord slot = byNumber.get(number);
+            if (slot == null) {
+                result.add(placeholder(agentId, number, "COMPETITION_SLOT_NOT_PROVISIONED"));
+                continue;
+            }
+            CompetitionEnvironmentRecord environment = environmentMapper.selectBySlot(slot.getSlotId());
+            String readinessCode = readinessCode(slot, environment);
+            CompetitionSlotView view = view(slot, environment, readinessCode);
+            view.setReadiness("READY".equals(readinessCode) ? "READY" : "DEGRADED");
+            includePortDetails(view, portMapper.selectBySlot(slot.getSlotId()));
+            result.add(view);
+        }
+    }
+
+    private CompetitionSlotView placeholder(String agentId, int slotNumber, String readinessCode) {
+        CompetitionSlotView view = new CompetitionSlotView();
+        view.setAgentId(agentId);
+        view.setSlotNumber(slotNumber);
+        view.setReadiness("DEGRADED");
+        view.setReadinessCode(readinessCode);
+        return view;
     }
 
     private static final class TemplatePorts {
