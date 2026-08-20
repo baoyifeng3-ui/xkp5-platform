@@ -11,6 +11,8 @@ assert.ok(api.includes('/operations/processing-agents/${agentId}/terminal-sessio
 assert.ok(api.includes('/operations/terminal-sessions/${sessionId}/browser-ticket'))
 assert.ok(api.includes('request.delete'))
 assert.ok(service.includes('xkp-terminal.v1'))
+assert.ok(service.includes("status.state === 'WAITING_AGENT'"))
+assert.ok(service.includes('getTerminalSession(sessionId)'))
 assert.ok(service.includes('ticket.${ticket}'))
 assert.ok(service.includes("binaryType = 'arraybuffer'"))
 assert.ok(!service.includes('console.log'))

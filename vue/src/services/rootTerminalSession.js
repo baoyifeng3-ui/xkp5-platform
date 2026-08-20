@@ -6,6 +6,16 @@ export function websocketUrl (sessionId) {
 }
 
 export async function connectRootTerminal (sessionId, callbacks = {}) {
+  let status = await getTerminalSession(sessionId)
+  status = status && status.data ? status.data : status
+  while (status && status.state === 'WAITING_AGENT') {
+    if (callbacks.isCancelled && callbacks.isCancelled()) throw new Error('TERMINAL_CANCELLED')
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    status = await getTerminalSession(sessionId)
+    status = status && status.data ? status.data : status
+    if (callbacks.onState && status && status.state) callbacks.onState(status)
+  }
+  if (!status || ['FAILED', 'CLOSED', 'EXPIRED'].includes(status.state)) throw new Error('TERMINAL_NOT_READY')
   const ticketResult = await issueBrowserTicket(sessionId)
   const ticketData = ticketResult && ticketResult.data ? ticketResult.data : ticketResult
   const ticket = ticketData && (ticketData.ticket || ticketData.browserTicket)

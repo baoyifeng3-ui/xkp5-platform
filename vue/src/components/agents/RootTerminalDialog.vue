@@ -38,10 +38,10 @@ export default {
       window.addEventListener('resize', this.fitTerminal)
       this.startCountdown()
       try {
-        const connection = await connectRootTerminal(this.session.sessionId, { onOpen: () => { this.state = 'ACTIVE'; this.fitTerminal() }, onMessage: data => this.terminal && this.terminal.write(typeof data === 'string' ? data : new Uint8Array(data)), onError: () => this.fail('终端连接失败'), onClose: event => { if (!this.closing && event.code !== 1000) this.fail('终端连接已断开'); else if (!this.closing) this.state = 'CLOSED' } })
+        const connection = await connectRootTerminal(this.session.sessionId, { isCancelled: () => this.closing, onState: status => { this.state = status.state }, onOpen: () => { this.state = 'ACTIVE'; this.fitTerminal() }, onMessage: data => this.terminal && this.terminal.write(typeof data === 'string' ? data : new Uint8Array(data)), onError: () => this.fail('终端连接失败'), onClose: event => { if (!this.closing && event.code !== 1000) this.fail('终端连接已断开'); else if (!this.closing) this.state = 'CLOSED' } })
         if (this.closing) { connection.socket.close(); return }
         this.socket = connection.socket
-      } catch (error) { this.fail('终端票据获取失败') }
+      } catch (error) { if (!this.closing) this.fail(error && error.message === 'TERMINAL_NOT_READY' ? '终端会话已结束' : '终端票据获取失败') }
     },
     fitTerminal () { if (!this.fit || !this.socket) return; this.fit.fit(); sendResize(this.socket, this.terminal.cols, this.terminal.rows) },
     startCountdown () {
