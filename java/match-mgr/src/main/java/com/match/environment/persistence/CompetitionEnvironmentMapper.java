@@ -51,4 +51,17 @@ public interface CompetitionEnvironmentMapper extends BaseMapper<CompetitionEnvi
                            @Param("lastVerifiedAt") LocalDateTime lastVerifiedAt,
                            @Param("componentResultsJson") String componentResultsJson,
                            @Param("updatedAt") LocalDateTime updatedAt);
+
+    @Update("UPDATE competition_environment SET desired_state = #{actualState}, actual_state = #{actualState}, "
+            + "annotation_container_state = #{annotationState}, editor_container_state = #{editorState}, "
+            + "last_verified_at = #{verifiedAt}, last_component_results_json = #{componentResultsJson}, "
+            + "updated_at = #{updatedAt}, lock_version = lock_version + 1 "
+            + "WHERE environment_id = #{environmentId}")
+    int reconcileModeStep(@Param("environmentId") String environmentId,
+                          @Param("actualState") String actualState,
+                          @Param("annotationState") String annotationState,
+                          @Param("editorState") String editorState,
+                          @Param("verifiedAt") LocalDateTime verifiedAt,
+                          @Param("componentResultsJson") String componentResultsJson,
+                          @Param("updatedAt") LocalDateTime updatedAt);
 }

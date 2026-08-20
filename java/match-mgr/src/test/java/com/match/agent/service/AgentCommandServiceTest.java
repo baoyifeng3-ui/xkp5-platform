@@ -11,6 +11,8 @@ import com.match.agent.persistence.ProcessingAgentCommandMapper;
 import com.match.agent.persistence.ProcessingAgentCommandRecord;
 import com.match.agent.persistence.ProcessingAgentRecord;
 import com.match.agent.web.AgentProtocolException;
+import com.match.environment.service.EnvironmentOperationReconciler;
+import com.match.mode.service.ModeTransitionReconciler;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -38,6 +40,7 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doThrow;
@@ -559,6 +562,30 @@ public class AgentCommandServiceTest {
         verify(audit).recordCommandSuccess("COMMAND_RESULT", null, agent.getAgentId(), running.getCommandId());
         verify(audit, never()).recordCommandFailure(eq("COMMAND_RESULT"), any(String.class),
                 eq(null), eq(agent.getAgentId()), eq(running.getCommandId()));
+    }
+
+    @Test
+    public void modeStepResultIsHandledBeforeAndInsteadOfEnvironmentReconciliation() {
+        EnvironmentOperationReconciler environments = mock(EnvironmentOperationReconciler.class);
+        ModeTransitionReconciler modes = mock(ModeTransitionReconciler.class);
+        service = new AgentCommandService(mapper, new ObjectMapper().findAndRegisterModules(),
+                audit, Clock.fixed(NOW, ZoneOffset.UTC), environments, modes);
+        ProcessingAgentCommandRecord running = leasedCommand("RUNNING");
+        running.setCommandType("STOP_COMPETITION_ENVIRONMENT");
+        when(mapper.selectById(running.getCommandId())).thenReturn(running);
+        when(mapper.markTerminal(eq(running.getCommandId()), eq(agent.getAgentId()),
+                eq(running.getLeaseToken()), eq("SUCCEEDED"), any(LocalDateTime.class),
+                eq("ENVIRONMENT_STOPPED"), eq("stopped"), eq(null))).thenReturn(1);
+        when(modes.reconcileIfPresent(running.getCommandId(), true,
+                "ENVIRONMENT_STOPPED", "stopped", null)).thenReturn(true);
+
+        service.finish(agent, running.getCommandId(),
+                result(true, "ENVIRONMENT_STOPPED", "stopped"));
+
+        verify(modes).reconcileIfPresent(running.getCommandId(), true,
+                "ENVIRONMENT_STOPPED", "stopped", null);
+        verify(environments, never()).reconcile(anyString(),
+                org.mockito.ArgumentMatchers.anyBoolean(), anyString(), anyString(), any());
     }
 
     @Test

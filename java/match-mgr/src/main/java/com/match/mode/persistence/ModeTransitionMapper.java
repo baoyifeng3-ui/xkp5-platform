@@ -15,6 +15,14 @@ public interface ModeTransitionMapper extends BaseMapper<ModeTransitionRecord> {
             + "AND state IN ('PENDING','RUNNING','DEGRADED') ORDER BY requested_at DESC LIMIT 1")
     ModeTransitionRecord selectActiveForUpdate(@Param("agentId") String agentId);
 
+    @Select("SELECT * FROM mode_transition WHERE agent_id = #{agentId} "
+            + "AND target_mode = 'COMPETITION' ORDER BY requested_at DESC LIMIT 1")
+    ModeTransitionRecord selectLatestCompetitionForAgent(@Param("agentId") String agentId);
+
+    @Select("SELECT * FROM mode_transition WHERE state IN ('PENDING','RUNNING','DEGRADED') "
+            + "ORDER BY requested_at, transition_id LIMIT #{limit}")
+    List<ModeTransitionRecord> selectActiveForRecovery(@Param("limit") int limit);
+
     @Update("UPDATE mode_transition SET state = #{state}, failure_summary = #{failureSummary}, "
             + "completed_at = #{completedAt}, updated_at = #{completedAt}, active_transition_key = "
             + "CASE WHEN #{state} IN ('SUCCEEDED') THEN NULL ELSE active_transition_key END "

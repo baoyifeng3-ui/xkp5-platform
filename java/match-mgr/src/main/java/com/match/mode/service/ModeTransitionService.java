@@ -53,6 +53,7 @@ public class ModeTransitionService {
     private static final long ONLINE_TIMEOUT_SECONDS = 300L;
     private static final String NORMAL = "NORMAL";
     private static final String ENTERING = "ENTERING_COMPETITION";
+    private static final String EXITING = "EXITING_COMPETITION";
     private static final String COMPETITION_MODE = "COMPETITION";
     private static final String TRAINING_MODE = "TRAINING";
 
@@ -207,6 +208,124 @@ public class ModeTransitionService {
         return planEntry(agentId, actor);
     }
 
+    @Transactional
+    public ModeTransitionView planExit(String agentId, User actor) {
+        ActorIdentity identity = requireAdmin(actor);
+        requireAgentId(agentId);
+        ProcessingAgentRecord agent = agentMapper.selectForManagement(agentId);
+        if (agent == null || !Boolean.TRUE.equals(agent.getEnabled()) || agent.getRemovedAt() != null) {
+            throw new IllegalArgumentException("处理服务器不可用");
+        }
+        ProcessingAgentModeRecord mode = lockOrCreateMode(agentId);
+        ModeTransitionRecord active = transitionMapper.selectActiveForUpdate(agentId);
+        if (active != null) {
+            if (TRAINING_MODE.equals(active.getTargetMode())) {
+                return view(active, safeSteps(active.getTransitionId()));
+            }
+            throw new ModeConflictException("AGENT_MODE_TRANSITION_CONFLICT",
+                    "Processing Agent has an active transition for another target");
+        }
+        if (!COMPETITION_MODE.equals(mode.getDesiredMode())
+                || !COMPETITION_MODE.equals(mode.getActualMode())) {
+            throw new ModeConflictException("AGENT_MODE_NOT_IDLE",
+                    "Processing Agent is not idle in competition mode");
+        }
+
+        ModeTransitionRecord entry = transitionMapper.selectLatestCompetitionForAgent(agentId);
+        if (entry == null) {
+            throw new ModeConflictException("COMPETITION_ENTRY_NOT_FOUND",
+                    "Competition entry transition is missing");
+        }
+        LocalDateTime now = utcNow();
+        ModeTransitionRecord transition = transition(agentId, COMPETITION_MODE, TRAINING_MODE,
+                identity, now);
+        transitionMapper.insert(transition);
+
+        List<ModeTransitionStepRecord> created = new ArrayList<>();
+        Set<String> frozenCompetition = new HashSet<>();
+        int ordinal = 1;
+        for (ModeTransitionStepRecord entryStep : safeSteps(entry.getTransitionId())) {
+            if ("COMPETITION".equals(entryStep.getEnvironmentKind())
+                    && entryStep.getEnvironmentId() != null
+                    && frozenCompetition.add(entryStep.getEnvironmentId())) {
+                created.add(step(transition, 1, ordinal++, "COMPETITION",
+                        entryStep.getEnvironmentId(), "STOP_COMPETITION_ENVIRONMENT"));
+            }
+        }
+        ordinal = 1;
+        Set<String> frozenTraining = new HashSet<>();
+        List<ModeTrainingSnapshotRecord> entrySnapshots = snapshotMapper.selectByTransition(
+                entry.getTransitionId());
+        if (entrySnapshots != null) {
+            for (ModeTrainingSnapshotRecord snapshot : entrySnapshots) {
+                if (snapshot != null && snapshot.getEnvironmentId() != null
+                        && frozenTraining.add(snapshot.getEnvironmentId())) {
+                    created.add(step(transition, 2, ordinal++, "TRAINING",
+                            snapshot.getEnvironmentId(), "RESTORE_TRAINING_ENVIRONMENT"));
+                }
+            }
+        }
+
+        modeMapper.updateTransition(agentId, TRAINING_MODE, EXITING,
+                transition.getTransitionId(), now);
+        mode.setDesiredMode(TRAINING_MODE);
+        mode.setActualMode(EXITING);
+        mode.setActiveTransitionId(transition.getTransitionId());
+        auditService.recordSuccess("MODE_EXIT_STARTED", identity.userId, agentId,
+                transition.getTransitionId());
+        if (created.isEmpty()) {
+            completeTransition(transition, mode, now);
+        } else {
+            dispatchAfterCommit(transition, created, agent, identity);
+        }
+        return view(transition, created);
+    }
+
+    @Transactional
+    public ModeTransitionView retry(String transitionId, User actor) {
+        requireSuperAdmin(actor);
+        ModeTransitionRecord transition = transitionMapper.selectForUpdate(transitionId);
+        if (transition == null) {
+            throw new IllegalArgumentException("模式切换不存在");
+        }
+        ProcessingAgentModeRecord mode = modeMapper.selectForUpdate(transition.getAgentId());
+        if (mode == null || !transitionId.equals(mode.getActiveTransitionId())
+                || !transition.getTargetMode().equals(mode.getDesiredMode())) {
+            throw new ModeConflictException("AGENT_MODE_TRANSITION_CONFLICT",
+                    "Only the current transition target can be retried");
+        }
+        if (!"DEGRADED".equals(transition.getState())) {
+            throw new ModeConflictException("MODE_TRANSITION_NOT_DEGRADED",
+                    "Only a degraded transition can be retried");
+        }
+        List<ModeTransitionStepRecord> all = safeSteps(transitionId);
+        int phase = currentIncompletePhase(all);
+        if (phase == 0) {
+            throw new ModeConflictException("MODE_TRANSITION_NOT_RETRYABLE",
+                    "Transition has no incomplete phase");
+        }
+        LocalDateTime now = utcNow();
+        stepMapper.resetFailedInPhase(transitionId, phase, now);
+        for (ModeTransitionStepRecord step : all) {
+            if (step.getPhaseNumber() != null && step.getPhaseNumber() == phase
+                    && "FAILED".equals(step.getState())) {
+                step.setState("PENDING");
+                step.setCommandId(null);
+                step.setResultCode(null);
+                step.setResultMessage(null);
+                step.setComponentResultsJson(null);
+            }
+        }
+        transitionMapper.updateState(transitionId, "RUNNING", null, now);
+        transition.setState("RUNNING");
+        transition.setFailureSummary(null);
+        String actual = COMPETITION_MODE.equals(transition.getTargetMode()) ? ENTERING : EXITING;
+        modeMapper.updateTransition(transition.getAgentId(), transition.getTargetMode(), actual,
+                transitionId, now);
+        dispatchAfterCommit(transitionId);
+        return view(transition, all);
+    }
+
     @Transactional(readOnly = true)
     public ModeTransitionView get(String transitionId) {
         ModeTransitionRecord transition = transitionMapper.selectForUpdate(transitionId);
@@ -220,8 +339,7 @@ public class ModeTransitionService {
     @Transactional
     public void dispatchReadyPhase(String transitionId) {
         ModeTransitionRecord transition = transitionMapper.selectForUpdate(transitionId);
-        if (transition == null || !COMPETITION_MODE.equals(transition.getTargetMode())
-                || "SUCCEEDED".equals(transition.getState())) {
+        if (transition == null || "SUCCEEDED".equals(transition.getState())) {
             return;
         }
         ProcessingAgentRecord agent = agentMapper.selectForManagement(transition.getAgentId());
@@ -235,8 +353,44 @@ public class ModeTransitionService {
     }
 
     @Transactional
+    public void advanceAfterSuccessfulStep(String transitionId) {
+        ModeTransitionRecord transition = transitionMapper.selectForUpdate(transitionId);
+        if (transition == null || "SUCCEEDED".equals(transition.getState())) {
+            return;
+        }
+        List<ModeTransitionStepRecord> all = safeSteps(transitionId);
+        for (ModeTransitionStepRecord step : all) {
+            if ("FAILED".equals(step.getState())) {
+                return;
+            }
+            if (!"SUCCEEDED".equals(step.getState())) {
+                dispatchAfterCommit(transitionId);
+                return;
+            }
+        }
+        LocalDateTime now = utcNow();
+        ProcessingAgentModeRecord mode = modeMapper.selectForUpdate(transition.getAgentId());
+        transitionMapper.updateTerminal(transitionId, "SUCCEEDED", null, now);
+        transition.setState("SUCCEEDED");
+        transition.setCompletedAt(now);
+        transition.setFailureSummary(null);
+        transition.setActiveTransitionKey(null);
+        if (mode != null) {
+            String actual = COMPETITION_MODE.equals(transition.getTargetMode())
+                    ? COMPETITION_MODE : NORMAL;
+            modeMapper.updateTransition(transition.getAgentId(), transition.getTargetMode(),
+                    actual, null, now);
+            mode.setActualMode(actual);
+            mode.setActiveTransitionId(null);
+        }
+        auditService.recordSuccess(COMPETITION_MODE.equals(transition.getTargetMode())
+                        ? "MODE_ENTRY_COMPLETED" : "MODE_EXIT_COMPLETED",
+                transition.getActorUserId(), transition.getAgentId(), transitionId);
+    }
+
+    @Transactional
     public void convergeAll(String targetMode, int actorUserId, String actorRole) {
-        if (!COMPETITION_MODE.equals(targetMode)) {
+        if (!COMPETITION_MODE.equals(targetMode) && !TRAINING_MODE.equals(targetMode)) {
             return;
         }
         List<ProcessingAgentRecord> agents = agentMapper.selectVisibleAgents();
@@ -245,7 +399,15 @@ public class ModeTransitionService {
         }
         for (ProcessingAgentRecord agent : agents) {
             try {
-                planEntry(agent.getAgentId(), actorUserId, actorRole);
+                if (COMPETITION_MODE.equals(targetMode)) {
+                    planEntry(agent.getAgentId(), actorUserId, actorRole);
+                } else {
+                    User actor = new User();
+                    actor.setUserId(actorUserId);
+                    actor.setEnabled(true);
+                    actor.setRole(actorRole);
+                    planExit(agent.getAgentId(), actor);
+                }
             } catch (RuntimeException failure) {
                 if (agent.getAgentId() != null) {
                     auditService.recordFailure("MODE_ENTRY_DEGRADED", "AGENT_TRANSITION_ERROR",
@@ -270,6 +432,20 @@ public class ModeTransitionService {
             return;
         }
         dispatchReady(transition, created, agent, actor);
+    }
+
+    private void dispatchAfterCommit(final String transitionId) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()
+                && TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    dispatchReadyPhase(transitionId);
+                }
+            });
+            return;
+        }
+        dispatchReadyPhase(transitionId);
     }
 
     private void dispatchReady(ModeTransitionRecord transition,
@@ -298,22 +474,30 @@ public class ModeTransitionService {
                 step.setState("FAILED");
                 step.setResultCode("COMMAND_DISPATCH_FAILED");
                 step.setResultMessage(bounded(failure.getMessage()));
+                stepMapper.markTerminal(step.getStepId(), "FAILED", "COMMAND_DISPATCH_FAILED",
+                        step.getResultMessage(), null, utcNow());
                 if (transition != null) {
                     transition.setState("DEGRADED");
                     transition.setFailureSummary("COMMAND_DISPATCH_FAILED");
                     transitionMapper.updateState(transition.getTransitionId(), "DEGRADED",
                             "COMMAND_DISPATCH_FAILED", utcNow());
+                    modeMapper.updateTransition(transition.getAgentId(), transition.getTargetMode(),
+                            "DEGRADED", transition.getTransitionId(), utcNow());
                 }
                 continue;
             }
             if (command == null || command.getCommandId() == null) {
                 step.setState("FAILED");
                 step.setResultCode("COMMAND_DISPATCH_FAILED");
+                stepMapper.markTerminal(step.getStepId(), "FAILED", "COMMAND_DISPATCH_FAILED",
+                        null, null, utcNow());
                 if (transition != null) {
                     transition.setState("DEGRADED");
                     transition.setFailureSummary("COMMAND_DISPATCH_FAILED");
                     transitionMapper.updateState(transition.getTransitionId(), "DEGRADED",
                             "COMMAND_DISPATCH_FAILED", utcNow());
+                    modeMapper.updateTransition(transition.getAgentId(), transition.getTargetMode(),
+                            "DEGRADED", transition.getTransitionId(), utcNow());
                 }
                 continue;
             }
@@ -354,6 +538,34 @@ public class ModeTransitionService {
         result.setUpdatedAt(utcNow());
         stepMapper.insert(result);
         return result;
+    }
+
+    private ModeTransitionRecord transition(String agentId, String sourceMode, String targetMode,
+                                            ActorIdentity actor, LocalDateTime now) {
+        ModeTransitionRecord result = new ModeTransitionRecord();
+        result.setTransitionId(UUID.randomUUID().toString());
+        result.setAgentId(agentId);
+        result.setSourceMode(sourceMode);
+        result.setTargetMode(targetMode);
+        result.setState("RUNNING");
+        result.setActiveTransitionKey(agentId + ":" + targetMode);
+        result.setActorUserId(actor.userId);
+        result.setActorRole(actor.role);
+        result.setRequestedAt(now);
+        result.setUpdatedAt(now);
+        return result;
+    }
+
+    private void completeTransition(ModeTransitionRecord transition, ProcessingAgentModeRecord mode,
+                                    LocalDateTime now) {
+        transition.setState("SUCCEEDED");
+        transition.setCompletedAt(now);
+        transition.setActiveTransitionKey(null);
+        transitionMapper.updateTerminal(transition.getTransitionId(), "SUCCEEDED", null, now);
+        String actual = COMPETITION_MODE.equals(transition.getTargetMode()) ? COMPETITION_MODE : NORMAL;
+        modeMapper.updateTransition(transition.getAgentId(), transition.getTargetMode(), actual, null, now);
+        mode.setActualMode(actual);
+        mode.setActiveTransitionId(null);
     }
 
     private ProcessingAgentModeRecord lockOrCreateMode(String agentId) {
@@ -510,6 +722,16 @@ public class ModeTransitionService {
         return phase;
     }
 
+    private int currentIncompletePhase(List<ModeTransitionStepRecord> steps) {
+        int phase = Integer.MAX_VALUE;
+        for (ModeTransitionStepRecord step : steps) {
+            if (!"SUCCEEDED".equals(step.getState()) && step.getPhaseNumber() != null) {
+                phase = Math.min(phase, step.getPhaseNumber());
+            }
+        }
+        return phase == Integer.MAX_VALUE ? 0 : phase;
+    }
+
     private boolean terminal(String state) {
         return "SUCCEEDED".equals(state) || "FAILED".equals(state);
     }
@@ -563,6 +785,13 @@ public class ModeTransitionService {
             throw new IllegalArgumentException("仅普通管理员可以执行模式切换");
         }
         return new ActorIdentity(actor.getUserId(), "ADMIN");
+    }
+
+    private void requireSuperAdmin(User actor) {
+        if (actor == null || !Boolean.TRUE.equals(actor.getEnabled()) || actor.getUserId() == null
+                || !"SUPER_ADMIN".equals(actor.getRole())) {
+            throw new IllegalArgumentException("仅超级管理员可以重试模式切换");
+        }
     }
 
     private void requireAgentId(String agentId) {
