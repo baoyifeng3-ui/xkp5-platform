@@ -1,7 +1,11 @@
 package com.match.mode.service;
 
+import com.match.agent.persistence.ProcessingAgentCommandMapper;
+import com.match.agent.persistence.ProcessingAgentCommandRecord;
 import com.match.mode.persistence.ModeTransitionMapper;
 import com.match.mode.persistence.ModeTransitionRecord;
+import com.match.mode.persistence.ModeTransitionStepMapper;
+import com.match.mode.persistence.ModeTransitionStepRecord;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -15,11 +19,20 @@ public class ModeTransitionRecovery {
     static final int RECOVERY_LIMIT = 100;
 
     private final ModeTransitionMapper transitionMapper;
+    private final ModeTransitionStepMapper stepMapper;
+    private final ProcessingAgentCommandMapper commandMapper;
+    private final ModeTransitionReconciler reconciler;
     private final ModeTransitionService transitionService;
 
     public ModeTransitionRecovery(ModeTransitionMapper transitionMapper,
+                                  ModeTransitionStepMapper stepMapper,
+                                  ProcessingAgentCommandMapper commandMapper,
+                                  ModeTransitionReconciler reconciler,
                                   ModeTransitionService transitionService) {
         this.transitionMapper = transitionMapper;
+        this.stepMapper = stepMapper;
+        this.commandMapper = commandMapper;
+        this.reconciler = reconciler;
         this.transitionService = transitionService;
     }
 
@@ -37,10 +50,32 @@ public class ModeTransitionRecovery {
                 continue;
             }
             try {
-                transitionService.dispatchReadyPhase(transition.getTransitionId());
+                reconcileTerminalCommands(transition.getTransitionId());
+                transitionService.advanceAfterSuccessfulStep(transition.getTransitionId());
             } catch (RuntimeException ignored) {
                 // A damaged Agent transition must not prevent recovery of later rows.
             }
+        }
+    }
+
+    private void reconcileTerminalCommands(String transitionId) {
+        List<ModeTransitionStepRecord> steps = stepMapper.selectByTransition(transitionId);
+        if (steps == null) {
+            return;
+        }
+        for (ModeTransitionStepRecord step : steps) {
+            if (step == null || !"DISPATCHED".equals(step.getState())
+                    || step.getCommandId() == null) {
+                continue;
+            }
+            ProcessingAgentCommandRecord command = commandMapper.selectById(step.getCommandId());
+            if (command == null || !("SUCCEEDED".equals(command.getState())
+                    || "FAILED".equals(command.getState()))) {
+                continue;
+            }
+            reconciler.reconcileIfPresent(command.getCommandId(),
+                    "SUCCEEDED".equals(command.getState()), command.getResultCode(),
+                    command.getResultMessage(), command.getResultJson());
         }
     }
 }

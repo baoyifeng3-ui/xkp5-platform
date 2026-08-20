@@ -43,6 +43,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -116,6 +117,7 @@ public class ModeTransitionEntryTest {
         command.setCommandId("66666666-6666-4666-8666-666666666666");
         when(commands.requestEnvironmentCommand(any(ProcessingAgentRecord.class), anyString(),
                 anyString(), eq(9), eq("ADMIN"), anyString())).thenReturn(command);
+        when(steps.markDispatched(anyString(), anyString(), any(LocalDateTime.class))).thenReturn(1);
         when(transitions.insert(any(ModeTransitionRecord.class))).thenReturn(1);
     }
 
@@ -198,11 +200,54 @@ public class ModeTransitionEntryTest {
         com.match.mode.persistence.ModeTransitionStepRecord pendingStart = modeStep(
                 existing.getTransitionId(), 2, "PENDING", "START_COMPETITION_ENVIRONMENT");
         when(steps.selectByTransition(existing.getTransitionId())).thenReturn(Arrays.asList(failedStop, pendingStart));
+        when(competition.selectForUpdate(COMPETITION)).thenReturn(competition());
 
         service.dispatchReadyPhase(existing.getTransitionId());
 
+        verify(commandFactory, never()).createPayloadJson(any(CompetitionEnvironmentRecord.class),
+                eq(pendingStart.getStepId()));
         verify(commands, never()).requestEnvironmentCommand(any(), anyString(), anyString(),
                 anyInt(), anyString(), anyString());
+    }
+
+    @Test
+    public void recoveredAgentCanRetryZeroStepPreflightAndMaterializeEntryPlan() {
+        agent.setLastSeenAt(LocalDateTime.ofInstant(NOW.minusSeconds(301), ZoneOffset.UTC));
+        ModeTransitionView degraded = service.planEntry(AGENT_ID, admin);
+        agent.setLastSeenAt(LocalDateTime.ofInstant(NOW, ZoneOffset.UTC));
+        ModeTransitionRecord persisted = transition("COMPETITION", "DEGRADED");
+        persisted.setTransitionId(degraded.getTransitionId());
+        persisted.setActorUserId(9);
+        persisted.setActorRole("ADMIN");
+        persisted.setFailureSummary("AGENT_OFFLINE");
+        when(transitions.selectForUpdate(degraded.getTransitionId())).thenReturn(persisted);
+        when(steps.selectByTransition(degraded.getTransitionId()))
+                .thenReturn(Collections.<com.match.mode.persistence.ModeTransitionStepRecord>emptyList());
+        User superAdmin = new User();
+        superAdmin.setUserId(1);
+        superAdmin.setEnabled(true);
+        superAdmin.setRole("SUPER_ADMIN");
+
+        ModeTransitionView retried = service.retry(degraded.getTransitionId(), superAdmin);
+
+        assertEquals("RUNNING", retried.getState());
+        assertEquals(3, retried.getSteps().size());
+        verify(snapshots, times(2)).insert(any());
+    }
+
+    @Test
+    public void recoveryDoesNotCompleteZeroStepDegradedPreflightBeforeRetry() {
+        ModeTransitionRecord persisted = transition("COMPETITION", "DEGRADED");
+        persisted.setTransitionId("preflight-transition");
+        persisted.setFailureSummary("AGENT_OFFLINE");
+        when(transitions.selectForUpdate("preflight-transition")).thenReturn(persisted);
+        when(steps.selectByTransition("preflight-transition"))
+                .thenReturn(Collections.<com.match.mode.persistence.ModeTransitionStepRecord>emptyList());
+
+        service.advanceAfterSuccessfulStep("preflight-transition");
+
+        verify(transitions, never()).updateTerminal(eq("preflight-transition"), anyString(),
+                any(), any(LocalDateTime.class));
     }
 
     @Test

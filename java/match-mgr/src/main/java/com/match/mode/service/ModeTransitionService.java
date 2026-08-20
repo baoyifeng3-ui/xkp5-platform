@@ -3,7 +3,6 @@ package com.match.mode.service;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.match.agent.model.AgentCommandView;
 import com.match.agent.persistence.ProcessingAgentMapper;
 import com.match.agent.persistence.ProcessingAgentRecord;
 import com.match.agent.service.AgentAuditService;
@@ -28,6 +27,7 @@ import com.match.mode.persistence.ModeTransitionStepMapper;
 import com.match.mode.persistence.ModeTransitionStepRecord;
 import com.match.mode.persistence.ProcessingAgentModeMapper;
 import com.match.mode.persistence.ProcessingAgentModeRecord;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -39,10 +39,8 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.Objects;
@@ -66,8 +64,7 @@ public class ModeTransitionService {
     private final CompetitionEnvironmentMapper competitionMapper;
     private final ProcessingEnvironmentSlotMapper slotMapper;
     private final EnvironmentOperationMapper operationMapper;
-    private final AgentCommandService commandService;
-    private final EnvironmentCommandFactory commandFactory;
+    private final ModeTransitionDispatchWorker dispatchWorker;
     private final AgentAuditService auditService;
     private final Clock clock;
     private final ObjectMapper verificationMapper;
@@ -85,6 +82,29 @@ public class ModeTransitionService {
                                  EnvironmentCommandFactory commandFactory,
                                  AgentAuditService auditService,
                                  Clock clock) {
+        this(modeMapper, transitionMapper, stepMapper, snapshotMapper, agentMapper,
+                trainingMapper, competitionMapper, slotMapper, operationMapper, commandService,
+                commandFactory, auditService, clock,
+                new ModeTransitionDispatchWorker(transitionMapper, stepMapper, modeMapper,
+                        agentMapper, trainingMapper, competitionMapper, commandService,
+                        commandFactory, clock));
+    }
+
+    @Autowired
+    public ModeTransitionService(ProcessingAgentModeMapper modeMapper,
+                                 ModeTransitionMapper transitionMapper,
+                                 ModeTransitionStepMapper stepMapper,
+                                 ModeTrainingSnapshotMapper snapshotMapper,
+                                 ProcessingAgentMapper agentMapper,
+                                 TrainingEnvironmentMapper trainingMapper,
+                                 CompetitionEnvironmentMapper competitionMapper,
+                                 ProcessingEnvironmentSlotMapper slotMapper,
+                                 EnvironmentOperationMapper operationMapper,
+                                 AgentCommandService commandService,
+                                 EnvironmentCommandFactory commandFactory,
+                                 AgentAuditService auditService,
+                                 Clock clock,
+                                 ModeTransitionDispatchWorker dispatchWorker) {
         this.modeMapper = modeMapper;
         this.transitionMapper = transitionMapper;
         this.stepMapper = stepMapper;
@@ -94,8 +114,7 @@ public class ModeTransitionService {
         this.competitionMapper = competitionMapper;
         this.slotMapper = slotMapper;
         this.operationMapper = operationMapper;
-        this.commandService = commandService;
-        this.commandFactory = commandFactory;
+        this.dispatchWorker = dispatchWorker;
         this.auditService = auditService;
         this.clock = clock;
         this.verificationMapper = new ObjectMapper();
@@ -148,30 +167,7 @@ public class ModeTransitionService {
             return view(transition, Collections.<ModeTransitionStepRecord>emptyList());
         }
 
-        List<ModeTransitionStepRecord> created = new ArrayList<>();
-        int ordinal = 1;
-        for (TrainingEnvironmentRecord environment : environments) {
-            if (!"RUNNING".equals(environment.getActualState())) {
-                continue;
-            }
-            ModeTrainingSnapshotRecord snapshot = new ModeTrainingSnapshotRecord();
-            snapshot.setTransitionId(transition.getTransitionId());
-            snapshot.setEnvironmentId(environment.getEnvironmentId());
-            snapshot.setCapturedAt(now);
-            snapshotMapper.insert(snapshot);
-            created.add(step(transition, 1, ordinal++, "TRAINING", environment.getEnvironmentId(),
-                    "STOP_TRAINING_ENVIRONMENT"));
-        }
-
-        Set<String> boundSlots = boundSlotIds(agentId);
-        List<CompetitionEnvironmentRecord> candidates = safeCompetition(agentId);
-        ordinal = 1;
-        for (CompetitionEnvironmentRecord environment : candidates) {
-            if (boundSlots.contains(environment.getSlotId()) && ready(environment)) {
-                created.add(step(transition, 2, ordinal++, "COMPETITION", environment.getEnvironmentId(),
-                        "START_COMPETITION_ENVIRONMENT"));
-            }
-        }
+        List<ModeTransitionStepRecord> created = materializeEntrySteps(transition, environments, now);
 
         transition.setState("RUNNING");
         mode.setDesiredMode(COMPETITION_MODE);
@@ -298,7 +294,26 @@ public class ModeTransitionService {
             throw new ModeConflictException("MODE_TRANSITION_NOT_DEGRADED",
                     "Only a degraded transition can be retried");
         }
-        List<ModeTransitionStepRecord> all = safeSteps(transitionId);
+        List<ModeTransitionStepRecord> all = new ArrayList<>(safeSteps(transitionId));
+        ProcessingAgentRecord agent = agentMapper.selectForManagement(transition.getAgentId());
+        List<TrainingEnvironmentRecord> environments = safeTraining(transition.getAgentId());
+        String preflightFailure = preflightFailure(agent, environments);
+        if (preflightFailure != null) {
+            LocalDateTime now = utcNow();
+            transitionMapper.updateState(transitionId, "DEGRADED", preflightFailure, now);
+            transition.setFailureSummary(preflightFailure);
+            modeMapper.updateTransition(transition.getAgentId(), transition.getTargetMode(),
+                    "DEGRADED", transitionId, now);
+            mode.setActualMode("DEGRADED");
+            return view(transition, all);
+        }
+        if (all.isEmpty() && COMPETITION_MODE.equals(transition.getTargetMode())) {
+            all.addAll(materializeEntrySteps(transition, environments, utcNow()));
+            if (all.isEmpty()) {
+                completeTransition(transition, mode, utcNow());
+                return view(transition, all);
+            }
+        }
         int phase = currentIncompletePhase(all);
         if (phase == 0) {
             throw new ModeConflictException("MODE_TRANSITION_NOT_RETRYABLE",
@@ -336,20 +351,8 @@ public class ModeTransitionService {
     }
 
     /** Re-dispatches the lowest phase that is not terminal; phase 2 never bypasses phase 1. */
-    @Transactional
     public void dispatchReadyPhase(String transitionId) {
-        ModeTransitionRecord transition = transitionMapper.selectForUpdate(transitionId);
-        if (transition == null || "SUCCEEDED".equals(transition.getState())) {
-            return;
-        }
-        ProcessingAgentRecord agent = agentMapper.selectForManagement(transition.getAgentId());
-        if (agent == null || !Boolean.TRUE.equals(agent.getEnabled())) {
-            transitionMapper.updateState(transitionId, "DEGRADED", "AGENT_OFFLINE", utcNow());
-            return;
-        }
-        ActorIdentity actor = new ActorIdentity(transition.getActorUserId(), transition.getActorRole());
-        List<ModeTransitionStepRecord> all = safeSteps(transitionId);
-        dispatchReady(transition, all, agent, actor);
+        dispatchWorker.dispatchReadyPhase(transitionId);
     }
 
     @Transactional
@@ -359,6 +362,9 @@ public class ModeTransitionService {
             return;
         }
         List<ModeTransitionStepRecord> all = safeSteps(transitionId);
+        if (all.isEmpty() && "DEGRADED".equals(transition.getState())) {
+            return;
+        }
         for (ModeTransitionStepRecord step : all) {
             if ("FAILED".equals(step.getState())) {
                 return;
@@ -426,12 +432,12 @@ public class ModeTransitionService {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    dispatchReadyPhase(transition.getTransitionId());
+                    dispatchWorker.dispatchReadyPhase(transition.getTransitionId());
                 }
             });
             return;
         }
-        dispatchReady(transition, created, agent, actor);
+        dispatchWorker.dispatchPlanned(transition, created, agent, actor.userId, actor.role);
     }
 
     private void dispatchAfterCommit(final String transitionId) {
@@ -440,86 +446,12 @@ public class ModeTransitionService {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    dispatchReadyPhase(transitionId);
+                    dispatchWorker.dispatchReadyPhase(transitionId);
                 }
             });
             return;
         }
-        dispatchReadyPhase(transitionId);
-    }
-
-    private void dispatchReady(ModeTransitionRecord transition,
-                               List<ModeTransitionStepRecord> steps,
-                               ProcessingAgentRecord agent,
-                               ActorIdentity actor) {
-        if (steps == null) {
-            return;
-        }
-        int phase = lowestNonTerminalPhase(steps);
-        if (phase == 0) {
-            return;
-        }
-        for (ModeTransitionStepRecord step : steps) {
-            if (step.getPhaseNumber() == null || step.getPhaseNumber() != phase
-                    || !"PENDING".equals(step.getState())) {
-                continue;
-            }
-            AgentCommandView command;
-            try {
-                String payload = payload(step, agent);
-                command = commandService.requestEnvironmentCommand(agent,
-                        step.getActionType(), payload, actor.userId, actor.role,
-                        step.getIdempotencyKey());
-            } catch (RuntimeException failure) {
-                step.setState("FAILED");
-                step.setResultCode("COMMAND_DISPATCH_FAILED");
-                step.setResultMessage(bounded(failure.getMessage()));
-                stepMapper.markTerminal(step.getStepId(), "FAILED", "COMMAND_DISPATCH_FAILED",
-                        step.getResultMessage(), null, utcNow());
-                if (transition != null) {
-                    transition.setState("DEGRADED");
-                    transition.setFailureSummary("COMMAND_DISPATCH_FAILED");
-                    transitionMapper.updateState(transition.getTransitionId(), "DEGRADED",
-                            "COMMAND_DISPATCH_FAILED", utcNow());
-                    modeMapper.updateTransition(transition.getAgentId(), transition.getTargetMode(),
-                            "DEGRADED", transition.getTransitionId(), utcNow());
-                }
-                continue;
-            }
-            if (command == null || command.getCommandId() == null) {
-                step.setState("FAILED");
-                step.setResultCode("COMMAND_DISPATCH_FAILED");
-                stepMapper.markTerminal(step.getStepId(), "FAILED", "COMMAND_DISPATCH_FAILED",
-                        null, null, utcNow());
-                if (transition != null) {
-                    transition.setState("DEGRADED");
-                    transition.setFailureSummary("COMMAND_DISPATCH_FAILED");
-                    transitionMapper.updateState(transition.getTransitionId(), "DEGRADED",
-                            "COMMAND_DISPATCH_FAILED", utcNow());
-                    modeMapper.updateTransition(transition.getAgentId(), transition.getTargetMode(),
-                            "DEGRADED", transition.getTransitionId(), utcNow());
-                }
-                continue;
-            }
-            step.setCommandId(command.getCommandId());
-            step.setState("DISPATCHED");
-            stepMapper.markDispatched(step.getStepId(), command.getCommandId(), utcNow());
-        }
-    }
-
-    private String payload(ModeTransitionStepRecord step, ProcessingAgentRecord agent) {
-        if ("TRAINING".equals(step.getEnvironmentKind())) {
-            TrainingEnvironmentRecord environment = trainingMapper.selectForUpdate(step.getEnvironmentId());
-            if (environment == null) {
-                throw new IllegalArgumentException("实训环境不存在");
-            }
-            return commandFactory.createPayloadJson(environment, step.getStepId());
-        }
-        CompetitionEnvironmentRecord environment = competitionMapper.selectForUpdate(step.getEnvironmentId());
-        if (environment == null) {
-            throw new IllegalArgumentException("比赛环境不存在");
-        }
-        return commandFactory.createPayloadJson(environment, step.getStepId());
+        dispatchWorker.dispatchReadyPhase(transitionId);
     }
 
     private ModeTransitionStepRecord step(ModeTransitionRecord transition, int phase, int ordinal,
@@ -585,7 +517,8 @@ public class ModeTransitionService {
 
     private String preflightFailure(ProcessingAgentRecord agent,
                                     List<TrainingEnvironmentRecord> environments) {
-        if (agent.getLastSeenAt() == null
+        if (agent == null || !Boolean.TRUE.equals(agent.getEnabled()) || agent.getRemovedAt() != null
+                || agent.getLastSeenAt() == null
                 || agent.getLastSeenAt().isBefore(utcNow().minusSeconds(ONLINE_TIMEOUT_SECONDS))) {
             return "AGENT_OFFLINE";
         }
@@ -602,6 +535,34 @@ public class ModeTransitionService {
             }
         }
         return null;
+    }
+
+    private List<ModeTransitionStepRecord> materializeEntrySteps(ModeTransitionRecord transition,
+                                                                  List<TrainingEnvironmentRecord> environments,
+                                                                  LocalDateTime now) {
+        List<ModeTransitionStepRecord> created = new ArrayList<>();
+        int ordinal = 1;
+        for (TrainingEnvironmentRecord environment : environments) {
+            if (!"RUNNING".equals(environment.getActualState())) {
+                continue;
+            }
+            ModeTrainingSnapshotRecord snapshot = new ModeTrainingSnapshotRecord();
+            snapshot.setTransitionId(transition.getTransitionId());
+            snapshot.setEnvironmentId(environment.getEnvironmentId());
+            snapshot.setCapturedAt(now);
+            snapshotMapper.insert(snapshot);
+            created.add(step(transition, 1, ordinal++, "TRAINING", environment.getEnvironmentId(),
+                    "STOP_TRAINING_ENVIRONMENT"));
+        }
+        Set<String> boundSlots = boundSlotIds(transition.getAgentId());
+        ordinal = 1;
+        for (CompetitionEnvironmentRecord environment : safeCompetition(transition.getAgentId())) {
+            if (boundSlots.contains(environment.getSlotId()) && ready(environment)) {
+                created.add(step(transition, 2, ordinal++, "COMPETITION", environment.getEnvironmentId(),
+                        "START_COMPETITION_ENVIRONMENT"));
+            }
+        }
+        return created;
     }
 
     private Set<String> boundSlotIds(String agentId) {
@@ -697,31 +658,6 @@ public class ModeTransitionService {
         return result == null ? Collections.<ModeTransitionStepRecord>emptyList() : result;
     }
 
-    private int lowestNonTerminalPhase(List<ModeTransitionStepRecord> steps) {
-        int phase = Integer.MAX_VALUE;
-        for (ModeTransitionStepRecord step : steps) {
-            if (!terminal(step.getState()) && step.getPhaseNumber() != null) {
-                phase = Math.min(phase, step.getPhaseNumber());
-            }
-        }
-        if (phase == Integer.MAX_VALUE) {
-            return 0;
-        }
-        for (ModeTransitionStepRecord later : steps) {
-            if (later.getPhaseNumber() != null && later.getPhaseNumber() > phase
-                    && !terminal(later.getState())) {
-                for (ModeTransitionStepRecord previous : steps) {
-                    if (previous.getPhaseNumber() != null
-                            && previous.getPhaseNumber() < later.getPhaseNumber()
-                            && "FAILED".equals(previous.getState())) {
-                        return 0;
-                    }
-                }
-            }
-        }
-        return phase;
-    }
-
     private int currentIncompletePhase(List<ModeTransitionStepRecord> steps) {
         int phase = Integer.MAX_VALUE;
         for (ModeTransitionStepRecord step : steps) {
@@ -730,10 +666,6 @@ public class ModeTransitionService {
             }
         }
         return phase == Integer.MAX_VALUE ? 0 : phase;
-    }
-
-    private boolean terminal(String state) {
-        return "SUCCEEDED".equals(state) || "FAILED".equals(state);
     }
 
     private void degrade(ModeTransitionRecord transition, ProcessingAgentModeRecord mode,
@@ -802,13 +734,6 @@ public class ModeTransitionService {
 
     private boolean nonBlank(String value) {
         return value != null && !value.trim().isEmpty();
-    }
-
-    private String bounded(String value) {
-        if (value == null) {
-            return null;
-        }
-        return value.length() <= 512 ? value : value.substring(0, 512);
     }
 
     private LocalDateTime utcNow() {
