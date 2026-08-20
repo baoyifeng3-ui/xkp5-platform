@@ -1,15 +1,19 @@
 package com.match.environment.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.match.agent.persistence.ProcessingAgentMapper;
 import com.match.agent.persistence.ProcessingAgentRecord;
 import com.match.agent.service.AgentAuditService;
 import com.match.entity.User;
 import com.match.environment.model.CompetitionSlotView;
+import com.match.environment.model.ContainerPortSpec;
 import com.match.environment.model.EnvironmentPortBinding;
 import com.match.environment.persistence.CompetitionEnvironmentMapper;
 import com.match.environment.persistence.CompetitionEnvironmentRecord;
+import com.match.environment.persistence.ContainerTemplateMapper;
+import com.match.environment.persistence.ContainerTemplateRecord;
 import com.match.environment.persistence.EnvironmentPortAllocationMapper;
 import com.match.environment.persistence.EnvironmentPortAllocationRecord;
 import com.match.environment.persistence.ProcessingEnvironmentSlotMapper;
@@ -23,6 +27,8 @@ import com.match.security.RoleGuard;
 import com.match.security.UserRole;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.dao.DeadlockLoserDataAccessException;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.nio.charset.StandardCharsets;
 import java.net.Inet6Address;
@@ -32,8 +38,13 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 @Service
 public class CompetitionSlotBindingService {
@@ -42,6 +53,7 @@ public class CompetitionSlotBindingService {
     private final ProcessingEnvironmentSlotMapper slotMapper;
     private final CompetitionEnvironmentMapper environmentMapper;
     private final ProcessingAgentModeGuard agentModeGuard;
+    private final ContainerTemplateMapper templateMapper;
     private final UserMapper userMapper;
     private final ProcessingAgentMapper agentMapper;
     private final EnvironmentPortAllocationMapper portMapper;
@@ -49,11 +61,13 @@ public class CompetitionSlotBindingService {
     private final ParticipantModeGuard participantModeGuard;
     private final AgentAuditService auditService;
     private final ObjectMapper objectMapper;
+    private final ObjectMapper verificationMapper;
     private final Clock clock;
 
     public CompetitionSlotBindingService(ProcessingEnvironmentSlotMapper slotMapper,
                                          CompetitionEnvironmentMapper environmentMapper,
                                          ProcessingAgentModeGuard agentModeGuard,
+                                         ContainerTemplateMapper templateMapper,
                                          UserMapper userMapper,
                                          ProcessingAgentMapper agentMapper,
                                          EnvironmentPortAllocationMapper portMapper,
@@ -64,6 +78,7 @@ public class CompetitionSlotBindingService {
         this.slotMapper = slotMapper;
         this.environmentMapper = environmentMapper;
         this.agentModeGuard = agentModeGuard;
+        this.templateMapper = templateMapper;
         this.userMapper = userMapper;
         this.agentMapper = agentMapper;
         this.portMapper = portMapper;
@@ -71,6 +86,8 @@ public class CompetitionSlotBindingService {
         this.participantModeGuard = participantModeGuard;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
+        this.verificationMapper = objectMapper.copy()
+                .enable(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY);
         this.clock = clock;
     }
 
@@ -91,9 +108,7 @@ public class CompetitionSlotBindingService {
             throw conflict("COMPETITION_SLOT_ALREADY_BOUND", "Competition slot is already bound");
         }
         LocalDateTime now = now();
-        if (slotMapper.bindIfUnbound(slotId, userId, now) != 1) {
-            throw conflict("COMPETITION_SLOT_BIND_CONFLICT", "Competition slot changed concurrently");
-        }
+        bindCas(slotId, userId, now);
         slot.setUserId(userId);
         auditService.recordSuccess("COMPETITION_SLOT_BOUND", actorUserId, slot.getAgentId(), null);
         return view(slot, environment, "READY");
@@ -123,14 +138,19 @@ public class CompetitionSlotBindingService {
     @Transactional(readOnly = true)
     public List<CompetitionSlotView> list(User actor) {
         requireAdmin(actor);
+        List<ProcessingEnvironmentSlotRecord> records = new ArrayList<>(slotMapper.selectAll());
+        records.sort(Comparator.comparing(ProcessingEnvironmentSlotRecord::getAgentId)
+                .thenComparing(ProcessingEnvironmentSlotRecord::getSlotNumber));
         List<CompetitionSlotView> result = new ArrayList<>();
-        for (ProcessingEnvironmentSlotRecord slot : slotMapper.selectAll()) {
+        for (ProcessingEnvironmentSlotRecord slot : records) {
             CompetitionEnvironmentRecord environment = environmentMapper.selectBySlot(slot.getSlotId());
             String readinessCode = readinessCode(slot, environment);
             CompetitionSlotView view = view(slot, environment, readinessCode);
+            view.setReadiness("READY".equals(readinessCode) ? "READY" : "DEGRADED");
             includePortDetails(view, portMapper.selectBySlot(slot.getSlotId()));
             result.add(view);
         }
+        markIncompleteProvisioning(result);
         return result;
     }
 
@@ -159,31 +179,33 @@ public class CompetitionSlotBindingService {
             return degraded;
         }
         String runningVerification = verificationCode(environment, "RUNNING");
+        PortReadiness portReadiness = portReadiness(environment);
         boolean running = "RUNNING".equals(environment.getActualState())
                 && "RUNNING".equals(environment.getAnnotationContainerState())
                 && "RUNNING".equals(environment.getEditorContainerState())
-                && "READY".equals(runningVerification);
+                && "READY".equals(runningVerification)
+                && "READY".equals(portReadiness.code);
+        String degradedCode = "READY".equals(runningVerification)
+                ? portReadiness.code : runningVerification;
         CompetitionSlotView result = view(slot, environment,
                 running ? "RUNNING" : isStarting(environment)
-                        ? "COMPETITION_ENVIRONMENT_STARTING" : runningVerification);
+                        ? "COMPETITION_ENVIRONMENT_STARTING" : degradedCode);
         if (!running) {
             result.setReadiness(isStarting(environment) ? "STARTING" : "DEGRADED");
             return result;
         }
         ProcessingAgentRecord agent = agentMapper.selectForManagement(slot.getAgentId());
-        List<EnvironmentPortAllocationRecord> allocations = portMapper.selectBySlot(slot.getSlotId());
-        Integer annotationPort = hostPort(allocations, "ANNOTATION", 8080 + slot.getSlotNumber());
-        Integer editorPort = hostPort(allocations, "EDITOR", 9090 + slot.getSlotNumber());
         if (agent == null || !Boolean.TRUE.equals(agent.getEnabled())
                 || !isIpLiteral(agent.getPrimaryIp())
-                || annotationPort == null || editorPort == null) {
+                || portReadiness.annotationEndpoint == null
+                || portReadiness.editorEndpoint == null) {
             result.setReadiness("DEGRADED");
             result.setReadinessCode("COMPETITION_ENDPOINT_UNAVAILABLE");
             return result;
         }
         result.setReadiness("RUNNING");
-        result.setAnnotationUrl(url(agent.getPrimaryIp(), annotationPort));
-        result.setEditorUrl(url(agent.getPrimaryIp(), editorPort));
+        result.setAnnotationUrl(url(agent.getPrimaryIp(), portReadiness.annotationEndpoint));
+        result.setEditorUrl(url(agent.getPrimaryIp(), portReadiness.editorEndpoint));
         return result;
     }
 
@@ -251,7 +273,14 @@ public class CompetitionSlotBindingService {
         if (blank(environment.getAnnotationContainerName())
                 || blank(environment.getEditorContainerName())
                 || blank(environment.getAnnotationConfigFingerprint())
-                || blank(environment.getEditorConfigFingerprint())) {
+                || blank(environment.getEditorConfigFingerprint())
+                || blank(environment.getAnnotationTemplateId())
+                || environment.getAnnotationTemplateVersion() == null
+                || environment.getAnnotationTemplateVersion() < 1
+                || blank(environment.getEditorTemplateId())
+                || environment.getEditorTemplateVersion() == null
+                || environment.getEditorTemplateVersion() < 1
+                || blank(environment.getWorkspaceRelativePath())) {
             return "COMPETITION_PAIR_INCOMPLETE";
         }
         if (!storedIdentityMatches(slot, environment)) {
@@ -259,6 +288,10 @@ public class CompetitionSlotBindingService {
         }
         if (environment.getCurrentOperationId() != null) {
             return "COMPETITION_ENVIRONMENT_OPERATION_ACTIVE";
+        }
+        String portCode = portReadiness(environment).code;
+        if (!"READY".equals(portCode)) {
+            return portCode;
         }
         if (!"STOPPED".equals(environment.getDesiredState())
                 || !"STOPPED".equals(environment.getActualState())
@@ -278,8 +311,8 @@ public class CompetitionSlotBindingService {
         }
         JsonNode pair;
         try {
-            JsonNode root = objectMapper.readTree(environment.getLastComponentResultsJson());
-            if (root == null || !root.isObject()) {
+            JsonNode root = verificationMapper.readTree(environment.getLastComponentResultsJson());
+            if (root == null || !root.isObject() || root.size() != 1 || !root.has("pair")) {
                 return "COMPETITION_PAIR_NOT_VERIFIED";
             }
             pair = root.path("pair");
@@ -288,7 +321,12 @@ public class CompetitionSlotBindingService {
         }
         JsonNode annotation = pair.path("annotation");
         JsonNode editor = pair.path("editor");
-        if (!exactText(annotation, "componentType", "ANNOTATION")
+        if (!pair.isObject() || pair.size() != 2 || !pair.has("annotation") || !pair.has("editor")) {
+            return "COMPETITION_PAIR_NOT_VERIFIED";
+        }
+        if (!annotation.isObject() || !editor.isObject()
+                || annotation.size() != 4 || editor.size() != 4
+                || !exactText(annotation, "componentType", "ANNOTATION")
                 || !exactText(editor, "componentType", "EDITOR")
                 || !exactText(annotation, "containerName", environment.getAnnotationContainerName())
                 || !exactText(editor, "containerName", environment.getEditorContainerName())) {
@@ -385,20 +423,6 @@ public class CompetitionSlotBindingService {
         view.setEditorPorts(Collections.unmodifiableList(editor));
     }
 
-    private Integer hostPort(List<EnvironmentPortAllocationRecord> allocations, String type,
-                             int expectedHostPort) {
-        if (allocations == null) {
-            return null;
-        }
-        for (EnvironmentPortAllocationRecord allocation : allocations) {
-            if (type.equals(allocation.getComponentType())
-                    && Objects.equals(allocation.getHostPort(), expectedHostPort)) {
-                return allocation.getHostPort();
-            }
-        }
-        return null;
-    }
-
     private boolean isStarting(CompetitionEnvironmentRecord environment) {
         return "CREATING".equals(environment.getActualState())
                 || "RESTORING".equals(environment.getActualState())
@@ -431,9 +455,15 @@ public class CompetitionSlotBindingService {
             return false;
         }
         for (String part : parts) {
+            for (int index = 0; index < part.length(); index++) {
+                char digit = part.charAt(index);
+                if (digit < '0' || digit > '9') {
+                    return false;
+                }
+            }
             try {
                 if (part.isEmpty() || part.length() > 3
-                        || Integer.parseInt(part) > 255) {
+                        || Integer.parseInt(part) < 0 || Integer.parseInt(part) > 255) {
                     return false;
                 }
             } catch (NumberFormatException exception) {
@@ -453,5 +483,165 @@ public class CompetitionSlotBindingService {
 
     private ModeConflictException conflict(String code, String message) {
         return new ModeConflictException(code, message);
+    }
+
+    private void bindCas(String slotId, int userId, LocalDateTime now) {
+        try {
+            if (slotMapper.bindIfUnbound(slotId, userId, now) != 1) {
+                throw conflict("COMPETITION_SLOT_BIND_CONFLICT",
+                        "Competition slot changed concurrently");
+            }
+        } catch (DuplicateKeyException | DeadlockLoserDataAccessException exception) {
+            throw conflict("COMPETITION_SLOT_BIND_CONFLICT",
+                    "Competition slot changed concurrently");
+        }
+    }
+
+    private PortReadiness portReadiness(CompetitionEnvironmentRecord environment) {
+        TemplatePorts annotation = templatePorts(environment.getAnnotationTemplateId(),
+                environment.getAnnotationTemplateVersion(), "ANNOTATION",
+                environment.getAnnotationConfigFingerprint());
+        TemplatePorts editor = templatePorts(environment.getEditorTemplateId(),
+                environment.getEditorTemplateVersion(), "EDITOR",
+                environment.getEditorConfigFingerprint());
+        if (annotation == null || editor == null) {
+            return PortReadiness.failure("COMPETITION_PAIR_TEMPLATE_MISMATCH");
+        }
+        List<EnvironmentPortAllocationRecord> allocations = portMapper.selectBySlot(
+                environment.getSlotId());
+        if (allocations == null) {
+            return PortReadiness.failure("COMPETITION_PAIR_PORTS_INCOMPLETE");
+        }
+        Map<String, EnvironmentPortAllocationRecord> byKey = new HashMap<>();
+        for (EnvironmentPortAllocationRecord allocation : allocations) {
+            if (allocation == null || !Objects.equals(environment.getSlotId(), allocation.getSlotId())
+                    || !Objects.equals(environment.getAgentId(), allocation.getAgentId())
+                    || allocation.getContainerPort() == null || allocation.getContainerPort() < 1
+                    || allocation.getContainerPort() > 65535 || allocation.getHostPort() == null
+                    || allocation.getHostPort() < 1 || allocation.getHostPort() > 65535
+                    || (!"tcp".equals(allocation.getProtocol())
+                    && !"udp".equals(allocation.getProtocol()))
+                    || (!"ANNOTATION".equals(allocation.getComponentType())
+                    && !"EDITOR".equals(allocation.getComponentType()))) {
+                return PortReadiness.failure("COMPETITION_PAIR_PORTS_INVALID");
+            }
+            String key = portKey(allocation.getComponentType(), allocation.getContainerPort(),
+                    allocation.getProtocol());
+            if (byKey.put(key, allocation) != null) {
+                return PortReadiness.failure("COMPETITION_PAIR_PORTS_INVALID");
+            }
+        }
+        Integer annotationEndpoint = endpoint(annotation, byKey);
+        Integer editorEndpoint = endpoint(editor, byKey);
+        if (annotationEndpoint == null || editorEndpoint == null
+                || !allDeclaredPresent(annotation, byKey) || !allDeclaredPresent(editor, byKey)) {
+            return PortReadiness.failure("COMPETITION_PAIR_PORTS_INCOMPLETE");
+        }
+        return PortReadiness.ready(annotationEndpoint, editorEndpoint);
+    }
+
+    private TemplatePorts templatePorts(String id, Integer version, String type, String fingerprint) {
+        if (blank(id) || version == null || version < 1 || blank(fingerprint)) {
+            return null;
+        }
+        ContainerTemplateRecord template = templateMapper.selectVersion(id, version);
+        if (template == null || !Objects.equals(id, template.getTemplateId())
+                || !Objects.equals(version, template.getTemplateVersion())
+                || !Objects.equals(type, template.getComponentType())
+                || !Objects.equals(fingerprint, template.getConfigFingerprint())) {
+            return null;
+        }
+        try {
+            List<ContainerPortSpec> ports = objectMapper.readValue(template.getPortsJson(),
+                    objectMapper.getTypeFactory().constructCollectionType(
+                            List.class, ContainerPortSpec.class));
+            if (ports == null || ports.isEmpty()) {
+                return null;
+            }
+            Set<String> unique = new HashSet<>();
+            for (ContainerPortSpec port : ports) {
+                if (port == null || port.getContainerPort() == null
+                        || port.getContainerPort() < 1 || port.getContainerPort() > 65535
+                        || (!"tcp".equals(port.getProtocol()) && !"udp".equals(port.getProtocol()))
+                        || !unique.add(portKey(type, port.getContainerPort(), port.getProtocol()))) {
+                    return null;
+                }
+            }
+            return new TemplatePorts(type, ports);
+        } catch (Exception exception) {
+            return null;
+        }
+    }
+
+    private Integer endpoint(TemplatePorts template,
+                             Map<String, EnvironmentPortAllocationRecord> allocations) {
+        ContainerPortSpec first = template.ports.get(0);
+        EnvironmentPortAllocationRecord allocation = allocations.get(portKey(template.type,
+                first.getContainerPort(), first.getProtocol()));
+        return allocation == null ? null : allocation.getHostPort();
+    }
+
+    private boolean allDeclaredPresent(TemplatePorts template,
+                                       Map<String, EnvironmentPortAllocationRecord> allocations) {
+        for (ContainerPortSpec port : template.ports) {
+            if (!allocations.containsKey(portKey(template.type, port.getContainerPort(),
+                    port.getProtocol()))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private String portKey(String type, int containerPort, String protocol) {
+        return type + ":" + containerPort + "/" + protocol;
+    }
+
+    private void markIncompleteProvisioning(List<CompetitionSlotView> views) {
+        Map<String, Set<Integer>> numbersByAgent = new HashMap<>();
+        Map<String, Integer> countByAgent = new HashMap<>();
+        for (CompetitionSlotView view : views) {
+            numbersByAgent.computeIfAbsent(view.getAgentId(), ignored -> new HashSet<>())
+                    .add(view.getSlotNumber());
+            countByAgent.put(view.getAgentId(), countByAgent.getOrDefault(view.getAgentId(), 0) + 1);
+        }
+        Set<Integer> expected = new HashSet<>();
+        Collections.addAll(expected, 1, 2, 3, 4);
+        for (CompetitionSlotView view : views) {
+            if (countByAgent.get(view.getAgentId()) != 4
+                    || !expected.equals(numbersByAgent.get(view.getAgentId()))) {
+                view.setReadiness("DEGRADED");
+                view.setReadinessCode("COMPETITION_SLOT_PROVISIONING_INCOMPLETE");
+            }
+        }
+    }
+
+    private static final class TemplatePorts {
+        private final String type;
+        private final List<ContainerPortSpec> ports;
+
+        private TemplatePorts(String type, List<ContainerPortSpec> ports) {
+            this.type = type;
+            this.ports = ports;
+        }
+    }
+
+    private static final class PortReadiness {
+        private final String code;
+        private final Integer annotationEndpoint;
+        private final Integer editorEndpoint;
+
+        private PortReadiness(String code, Integer annotationEndpoint, Integer editorEndpoint) {
+            this.code = code;
+            this.annotationEndpoint = annotationEndpoint;
+            this.editorEndpoint = editorEndpoint;
+        }
+
+        private static PortReadiness ready(int annotationEndpoint, int editorEndpoint) {
+            return new PortReadiness("READY", annotationEndpoint, editorEndpoint);
+        }
+
+        private static PortReadiness failure(String code) {
+            return new PortReadiness(code, null, null);
+        }
     }
 }

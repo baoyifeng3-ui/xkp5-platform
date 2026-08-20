@@ -8,6 +8,8 @@ import com.match.entity.User;
 import com.match.environment.model.CompetitionSlotView;
 import com.match.environment.persistence.CompetitionEnvironmentMapper;
 import com.match.environment.persistence.CompetitionEnvironmentRecord;
+import com.match.environment.persistence.ContainerTemplateMapper;
+import com.match.environment.persistence.ContainerTemplateRecord;
 import com.match.environment.persistence.EnvironmentPortAllocationMapper;
 import com.match.environment.persistence.EnvironmentPortAllocationRecord;
 import com.match.environment.persistence.ProcessingEnvironmentSlotMapper;
@@ -24,6 +26,9 @@ import com.match.security.UserRole;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.InOrder;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.DeadlockLoserDataAccessException;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -31,6 +36,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -41,6 +47,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -55,6 +62,7 @@ public class CompetitionSlotBindingServiceTest {
     private ProcessingEnvironmentSlotMapper slots;
     private CompetitionEnvironmentMapper environments;
     private ProcessingAgentModeMapper agentModes;
+    private ContainerTemplateMapper templates;
     private UserMapper users;
     private ProcessingAgentMapper agents;
     private EnvironmentPortAllocationMapper ports;
@@ -68,6 +76,7 @@ public class CompetitionSlotBindingServiceTest {
         slots = mock(ProcessingEnvironmentSlotMapper.class);
         environments = mock(CompetitionEnvironmentMapper.class);
         agentModes = mock(ProcessingAgentModeMapper.class);
+        templates = mock(ContainerTemplateMapper.class);
         users = mock(UserMapper.class);
         agents = mock(ProcessingAgentMapper.class);
         ports = mock(EnvironmentPortAllocationMapper.class);
@@ -75,7 +84,7 @@ public class CompetitionSlotBindingServiceTest {
         modeGuard = mock(ParticipantModeGuard.class);
         audit = mock(AgentAuditService.class);
         service = new CompetitionSlotBindingService(slots, environments,
-                new ProcessingAgentModeGuard(agentModes), users,
+                new ProcessingAgentModeGuard(agentModes), templates, users,
                 agents, ports, roleGuard, modeGuard, audit, new ObjectMapper(),
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
@@ -156,6 +165,88 @@ public class CompetitionSlotBindingServiceTest {
     }
 
     @Test
+    public void refusesUnknownOrDuplicateVerifiedPairMembers() {
+        CompetitionEnvironmentRecord unknown = readyEnvironment();
+        unknown.setLastComponentResultsJson("{\"pair\":{\"annotation\":"
+                + componentJson("ANNOTATION", unknown.getAnnotationContainerName(), ANNOTATION_FP, "STOPPED")
+                + ",\"editor\":" + componentJson("EDITOR", unknown.getEditorContainerName(), EDITOR_FP, "STOPPED")
+                + ",\"sidecar\":{\"state\":\"STOPPED\"}}}");
+        stubReadyInfrastructure(unknown, 21);
+        assertCode("COMPETITION_PAIR_NOT_VERIFIED", () -> service.bind(SLOT_ID, 21, admin()));
+
+        CompetitionEnvironmentRecord nonObject = readyEnvironment();
+        nonObject.setLastComponentResultsJson("{\"pair\":[]}");
+        stubReadyInfrastructure(nonObject, 21);
+        assertCode("COMPETITION_PAIR_NOT_VERIFIED", () -> service.bind(SLOT_ID, 21, admin()));
+
+        CompetitionEnvironmentRecord duplicate = readyEnvironment();
+        String annotation = componentJson("ANNOTATION", duplicate.getAnnotationContainerName(),
+                ANNOTATION_FP, "STOPPED");
+        String editor = componentJson("EDITOR", duplicate.getEditorContainerName(),
+                EDITOR_FP, "STOPPED");
+        duplicate.setLastComponentResultsJson("{\"pair\":{\"annotation\":" + annotation
+                + ",\"annotation\":" + annotation + ",\"editor\":" + editor + "}}");
+        stubReadyInfrastructure(duplicate, 21);
+        assertCode("COMPETITION_PAIR_NOT_VERIFIED", () -> service.bind(SLOT_ID, 21, admin()));
+    }
+
+    @Test
+    public void refusesIncompleteCreationMetadataAndMissingPinnedPorts() {
+        CompetitionEnvironmentRecord missingMetadata = readyEnvironment();
+        missingMetadata.setAnnotationTemplateId(null);
+        stubReadyInfrastructure(missingMetadata, 21);
+        assertCode("COMPETITION_PAIR_INCOMPLETE",
+                () -> service.bind(SLOT_ID, 21, admin()));
+
+        CompetitionEnvironmentRecord missingPort = readyEnvironment();
+        stubReadyInfrastructure(missingPort, 21);
+        when(ports.selectBySlot(SLOT_ID)).thenReturn(Collections.singletonList(
+                allocation(SLOT_ID, "ANNOTATION", 8080, 8081)));
+        assertCode("COMPETITION_PAIR_PORTS_INCOMPLETE",
+                () -> service.bind(SLOT_ID, 21, admin()));
+    }
+
+    @Test
+    public void refusesDuplicateOrInvalidPinnedPortAllocations() {
+        CompetitionEnvironmentRecord duplicate = readyEnvironment();
+        stubReadyInfrastructure(duplicate, 21);
+        when(ports.selectBySlot(SLOT_ID)).thenReturn(Arrays.asList(
+                allocation(SLOT_ID, "ANNOTATION", 8080, 8081),
+                allocation(SLOT_ID, "ANNOTATION", 8080, 8082),
+                allocation(SLOT_ID, "EDITOR", 9090, 9091)));
+        assertCode("COMPETITION_PAIR_PORTS_INVALID", () -> service.bind(SLOT_ID, 21, admin()));
+
+        CompetitionEnvironmentRecord invalid = readyEnvironment();
+        stubReadyInfrastructure(invalid, 21);
+        EnvironmentPortAllocationRecord bad = allocation(SLOT_ID, "ANNOTATION", 0, 8081);
+        when(ports.selectBySlot(SLOT_ID)).thenReturn(Arrays.asList(bad,
+                allocation(SLOT_ID, "EDITOR", 9090, 9091)));
+        assertCode("COMPETITION_PAIR_PORTS_INVALID", () -> service.bind(SLOT_ID, 21, admin()));
+    }
+
+    @Test
+    public void mapsOnlyUniqueConstraintAndDeadlockRacesToStableBindConflict() {
+        stubReadyInfrastructure(readyEnvironment(), 21);
+        doThrow(new DuplicateKeyException("unique agent user"))
+                .when(slots).bindIfUnbound(SLOT_ID, 21, utcNow());
+        assertCode("COMPETITION_SLOT_BIND_CONFLICT", () -> service.bind(SLOT_ID, 21, admin()));
+
+        doThrow(new DeadlockLoserDataAccessException("deadlock", null))
+                .when(slots).bindIfUnbound(SLOT_ID, 21, utcNow());
+        assertCode("COMPETITION_SLOT_BIND_CONFLICT", () -> service.bind(SLOT_ID, 21, admin()));
+
+        DataAccessResourceFailureException databaseDown =
+                new DataAccessResourceFailureException("database down");
+        doThrow(databaseDown).when(slots).bindIfUnbound(SLOT_ID, 21, utcNow());
+        try {
+            service.bind(SLOT_ID, 21, admin());
+            fail("non-concurrency database errors must propagate");
+        } catch (DataAccessResourceFailureException expected) {
+            assertEquals(databaseDown, expected);
+        }
+    }
+
+    @Test
     public void refusesDuplicateUserOnSameAgent() {
         stubReadyInfrastructure(readyEnvironment(), 21);
         when(slots.selectByAgentAndUserForUpdate(AGENT_ID, 21)).thenReturn(slot(21));
@@ -169,7 +260,10 @@ public class CompetitionSlotBindingServiceTest {
         stubBoundary(admin());
         when(slots.selectForUpdate(SLOT_ID)).thenReturn(occupied);
         when(agentModes.selectForUpdate(AGENT_ID)).thenReturn(normalMode());
-        when(environments.selectBySlotForUpdate(SLOT_ID)).thenReturn(readyEnvironment());
+        CompetitionEnvironmentRecord environment = readyEnvironment();
+        when(environments.selectBySlotForUpdate(SLOT_ID)).thenReturn(environment);
+        stubTemplates(environment);
+        when(ports.selectBySlot(SLOT_ID)).thenReturn(allocations(SLOT_ID));
         User target = participant(21, true);
         when(users.selectById(21)).thenReturn(target);
         when(roleGuard.roleOf(target)).thenReturn(UserRole.USER);
@@ -244,6 +338,8 @@ public class CompetitionSlotBindingServiceTest {
         when(slots.selectForUpdate(SLOT_ID)).thenReturn(slot(21));
         when(agentModes.selectForUpdate(AGENT_ID)).thenReturn(normalMode());
         when(environments.selectBySlotForUpdate(SLOT_ID)).thenReturn(environment);
+        stubTemplates(environment);
+        when(ports.selectBySlot(SLOT_ID)).thenReturn(allocations(SLOT_ID));
         when(slots.unbindIfBoundTo(SLOT_ID, 21, utcNow())).thenReturn(1);
 
         CompetitionSlotView result = service.unbind(SLOT_ID, 21, actor);
@@ -259,6 +355,8 @@ public class CompetitionSlotBindingServiceTest {
         when(slots.selectForUpdate(SLOT_ID)).thenReturn(slot(21));
         when(agentModes.selectForUpdate(AGENT_ID)).thenReturn(normalMode());
         when(environments.selectBySlotForUpdate(SLOT_ID)).thenReturn(environment);
+        stubTemplates(environment);
+        when(ports.selectBySlot(SLOT_ID)).thenReturn(allocations(SLOT_ID));
         when(slots.unbindIfBoundTo(SLOT_ID, 21, utcNow())).thenReturn(0);
 
         assertCode("COMPETITION_SLOT_UNBIND_CONFLICT", () -> service.unbind(SLOT_ID, 21, admin()));
@@ -287,8 +385,11 @@ public class CompetitionSlotBindingServiceTest {
         when(environments.selectBySlot(SLOT_ID)).thenReturn(environment);
         when(agents.selectForManagement(AGENT_ID)).thenReturn(agent);
         when(ports.selectBySlot(SLOT_ID)).thenReturn(Arrays.asList(
-                port("ANNOTATION", 18033), port("EDITOR", 18100),
-                port("ANNOTATION", 8081), port("EDITOR", 9091)));
+                allocation(SLOT_ID, "ANNOTATION", 18000, 18033),
+                allocation(SLOT_ID, "EDITOR", 18001, 18100),
+                allocation(SLOT_ID, "ANNOTATION", 8080, 8081),
+                allocation(SLOT_ID, "EDITOR", 9090, 9091)));
+        stubTemplates(environment);
         when(roleGuard.roleOf(participant)).thenReturn(UserRole.USER);
 
         environment.setActualState("STARTING");
@@ -311,11 +412,29 @@ public class CompetitionSlotBindingServiceTest {
         environment.setLastComponentResultsJson(result(ANNOTATION_FP, EDITOR_FP,
                 "RUNNING", "RUNNING", environment.getAnnotationContainerName(),
                 environment.getEditorContainerName()));
+        when(ports.selectBySlot(SLOT_ID)).thenReturn(Collections.singletonList(
+                allocation(SLOT_ID, "EDITOR", 9090, 9091)));
+        CompetitionSlotView missingPinnedPort = service.currentForUser(participant);
+        assertEquals("DEGRADED", missingPinnedPort.getReadiness());
+        assertEquals("COMPETITION_PAIR_PORTS_INCOMPLETE", missingPinnedPort.getReadinessCode());
+        assertNull(missingPinnedPort.getAnnotationUrl());
+        assertNull(missingPinnedPort.getEditorUrl());
+
+        when(ports.selectBySlot(SLOT_ID)).thenReturn(Arrays.asList(
+                allocation(SLOT_ID, "ANNOTATION", 18000, 18033),
+                allocation(SLOT_ID, "EDITOR", 18001, 18100),
+                allocation(SLOT_ID, "ANNOTATION", 8080, 8081),
+                allocation(SLOT_ID, "EDITOR", 9090, 9091)));
         agent.setPrimaryIp("evil.example/path");
         CompetitionSlotView unsafeEndpoint = service.currentForUser(participant);
         assertEquals("DEGRADED", unsafeEndpoint.getReadiness());
         assertNull(unsafeEndpoint.getAnnotationUrl());
         assertNull(unsafeEndpoint.getEditorUrl());
+
+        agent.setPrimaryIp("+10.0.0.8");
+        assertEquals("DEGRADED", service.currentForUser(participant).getReadiness());
+        agent.setPrimaryIp("-1.0.0.8");
+        assertEquals("DEGRADED", service.currentForUser(participant).getReadiness());
 
         agent.setPrimaryIp("10.0.0.8");
         assertEquals("RUNNING", service.currentForUser(participant).getReadiness());
@@ -338,30 +457,54 @@ public class CompetitionSlotBindingServiceTest {
     }
 
     @Test
-    public void administrativeListIncludesEmptySlotAndContainerDetailsWithStableCode() {
+    public void administrativeListReturnsFourSortedSlotsWithCompleteReadinessDetails() {
         User actor = admin();
         when(roleGuard.roleOf(actor)).thenReturn(UserRole.ADMIN);
-        ProcessingEnvironmentSlotRecord empty = slot(null);
-        when(slots.selectAll()).thenReturn(Collections.singletonList(empty));
-        when(environments.selectBySlot(SLOT_ID)).thenReturn(null);
+        List<ProcessingEnvironmentSlotRecord> records = Arrays.asList(
+                slotRecord(4), slotRecord(2), slotRecord(1), slotRecord(3));
+        when(slots.selectAll()).thenReturn(records);
+        for (ProcessingEnvironmentSlotRecord record : records) {
+            CompetitionEnvironmentRecord environment = readyEnvironment(record);
+            when(environments.selectBySlot(record.getSlotId())).thenReturn(environment);
+            when(ports.selectBySlot(record.getSlotId())).thenReturn(allocations(record.getSlotId()));
+            stubTemplates(environment);
+        }
 
-        CompetitionSlotView missing = service.list(actor).get(0);
-        assertEquals(SLOT_ID, missing.getSlotId());
-        assertEquals("COMPETITION_ENVIRONMENT_NOT_CREATED", missing.getReadinessCode());
+        List<CompetitionSlotView> result = service.list(actor);
 
-        CompetitionEnvironmentRecord environment = readyEnvironment();
-        when(environments.selectBySlot(SLOT_ID)).thenReturn(environment);
-        CompetitionSlotView ready = service.list(actor).get(0);
-        assertEquals(environment.getAnnotationContainerName(), ready.getAnnotationContainerName());
-        assertEquals(environment.getEditorContainerName(), ready.getEditorContainerName());
-        assertEquals(ANNOTATION_FP, ready.getAnnotationConfigFingerprint());
-        assertEquals("READY", ready.getReadinessCode());
+        assertEquals(4, result.size());
+        for (int index = 0; index < 4; index++) {
+            CompetitionSlotView view = result.get(index);
+            assertEquals(Integer.valueOf(index + 1), view.getSlotNumber());
+            assertEquals("READY", view.getReadiness());
+            assertEquals("READY", view.getReadinessCode());
+            assertEquals(ANNOTATION_FP, view.getAnnotationConfigFingerprint());
+            assertEquals(1, view.getAnnotationPorts().size());
+            assertEquals(1, view.getEditorPorts().size());
+        }
+    }
+
+    @Test
+    public void administrativeListMarksExistingRowsWhenFourSlotProvisioningIsIncomplete() {
+        User actor = admin();
+        when(roleGuard.roleOf(actor)).thenReturn(UserRole.ADMIN);
+        when(slots.selectAll()).thenReturn(Arrays.asList(slotRecord(1), slotRecord(2), slotRecord(4)));
+
+        List<CompetitionSlotView> result = service.list(actor);
+
+        assertEquals(3, result.size());
+        for (CompetitionSlotView view : result) {
+            assertEquals("DEGRADED", view.getReadiness());
+            assertEquals("COMPETITION_SLOT_PROVISIONING_INCOMPLETE", view.getReadinessCode());
+        }
     }
 
     private void stubReadyInfrastructure(CompetitionEnvironmentRecord environment, int userId) {
         stubBoundaryAndSlot(admin(), userId);
         when(agentModes.selectForUpdate(AGENT_ID)).thenReturn(normalMode());
         when(environments.selectBySlotForUpdate(SLOT_ID)).thenReturn(environment);
+        stubTemplates(environment);
+        when(ports.selectBySlot(SLOT_ID)).thenReturn(allocations(SLOT_ID));
         when(users.selectById(userId)).thenReturn(participant(userId, true));
         when(roleGuard.roleOf(users.selectById(userId))).thenReturn(UserRole.USER);
         when(slots.selectByAgentAndUserForUpdate(AGENT_ID, userId)).thenReturn(null);
@@ -441,6 +584,21 @@ public class CompetitionSlotBindingServiceTest {
         return environment;
     }
 
+    private CompetitionEnvironmentRecord readyEnvironment(ProcessingEnvironmentSlotRecord slot) {
+        CompetitionEnvironmentRecord environment = readyEnvironment();
+        environment.setEnvironmentId("33333333-3333-4333-8333-33333333333" + slot.getSlotNumber());
+        environment.setSlotId(slot.getSlotId());
+        environment.setSlotNumber(slot.getSlotNumber());
+        String prefix = "xkp-comp-11111111-s" + slot.getSlotNumber();
+        environment.setWorkspaceRelativePath("competition/slot-" + slot.getSlotNumber());
+        environment.setAnnotationContainerName(prefix + "-annotation");
+        environment.setEditorContainerName(prefix + "-editor");
+        environment.setLastComponentResultsJson(result(ANNOTATION_FP, EDITOR_FP,
+                "STOPPED", "STOPPED", environment.getAnnotationContainerName(),
+                environment.getEditorContainerName()));
+        return environment;
+    }
+
     private String result(String annotationFingerprint, String editorFingerprint,
                           String annotationState, String editorState,
                           String annotationName, String editorName) {
@@ -452,6 +610,12 @@ public class CompetitionSlotBindingServiceTest {
                 + "\",\"state\":\"" + editorState + "\"}}}";
     }
 
+    private String componentJson(String type, String name, String fingerprint, String state) {
+        return "{\"componentType\":\"" + type + "\",\"containerName\":\"" + name
+                + "\",\"configFingerprint\":\"" + fingerprint + "\",\"state\":\""
+                + state + "\"}";
+    }
+
     private ProcessingAgentRecord agent() {
         ProcessingAgentRecord agent = new ProcessingAgentRecord();
         agent.setAgentId(AGENT_ID);
@@ -460,11 +624,56 @@ public class CompetitionSlotBindingServiceTest {
         return agent;
     }
 
-    private EnvironmentPortAllocationRecord port(String type, int hostPort) {
+    private EnvironmentPortAllocationRecord allocation(String slotId, String type,
+                                                        int containerPort, int hostPort) {
         EnvironmentPortAllocationRecord port = new EnvironmentPortAllocationRecord();
+        port.setSlotId(slotId);
+        port.setAgentId(AGENT_ID);
         port.setComponentType(type);
+        port.setContainerPort(containerPort);
         port.setHostPort(hostPort);
+        port.setProtocol("tcp");
         return port;
+    }
+
+    private List<EnvironmentPortAllocationRecord> allocations(String slotId) {
+        return Arrays.asList(allocation(slotId, "ANNOTATION", 8080, 8080 + slotNumber(slotId)),
+                allocation(slotId, "EDITOR", 9090, 9090 + slotNumber(slotId)));
+    }
+
+    private int slotNumber(String slotId) {
+        return SLOT_ID.equals(slotId) ? 1 : Integer.parseInt(slotId.substring(slotId.length() - 1));
+    }
+
+    private ProcessingEnvironmentSlotRecord slotRecord(int number) {
+        ProcessingEnvironmentSlotRecord slot = new ProcessingEnvironmentSlotRecord();
+        slot.setSlotId("22222222-2222-4222-8222-22222222222" + number);
+        slot.setAgentId(AGENT_ID);
+        slot.setSlotNumber(number);
+        return slot;
+    }
+
+    private void stubTemplates(CompetitionEnvironmentRecord environment) {
+        when(templates.selectVersion(environment.getAnnotationTemplateId(),
+                environment.getAnnotationTemplateVersion())).thenReturn(template(
+                environment.getAnnotationTemplateId(), environment.getAnnotationTemplateVersion(),
+                "ANNOTATION", ANNOTATION_FP, 8080));
+        when(templates.selectVersion(environment.getEditorTemplateId(),
+                environment.getEditorTemplateVersion())).thenReturn(template(
+                environment.getEditorTemplateId(), environment.getEditorTemplateVersion(),
+                "EDITOR", EDITOR_FP, 9090));
+    }
+
+    private ContainerTemplateRecord template(String id, int version, String type,
+                                             String fingerprint, int containerPort) {
+        ContainerTemplateRecord template = new ContainerTemplateRecord();
+        template.setTemplateId(id);
+        template.setTemplateVersion(version);
+        template.setComponentType(type);
+        template.setConfigFingerprint(fingerprint);
+        template.setPortsJson("[{\"containerPort\":" + containerPort
+                + ",\"protocol\":\"tcp\"}]");
+        return template;
     }
 
     private LocalDateTime utcNow() {
