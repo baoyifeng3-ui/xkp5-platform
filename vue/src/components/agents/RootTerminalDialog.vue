@@ -12,6 +12,7 @@
 <script>
 import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
+import 'xterm/css/xterm.css'
 import { connectRootTerminal, sendResize, closeRootTerminal, getTerminalSession } from '@/services/rootTerminalSession'
 
 const LABELS = { WAITING_AGENT: '等待 Agent 连接', WAITING_BROWSER: '建立终端连接', ACTIVE: '终端已连接', CLOSING: '正在关闭', CLOSED: '终端已关闭', FAILED: '终端不可用' }
@@ -19,7 +20,7 @@ const LABELS = { WAITING_AGENT: '等待 Agent 连接', WAITING_BROWSER: '建立�
 export default {
   name: 'RootTerminalDialog',
   props: { visible: { type: Boolean, default: false }, session: { type: Object, default: null }, agentName: { type: String, default: '处理服务器' } },
-  data: () => ({ state: 'WAITING_AGENT', errorMessage: '', countdown: '', terminal: null, fit: null, socket: null, timer: null, closing: false }),
+  data: () => ({ state: 'WAITING_AGENT', errorMessage: '', countdown: '', terminal: null, fit: null, socket: null, timer: null, closing: false, connectAbort: null }),
   computed: { stateLabel () { return LABELS[this.state] || this.state } },
   watch: { visible (value) { if (value) this.start(); else this.teardown(false) } },
   mounted () { if (this.visible) this.start() },
@@ -37,23 +38,32 @@ export default {
       this.terminal.onData(data => { if (this.socket && this.socket.readyState === WebSocket.OPEN) this.socket.send(new TextEncoder().encode(data)) })
       window.addEventListener('resize', this.fitTerminal)
       this.startCountdown()
+      this.connectAbort = new AbortController()
       try {
-        const connection = await connectRootTerminal(this.session.sessionId, { isCancelled: () => this.closing, onState: status => { this.state = status.state }, onOpen: () => { this.state = 'ACTIVE'; this.fitTerminal() }, onMessage: data => this.terminal && this.terminal.write(typeof data === 'string' ? data : new Uint8Array(data)), onError: () => this.fail('终端连接失败'), onClose: event => { if (!this.closing && event.code !== 1000) this.fail('终端连接已断开'); else if (!this.closing) this.state = 'CLOSED' } })
+        const connection = await connectRootTerminal(this.session.sessionId, { onState: status => { this.state = status.state }, onOpen: () => { this.state = 'ACTIVE'; this.fitTerminal() }, onMessage: data => this.terminal && this.terminal.write(typeof data === 'string' ? data : new Uint8Array(data)), onError: () => this.fail('终端连接失败'), onClose: event => { if (!this.closing && event.code !== 1000) this.fail('终端连接已断开'); else if (!this.closing) this.state = 'CLOSED' } }, { signal: this.connectAbort.signal, deadline: this.session.agentConnectionDeadline })
         if (this.closing) { connection.socket.close(); return }
         this.socket = connection.socket
       } catch (error) { if (!this.closing) this.fail(error && error.message === 'TERMINAL_NOT_READY' ? '终端会话已结束' : '终端票据获取失败') }
     },
     fitTerminal () { if (!this.fit || !this.socket) return; this.fit.fit(); sendResize(this.socket, this.terminal.cols, this.terminal.rows) },
     startCountdown () {
-      const expiry = this.session && (this.session.absoluteExpiresAt || this.session.agentConnectionDeadline)
-      if (!expiry) return
-      const tick = () => { const remaining = Math.max(0, new Date(expiry).getTime() - Date.now()); this.countdown = `${Math.ceil(remaining / 1000)} 秒`; if (remaining <= 0) { this.fail('终端会话已过期'); return } this.timer = setTimeout(tick, 1000) }
+      if (!this.session) return
+      const tick = () => {
+        const waiting = this.state === 'WAITING_AGENT' || this.state === 'WAITING_BROWSER'
+        const expiry = waiting ? this.session.agentConnectionDeadline : this.session.absoluteExpiresAt
+        if (!expiry) { this.countdown = ''; return }
+        const remaining = Math.max(0, new Date(expiry).getTime() - Date.now())
+        this.countdown = `${waiting ? '连接' : '最长会话'} ${Math.ceil(remaining / 1000)} 秒`
+        if (remaining <= 0) { if (this.connectAbort) this.connectAbort.abort(); this.fail(waiting ? '终端连接已超时' : '终端会话已过期'); return }
+        this.timer = setTimeout(tick, 1000)
+      }
       tick()
     },
     fail (message) { this.state = 'FAILED'; this.errorMessage = message },
     async close () { if (this.closing) return; this.closing = true; this.state = 'CLOSING'; await this.teardown(false); this.$emit('update:visible', false); this.$emit('closed') },
     async teardown (destroying) {
       if (this.timer) { clearTimeout(this.timer); this.timer = null }
+      if (this.connectAbort) { this.connectAbort.abort(); this.connectAbort = null }
       window.removeEventListener('resize', this.fitTerminal)
       const socket = this.socket; this.socket = null
       if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000, 'OPERATOR_CLOSED')
