@@ -4,6 +4,7 @@ import com.match.agent.model.AgentCommandView;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 public class CompetitionEnvironmentView {
@@ -14,12 +15,19 @@ public class CompetitionEnvironmentView {
     private String slotId;
     private Integer slotNumber;
     private Integer userId;
+    private String readiness;
+    private String readinessCode;
+    private String failureSummary;
     private String annotationTemplateId;
     private Integer annotationTemplateVersion;
+    private String annotationImageReference;
     private String annotationConfigFingerprint;
+    private List<EnvironmentPortBinding> annotationPorts;
     private String editorTemplateId;
     private Integer editorTemplateVersion;
+    private String editorImageReference;
     private String editorConfigFingerprint;
+    private List<EnvironmentPortBinding> editorPorts;
     private String workspaceRelativePath;
     private String desiredState;
     private String actualState;

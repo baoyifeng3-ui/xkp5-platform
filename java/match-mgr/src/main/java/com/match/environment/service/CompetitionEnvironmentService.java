@@ -9,6 +9,7 @@ import com.match.entity.User;
 import com.match.environment.model.CompetitionEnvironmentView;
 import com.match.environment.model.ContainerPortSpec;
 import com.match.environment.model.CreateCompetitionEnvironmentRequest;
+import com.match.environment.model.EnvironmentPortBinding;
 import com.match.environment.persistence.CompetitionEnvironmentMapper;
 import com.match.environment.persistence.CompetitionEnvironmentRecord;
 import com.match.environment.persistence.ContainerTemplateMapper;
@@ -30,6 +31,8 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -428,12 +431,21 @@ public class CompetitionEnvironmentService {
         view.setSlotId(environment.getSlotId());
         view.setSlotNumber(environment.getSlotNumber());
         view.setUserId(userId);
+        EnvironmentOperationRecord latestOperation = latestOperation(environment.getEnvironmentId());
+        populateReadiness(view, environment, latestOperation);
         view.setAnnotationTemplateId(environment.getAnnotationTemplateId());
         view.setAnnotationTemplateVersion(environment.getAnnotationTemplateVersion());
+        view.setAnnotationImageReference(imageReference(environment.getAnnotationTemplateId(),
+                environment.getAnnotationTemplateVersion(), "ANNOTATION"));
         view.setAnnotationConfigFingerprint(environment.getAnnotationConfigFingerprint());
         view.setEditorTemplateId(environment.getEditorTemplateId());
         view.setEditorTemplateVersion(environment.getEditorTemplateVersion());
+        view.setEditorImageReference(imageReference(environment.getEditorTemplateId(),
+                environment.getEditorTemplateVersion(), "EDITOR"));
         view.setEditorConfigFingerprint(environment.getEditorConfigFingerprint());
+        List<EnvironmentPortAllocationRecord> allocations = portMapper.selectBySlot(environment.getSlotId());
+        view.setAnnotationPorts(portBindings(allocations, "ANNOTATION"));
+        view.setEditorPorts(portBindings(allocations, "EDITOR"));
         view.setWorkspaceRelativePath(environment.getWorkspaceRelativePath());
         view.setDesiredState(environment.getDesiredState());
         view.setActualState(environment.getActualState());
@@ -444,6 +456,70 @@ public class CompetitionEnvironmentService {
         view.setLastVerifiedAt(environment.getLastVerifiedAt());
         view.setLastComponentResultsJson(environment.getLastComponentResultsJson());
         return view;
+    }
+
+    private EnvironmentOperationRecord latestOperation(String environmentId) {
+        List<EnvironmentOperationRecord> recent = operationMapper.selectRecent(environmentId, 1);
+        return recent == null || recent.isEmpty() ? null : recent.get(0);
+    }
+
+    private void populateReadiness(CompetitionEnvironmentView view,
+                                   CompetitionEnvironmentRecord environment,
+                                   EnvironmentOperationRecord operation) {
+        String actual = environment.getActualState();
+        if (Arrays.asList("CREATING", "STARTING", "STOPPING", "RESTORING",
+                "WAITING_DEPENDENCY").contains(actual)) {
+            view.setReadiness("STARTING");
+            view.setReadinessCode("COMPETITION_ENVIRONMENT_" + actual);
+            return;
+        }
+        if ("ERROR".equals(actual) || "DEGRADED".equals(actual)) {
+            view.setReadiness("DEGRADED");
+            view.setReadinessCode(operation != null && operation.getResultCode() != null
+                    ? operation.getResultCode() : "COMPETITION_ENVIRONMENT_" + actual);
+            view.setFailureSummary(operation == null ? null : operation.getResultMessage());
+            return;
+        }
+        if (("RUNNING".equals(actual) || "STOPPED".equals(actual))
+                && actual.equals(environment.getAnnotationContainerState())
+                && actual.equals(environment.getEditorContainerState())) {
+            view.setReadiness("READY");
+            view.setReadinessCode("READY");
+            return;
+        }
+        view.setReadiness("DEGRADED");
+        view.setReadinessCode("COMPETITION_COMPONENT_STATE_MISMATCH");
+        view.setFailureSummary(operation == null ? null : operation.getResultMessage());
+    }
+
+    private String imageReference(String templateId, Integer version, String componentType) {
+        ContainerTemplateRecord template = templateMapper.selectVersion(templateId, version);
+        if (template == null || !Objects.equals(templateId, template.getTemplateId())
+                || !Objects.equals(version, template.getTemplateVersion())
+                || !Objects.equals(componentType, template.getComponentType())) {
+            return null;
+        }
+        return template.getImageReference();
+    }
+
+    private List<EnvironmentPortBinding> portBindings(
+            List<EnvironmentPortAllocationRecord> allocations, String componentType) {
+        List<EnvironmentPortBinding> result = new ArrayList<>();
+        if (allocations != null) {
+            for (EnvironmentPortAllocationRecord allocation : allocations) {
+                if (!componentType.equals(allocation.getComponentType())) {
+                    continue;
+                }
+                EnvironmentPortBinding binding = new EnvironmentPortBinding();
+                binding.setContainerPort(allocation.getContainerPort());
+                binding.setHostPort(allocation.getHostPort());
+                binding.setProtocol(allocation.getProtocol());
+                result.add(binding);
+            }
+        }
+        result.sort(Comparator.comparing(EnvironmentPortBinding::getContainerPort)
+                .thenComparing(EnvironmentPortBinding::getProtocol));
+        return result;
     }
 
     private LocalDateTime now() {

@@ -4,9 +4,11 @@
     <div class="agent-selector"><span>处理服务器</span><el-select v-model="selectedAgentId" filterable placeholder="选择服务器"><el-option v-for="agent in agents" :key="agent.agentId" :label="agent.displayName || agent.hostname || agent.agentId" :value="agent.agentId" /></el-select></div>
     <el-table v-loading="loading" :data="slotRows" row-key="slotNumber" empty-text="请先选择处理服务器">
       <el-table-column prop="slotNumber" label="槽位" width="70" />
-      <el-table-column label="容器身份" min-width="240"><template slot-scope="scope"><div class="cell-stack"><span>{{ scope.row.annotationContainerName || '图像标注：未创建' }}</span><span>{{ scope.row.editorContainerName || '代码编辑：未创建' }}</span></div></template></el-table-column>
-      <el-table-column label="模板版本" min-width="180"><template slot-scope="scope"><div class="cell-stack"><span>标注 {{ version(scope.row.annotationTemplateId, scope.row.annotationTemplateVersion) }}</span><span>编辑 {{ version(scope.row.editorTemplateId, scope.row.editorTemplateVersion) }}</span></div></template></el-table-column>
-      <el-table-column label="状态" width="120"><template slot-scope="scope"><el-tag size="small" :type="stateType(scope.row.actualState)">{{ scope.row.actualState || '未创建' }}</el-tag></template></el-table-column>
+      <el-table-column label="绑定" width="90"><template slot-scope="scope">{{ scope.row.userId || '未绑定' }}</template></el-table-column>
+      <el-table-column label="容器与状态" min-width="250"><template slot-scope="scope"><div class="cell-stack"><span>{{ scope.row.annotationContainerName || '图像标注：未创建' }} <el-tag size="mini" :type="stateType(scope.row.annotationContainerState)">{{ scope.row.annotationContainerState || '-' }}</el-tag></span><span>{{ scope.row.editorContainerName || '代码编辑：未创建' }} <el-tag size="mini" :type="stateType(scope.row.editorContainerState)">{{ scope.row.editorContainerState || '-' }}</el-tag></span></div></template></el-table-column>
+      <el-table-column label="固定模板" min-width="260"><template slot-scope="scope"><div class="cell-stack"><span>标注 {{ imageVersion(scope.row.annotationImageReference, scope.row.annotationTemplateVersion) }}</span><code>{{ shortFingerprint(scope.row.annotationConfigFingerprint) }}</code><span>编辑 {{ imageVersion(scope.row.editorImageReference, scope.row.editorTemplateVersion) }}</span><code>{{ shortFingerprint(scope.row.editorConfigFingerprint) }}</code></div></template></el-table-column>
+      <el-table-column label="端口" min-width="180"><template slot-scope="scope"><div class="cell-stack"><span>标注 {{ ports(scope.row.annotationPorts) }}</span><span>编辑 {{ ports(scope.row.editorPorts) }}</span></div></template></el-table-column>
+      <el-table-column label="就绪状态" min-width="170"><template slot-scope="scope"><div class="cell-stack"><el-tag size="small" :type="stateType(scope.row.readiness)">{{ scope.row.readiness || '未创建' }}</el-tag><span class="reason">{{ scope.row.failureSummary || scope.row.readinessCode || '-' }}</span></div></template></el-table-column>
       <el-table-column prop="workspaceRelativePath" label="工作目录" min-width="180" show-overflow-tooltip />
       <el-table-column label="操作" width="180" align="right"><template slot-scope="scope"><el-button v-if="!scope.row.environmentId" size="small" type="primary" @click="openCreate(scope.row)">创建</el-button><el-button v-else size="small" type="warning" :loading="busyId === scope.row.environmentId" @click="restore(scope.row)">恢复</el-button></template></el-table-column>
     </el-table>
@@ -43,7 +45,9 @@ export default {
     async load () { this.loading = true; try { const [agents, environments, templates] = await Promise.all([listProcessingAgents(), listCompetitionEnvironments(), listContainerTemplates()]); this.agents = agents.data || []; this.environments = environments.data || []; this.templates = templates.data || []; if (!this.selectedAgentId && this.agents.length) this.selectedAgentId = this.agents[0].agentId } finally { this.loading = false } },
     templateOptions (type) { return this.templates.filter(item => item.componentType === type && item.enabled).map(item => ({ ...item, key: `${item.templateId}:${item.templateVersion}` })) },
     templateLabel (item) { return `${item.templateName || item.templateId} · v${item.templateVersion}` },
-    version (id, version) { return id ? `${id} / v${version}` : '-' },
+    imageVersion (image, version) { return image ? `${image} / v${version}` : '-' },
+    shortFingerprint (value) { return value ? `${value.slice(0, 12)}…` : '-' },
+    ports (items) { return items && items.length ? items.map(item => `${item.hostPort}:${item.containerPort}/${item.protocol}`).join(', ') : '-' },
     stateType (state) { return state === 'RUNNING' ? 'success' : (state === 'ERROR' || state === 'DEGRADED' ? 'danger' : 'info') },
     openCreate (row) { this.createForm = { agentId: row.agentId, slotNumber: row.slotNumber }; this.annotationSelection = this.annotationTemplates[0] || null; this.editorSelection = this.editorTemplates[0] || null; this.createDialog = true },
     async create () { this.creating = true; try { await createCompetitionEnvironment({ ...this.createForm, annotationTemplateId: this.annotationSelection.templateId, annotationTemplateVersion: this.annotationSelection.templateVersion, editorTemplateId: this.editorSelection.templateId, editorTemplateVersion: this.editorSelection.templateVersion }); this.$message.success('容器创建命令已提交'); this.createDialog = false; await this.load() } finally { this.creating = false } },
@@ -58,6 +62,8 @@ export default {
 .agent-selector { justify-content: flex-start; margin-bottom: 16px; }
 .agent-selector .el-select { width: min(420px, 100%); }
 .cell-stack { display: grid; gap: 5px; font-size: 12px; }
+.cell-stack code { color: #617383; font-size: 11px; }
+.reason { color: #73828e; overflow-wrap: anywhere; }
 .transition-recovery { margin-top: 28px; padding: 18px 0; border-top: 1px solid #d9e2e8; border-bottom: 1px solid #d9e2e8; }
 .transition-recovery h2 { margin: 0 0 5px; font-size: 18px; }
 .transition-recovery p { margin: 0; color: #73828e; }

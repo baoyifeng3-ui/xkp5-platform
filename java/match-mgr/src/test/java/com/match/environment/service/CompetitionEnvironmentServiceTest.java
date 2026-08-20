@@ -127,6 +127,8 @@ public class CompetitionEnvironmentServiceTest {
 
     @Test
     public void createsUnboundCompetitionPairForExactSlotWithPinnedIdentity() {
+        when(ports.selectBySlot(SLOT_ID)).thenReturn(Arrays.asList(
+                allocation(8082), allocation(9092)));
         CompetitionEnvironmentView view = service.create(request, superAdmin);
 
         ArgumentCaptor<CompetitionEnvironmentRecord> saved =
@@ -166,6 +168,12 @@ public class CompetitionEnvironmentServiceTest {
         assertEquals("UNKNOWN", view.getEditorContainerState());
         assertNull(view.getLastVerifiedAt());
         assertNull(view.getLastComponentResultsJson());
+        assertEquals("xkp/annotation:v3", view.getAnnotationImageReference());
+        assertEquals("xkp/editor:v5", view.getEditorImageReference());
+        assertEquals(Integer.valueOf(8082), view.getAnnotationPorts().get(0).getHostPort());
+        assertEquals(Integer.valueOf(9092), view.getEditorPorts().get(0).getHostPort());
+        assertEquals("STARTING", view.getReadiness());
+        assertEquals("COMPETITION_ENVIRONMENT_CREATING", view.getReadinessCode());
     }
 
     @Test
