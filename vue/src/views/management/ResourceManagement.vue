@@ -1,0 +1,1 @@
+<template><section class="module-page"><header class="module-heading"><h1>资源管理</h1><p>统一维护数据集、代码文件、课程文件和工具资源。</p></header><section class="module-empty"><div class="module-empty-inner"><i class="el-icon-folder-opened" /><strong>暂无资源数据</strong><p>资源目录和访问权限将在后续阶段接入。</p></div></section></section></template>

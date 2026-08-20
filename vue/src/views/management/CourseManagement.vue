@@ -1,0 +1,1 @@
+<template><section class="module-page"><header class="module-heading"><h1>课程管理</h1><p>维护课程结构与课程发布状态。</p></header><section class="module-empty"><div class="module-empty-inner"><i class="el-icon-reading" /><strong>暂无课程数据</strong><p>课程管理将在课程数据模型接入后开放。</p></div></section></section></template>

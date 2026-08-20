@@ -1,0 +1,50 @@
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env.local}
+      MYSQL_DATABASE: ${MATCH_DB_NAME:-match}
+    ports:
+      - "${MATCH_DB_PORT:-3307}:3306"
+    volumes:
+      - match_local_mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  fastdfs-tracker:
+    image: delron/fastdfs
+    platform: linux/amd64
+    restart: unless-stopped
+    hostname: fastdfs-tracker
+    command: tracker
+    volumes:
+      - ./fastdfs/tracker_data:/var/fdfs
+    ports:
+      - "22122:22122"
+
+  fastdfs-storage:
+    image: delron/fastdfs
+    platform: linux/amd64
+    restart: unless-stopped
+    hostname: fastdfs-storage
+    command: storage
+    environment:
+      TRACKER_SERVER: fastdfs-tracker:22122
+      GROUP_NAME: group1
+    volumes:
+      - ./fastdfs/storage_data:/var/fdfs
+    ports:
+      - "23000:23000"
+      - "8888:8888"
+    depends_on:
+      - fastdfs-tracker
+
+volumes:
+  match_local_mysql:
+    name: match_mysql_data

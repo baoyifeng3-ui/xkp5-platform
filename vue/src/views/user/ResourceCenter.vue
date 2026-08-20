@@ -1,0 +1,1 @@
+<template><section class="module-page"><header class="module-heading"><h1>资源中心</h1><p>获取课程数据集、代码文件、课程文件和工具。</p></header><section class="module-empty"><div class="module-empty-inner"><i class="el-icon-folder-opened" /><strong>暂无可用资源</strong><p>课程资源发布后将在此显示。</p></div></section></section></template>

@@ -1,0 +1,34 @@
+.platform-shell { min-height: 100vh; background: #f4f7fa; color: #1f2f3d; }
+.platform-shell .shell-aside { background: #132b40; color: #fff; min-height: 100vh; }
+.shell-brand { height: 72px; padding: 0 22px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,.12); }
+.shell-brand-mark { width: 30px; height: 30px; display: grid; place-items: center; background: #38a77a; border-radius: 6px; font-weight: 700; }
+.shell-brand strong { display: block; font-size: 17px; }
+.shell-brand small { display: block; margin-top: 3px; color: #9fb2c3; }
+.shell-menu { border-right: 0 !important; background: transparent !important; }
+.shell-menu .el-menu-item, .shell-menu .el-submenu__title { color: #c7d3dc !important; }
+.shell-menu .el-menu-item:hover, .shell-menu .el-submenu__title:hover { background: #1d3b54 !important; }
+.shell-menu .el-menu-item.is-active { color: #fff !important; background: #256b58 !important; }
+.shell-menu .el-menu-item i, .shell-menu .el-submenu__title i { color: inherit !important; }
+.shell-header { height: 72px !important; display: flex; align-items: center; justify-content: space-between; padding: 0 28px !important; background: #fff; border-bottom: 1px solid #dde5eb; }
+.shell-header-copy strong { display: block; font-size: 18px; }
+.shell-header-copy small { display: block; margin-top: 4px; color: #7a8995; }
+.shell-account { display: flex; align-items: center; gap: 14px; color: #52616d; }
+.shell-main { padding: 26px !important; min-width: 0; }
+.module-page { max-width: 1280px; margin: 0 auto; }
+.module-heading { margin-bottom: 24px; }
+.module-heading h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: 0; }
+.module-heading p { margin: 0; color: #687986; line-height: 1.7; }
+.module-empty { min-height: 280px; display: grid; place-items: center; background: #fff; border: 1px solid #dfe7ed; border-radius: 6px; }
+.module-empty-inner { max-width: 480px; text-align: center; color: #778792; }
+.module-empty-inner i { display: block; margin-bottom: 16px; font-size: 42px; color: #5e8c7d; }
+.module-empty-inner strong { display: block; margin-bottom: 8px; color: #253a49; font-size: 18px; }
+.module-empty-inner p { margin: 0; line-height: 1.7; }
+@media (max-width: 720px) {
+  .platform-shell > .el-container > .shell-aside { width: 82px !important; }
+  .shell-brand { padding: 0; justify-content: center; }
+  .shell-brand-copy, .shell-menu .menu-text, .shell-menu .el-submenu__icon-arrow { display: none; }
+  .shell-menu .el-menu-item, .shell-menu .el-submenu__title { padding: 0 28px !important; }
+  .shell-header { padding: 0 16px !important; }
+  .shell-header-copy small { display: none; }
+  .shell-main { padding: 16px !important; }
+}

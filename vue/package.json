@@ -1,0 +1,50 @@
+{
+  "name": "match",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "serve": "node scripts/vue-cli.js serve",
+    "build": "node scripts/vue-cli.js build",
+    "test:navigation": "node scripts/test-role-navigation.js",
+    "test:license": "node scripts/test-license-navigation.js",
+    "test:agents": "node scripts/test-agent-navigation.js && node scripts/test-agent-view-contract.js",
+    "test:templates": "node scripts/test-container-template-view-contract.js",
+    "test:dashboard": "node scripts/test-dashboard-overview-contract.js",
+    "test:terminal": "node scripts/test-root-terminal-contract.js"
+  },
+  "engines": {
+    "node": ">=16 <23"
+  },
+  "dependencies": {
+    "axios": "^0.26.1",
+    "core-js": "^3.6.5",
+    "echarts": "^5.5.1",
+    "element-ui": "^2.15.6",
+    "file-saver": "^2.0.5",
+    "jquery": "^3.7.1",
+    "js-cookie": "^3.0.1",
+    "q": "^1.5.1",
+    "qs": "^6.13.0",
+    "script-loader": "^0.7.2",
+    "vue": "^2.6.11",
+    "vue-axios": "^3.4.1",
+    "vue-cookies": "^1.7.4",
+    "vue-router": "^3.2.0",
+    "vuex": "^3.4.0",
+    "xlsx": "^0.18.5",
+    "xterm": "5.3.0",
+    "xterm-addon-fit": "0.7.0"
+  },
+  "devDependencies": {
+    "@vue/cli-plugin-babel": "~4.5.15",
+    "@vue/cli-plugin-router": "~4.5.15",
+    "@vue/cli-plugin-vuex": "~4.5.15",
+    "@vue/cli-service": "~4.5.15",
+    "vue-template-compiler": "^2.6.11"
+  },
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead"
+  ]
+}

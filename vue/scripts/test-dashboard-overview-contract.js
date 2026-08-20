@@ -1,0 +1,46 @@
+const assert = require('assert')
+const fs = require('fs')
+
+const page = fs.readFileSync('src/views/management/ManagementHome.vue', 'utf8')
+const api = fs.readFileSync('src/api/DashboardOverview.js', 'utf8')
+const activity = fs.readFileSync('src/services/userActivity.js', 'utf8')
+const layout = fs.readFileSync('src/layouts/ManagementShell.vue', 'utf8')
+const { applyOverviewSuccess, applyOverviewFailure, resourceText } = require('../src/services/dashboardOverviewState')
+
+assert.ok(api.includes('admin/dashboard/overview'))
+assert.ok(page.includes('loadOverview'))
+assert.ok(page.includes('setInterval(this.loadOverview, 15000)'))
+assert.ok(page.includes('stale'))
+assert.ok(page.includes('sampleCount'))
+assert.ok(page.includes('averagePercent'))
+assert.ok(page.includes('gpuMemory'))
+assert.ok(page.includes("route: '/management/devices'"))
+assert.ok(page.includes("route: '/management/training'"))
+assert.ok(page.includes("route: '/management/license'"))
+assert.ok(page.includes('firstLoadFailed'))
+assert.ok(activity.includes('60000'))
+assert.ok(activity.includes('user/activity'))
+assert.ok(activity.includes('user/logout'))
+assert.ok(layout.includes('startUserActivity'))
+assert.ok(layout.includes('stopUserActivity'))
+assert.ok(layout.includes('beforeDestroy'))
+for (const shell of ['NormalUserShell.vue', 'OperationsShell.vue']) {
+  const source = fs.readFileSync(`src/layouts/${shell}`, 'utf8')
+  assert.ok(source.includes('startUserActivity'))
+  assert.ok(source.includes('stopUserActivity'))
+}
+
+const firstLoad = { snapshot: null, stale: false, firstLoadFailed: false }
+applyOverviewFailure(firstLoad)
+assert.strictEqual(firstLoad.firstLoadFailed, true)
+const priorSnapshot = { snapshotAt: 'before', fresh: true }
+const refresh = { snapshot: priorSnapshot, stale: false, firstLoadFailed: false }
+applyOverviewFailure(refresh)
+assert.strictEqual(refresh.snapshot, priorSnapshot)
+assert.strictEqual(refresh.stale, true)
+applyOverviewSuccess(refresh, { snapshotAt: 'after', fresh: true })
+assert.strictEqual(refresh.snapshot.snapshotAt, 'after')
+assert.strictEqual(refresh.stale, false)
+assert.strictEqual(resourceText({ averagePercent: null, sampleCount: 0 }), '暂无数据')
+assert.strictEqual(resourceText({ averagePercent: 0, sampleCount: 1 }), '0.0%')
+console.log('dashboard overview contract tests passed')
