@@ -1,7 +1,7 @@
 import request from '@/utils/request.js'
 
-const ADMIN_BASE = '/admin/processing-agents'
-const SUPER_BASE = '/super-admin/processing-agents'
+const ADMIN_BASE = 'admin/processing-agents'
+const SUPER_BASE = 'super-admin/processing-agents'
 
 export const listProcessingAgents = () => request.get(ADMIN_BASE)
 export const getProcessingAgent = id => request.get(`${ADMIN_BASE}/${id}`)

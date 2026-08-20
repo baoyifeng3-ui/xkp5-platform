@@ -33,6 +33,8 @@ import AdministratorManagement from '@/views/operations/AdministratorManagement.
 import LicenseDiagnostics from '@/views/operations/LicenseDiagnostics.vue'
 import ProcessingAgents from '@/views/operations/ProcessingAgents.vue'
 import ContainerTemplates from '@/views/operations/ContainerTemplates.vue'
+import CompetitionEnvironments from '@/views/operations/CompetitionEnvironments.vue'
+import CompetitionMode from '@/views/management/CompetitionMode.vue'
 import ChangePassword from '@/views/ChangePassword.vue'
 import CompetitionPractical from '@/views/competition/CompetitionPractical.vue'
 import { getToken, mustChangePassword, getRole, getPlatformMode, landingRoute, getCompetitionAccessPhase } from '@/utils/auth'
@@ -50,6 +52,7 @@ const routes = [
       { path: '', name: 'OperationsHome', component: OperationsHome },
       { path: 'processing-agents', name: 'ProcessingAgents', component: ProcessingAgents },
       { path: 'container-templates', name: 'ContainerTemplates', component: ContainerTemplates },
+      { path: 'competition-environments', name: 'CompetitionEnvironments', component: CompetitionEnvironments },
       { path: 'administrators', name: 'AdministratorManagement', component: AdministratorManagement },
       { path: 'license', name: 'LicenseDiagnostics', component: LicenseDiagnostics }
     ]
@@ -61,6 +64,7 @@ const routes = [
       { path: 'courses', name: 'CourseManagement', component: CourseManagement },
       { path: 'resources', name: 'ResourceManagement', component: ResourceManagement },
       { path: 'training', name: 'TrainingManagement', component: TrainingManagement },
+      { path: 'competition-mode', name: 'CompetitionMode', component: CompetitionMode },
       { path: 'users', name: 'UserManagement', component: UserManagement },
       { path: 'devices', name: 'DeviceManagement', component: DeviceManagement },
       { path: 'license', name: 'PlatformLicense', component: PlatformLicense },

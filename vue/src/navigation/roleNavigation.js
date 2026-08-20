@@ -9,6 +9,7 @@ const userItems = [
 ]
 
 const competitionItems = [
+  { key: 'mode', label: '模式与环境', route: '/management/competition-mode' },
   { key: 'preview', label: '比赛预览', route: '/competition-preview' },
   { key: 'control', label: '比赛控制', route: '/Admin?tab=timer' },
   { key: 'rules', label: '赛程赛规编辑', route: '/Admin?tab=rules' },
@@ -33,6 +34,7 @@ const operationsItems = [
   { key: 'home', label: '运维主页', icon: 'el-icon-odometer', route: '/operations' },
   { key: 'processing-agents', label: '处理服务器', icon: 'el-icon-cpu', route: '/operations/processing-agents' },
   { key: 'container-templates', label: '容器模板', icon: 'el-icon-box', route: '/operations/container-templates' },
+  { key: 'competition-environments', label: '比赛容器', icon: 'el-icon-trophy', route: '/operations/competition-environments' },
   { key: 'administrators', label: '管理员账号', icon: 'el-icon-user', route: '/operations/administrators' },
   { key: 'license', label: '授权诊断', icon: 'el-icon-key', route: '/operations/license' }
 ]
