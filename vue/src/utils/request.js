@@ -3,13 +3,20 @@ import { Message } from 'element-ui'
 import router from '@/router'
 import { clearSession, getToken } from '@/utils/auth'
 
-function handleUnauthorized () {
+let modeChangeHandled = false
+
+function handleUnauthorized (responseData) {
     const hadToken = Boolean(getToken())
+    const modeChanged = Boolean(responseData && responseData.data &&
+        responseData.data.reasonCode === 'PLATFORM_MODE_CHANGED')
     clearSession()
     if (router.currentRoute.path !== '/login') {
         router.replace({ path: '/login' }).catch(() => {})
     }
-    if (hadToken) {
+    if (modeChanged && !modeChangeHandled) {
+        modeChangeHandled = true
+        Message({ message: responseData.msg || '平台模式已切换，请重新登录', type: 'error', duration: 5000 })
+    } else if (hadToken && !modeChanged) {
         Message({ message: '登录已失效，请重新登录', type: 'error', duration: 5000 })
     }
 }
@@ -25,6 +32,7 @@ const service = axios.create({
 
 service.interceptors.request.use(
     config => {
+        if (getToken()) modeChangeHandled = false
         config.headers.satoken = getToken()
         // Let the browser add the multipart boundary for FormData requests.
         if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
@@ -43,7 +51,7 @@ service.interceptors.response.use(
         }
         const result = response.data
         if (result.code === 401) {
-            handleUnauthorized()
+            handleUnauthorized(result)
         }
         return result
     },
@@ -54,7 +62,7 @@ service.interceptors.response.use(
         } else if (!error.response) {
             message = '无法连接后端服务，请确认 localhost:19141 已启动'
         } else if (error.response.status === 401) {
-            handleUnauthorized()
+            handleUnauthorized(error.response.data)
             return Promise.reject(error)
         } else if (error.response.data) {
             const responseData = error.response.data

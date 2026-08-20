@@ -45,10 +45,10 @@ const routeRoles = {
   '/course-platform': USER
 }
 
-function landingRoute (role) {
+function landingRoute (role, mode) {
   if (role === SUPER_ADMIN) return { path: '/operations' }
   if (role === ADMIN) return { path: '/management' }
-  return { path: '/course-platform' }
+  return mode === 'COMPETITION' ? { path: '/Publicity' } : { path: '/course-platform' }
 }
 
 module.exports = {

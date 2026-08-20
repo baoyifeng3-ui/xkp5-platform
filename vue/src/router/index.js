@@ -34,7 +34,10 @@ import LicenseDiagnostics from '@/views/operations/LicenseDiagnostics.vue'
 import ProcessingAgents from '@/views/operations/ProcessingAgents.vue'
 import ContainerTemplates from '@/views/operations/ContainerTemplates.vue'
 import ChangePassword from '@/views/ChangePassword.vue'
-import { getToken, mustChangePassword, getRole, landingRoute, getCompetitionAccessPhase } from '@/utils/auth'
+import CompetitionPractical from '@/views/competition/CompetitionPractical.vue'
+import { getToken, mustChangePassword, getRole, getPlatformMode, landingRoute, getCompetitionAccessPhase } from '@/utils/auth'
+
+const roleNavigation = require('@/navigation/roleNavigation')
 
 Vue.use(VueRouter)
 
@@ -66,7 +69,7 @@ const routes = [
     ]
   },
   {
-    path: '/course-platform', component: NormalUserShell, meta: { roles: ['USER'] },
+    path: '/course-platform', component: NormalUserShell, meta: { roles: ['USER'], modes: ['TRAINING'] },
     children: [
       { path: '', name: 'CoursePlatform', component: CoursePlatform },
       { path: '/resource-center', name: 'ResourceCenter', component: ResourceCenter },
@@ -77,6 +80,7 @@ const routes = [
     path: '/Layout',
     name: 'Layout',
     component: Layout,
+    meta: { roles: ['USER'], modes: ['COMPETITION'] },
     children: [
       { path: '/Home', name: 'Home', component: Home },
       { path: '/Publicity', name: 'Publicity', component: Publicity },
@@ -87,6 +91,7 @@ const routes = [
       { path: '/QuestionA', name: 'QuestionA', component: QuestionA },
       { path: '/QuestionB', name: 'QuestionB', component: QuestionB },
       { path: '/Question', name: 'Question', component: Question },
+      { path: '/competition-practical', name: 'CompetitionPractical', component: CompetitionPractical },
       { path: '/dthj', name: 'dthj', component: dthj }
     ]
   }
@@ -109,7 +114,12 @@ router.beforeEach((to, from, next) => {
     return next(landingRoute())
   }
   const requiredRoles = to.matched.reduce((roles, record) => record.meta && record.meta.roles ? record.meta.roles : roles, null)
-  if (requiredRoles && !requiredRoles.includes(getRole())) {
+  const adminPreview = getRole() === 'ADMIN' && to.query.preview === '1' && roleNavigation.previewDestinations.includes(to.path)
+  if (!adminPreview && requiredRoles && !requiredRoles.includes(getRole())) {
+    return next(landingRoute())
+  }
+  const requiredModes = to.matched.reduce((modes, record) => record.meta && record.meta.modes ? record.meta.modes : modes, null)
+  if (!adminPreview && getRole() === 'USER' && requiredModes && !requiredModes.includes(getPlatformMode())) {
     return next(landingRoute())
   }
   if (loggedIn && getRole() === 'USER' && getCompetitionAccessPhase() === 'PRE_START' && ['/Question', '/Detect'].includes(to.path)) {
