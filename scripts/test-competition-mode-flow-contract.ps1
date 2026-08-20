@@ -23,6 +23,13 @@ $source = Get-Content -Raw -LiteralPath $flowScript
     }
 }
 
+if ($source -notmatch 'finally[\s\S]*XKP_TEST_FAKE_AGENT_RECOVER_URL[\s\S]*admin/platform-mode') {
+    throw 'Cleanup must recover the fake Agent before restoring platform mode'
+}
+if (($source | Select-String -Pattern "reasonCode -eq 'PLATFORM_MODE_CHANGED'" -AllMatches).Matches.Count -lt 2) {
+    throw 'Both mode transitions must assert PLATFORM_MODE_CHANGED'
+}
+
 @(
     'XKP_TEST_ADMIN_USER',
     'XKP_TEST_ADMIN_PASSWORD',

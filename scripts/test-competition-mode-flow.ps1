@@ -25,6 +25,7 @@ if ([string]::IsNullOrWhiteSpace($ManagementUrl) -or
 $apiRoot = $ManagementUrl.TrimEnd('/') + '/api/'
 $script:adminToken = $null
 $script:changedMode = $false
+$script:fakeAgentFailureEnabled = $false
 $summary = New-Object System.Collections.Generic.List[string]
 
 function Invoke-JsonApi {
@@ -143,6 +144,7 @@ try {
     Assert-Value ($boundSlots.Count -eq 1) 'Smoke fixture must have exactly one bound slot for the selected Agent'
 
     Invoke-FakeAgentHook $env:XKP_TEST_FAKE_AGENT_FAIL_URL
+    $script:fakeAgentFailureEnabled = $true
     Set-PlatformMode 'COMPETITION'
 
     foreach ($oldToken in @($boundBefore.tokenValue, $unboundBefore.tokenValue)) {
@@ -172,6 +174,7 @@ try {
     $trainingSnapshotCount = @($degraded.steps | Where-Object { $_.actionType -eq 'STOP_TRAINING_ENVIRONMENT' }).Count
 
     Invoke-FakeAgentHook $env:XKP_TEST_FAKE_AGENT_RECOVER_URL
+    $script:fakeAgentFailureEnabled = $false
     $retry = Invoke-JsonApi -Method Post -Path "operations/mode-transitions/$($degraded.transitionId)/retry" -Token $operations.tokenValue
     Assert-Value ($retry.code -eq 200) 'Operational retry failed'
     [void](Wait-TransitionState 'COMPETITION' @('SUCCEEDED'))
@@ -182,6 +185,7 @@ try {
     foreach ($oldToken in @($boundCompetitionToken, $unboundCompetitionToken)) {
         $stale = Invoke-JsonApi -Method Get -Path 'user/me' -Token $oldToken -AllowFailure
         Assert-Value ($stale.httpStatus -eq 401 -or $stale.body.code -eq 401) 'Competition token survived exit to TRAINING'
+        Assert-Value ($stale.body.data.reasonCode -eq 'PLATFORM_MODE_CHANGED') 'Exit token did not return PLATFORM_MODE_CHANGED'
     }
     $exit = Wait-TransitionState 'TRAINING' @('SUCCEEDED')
     $restoreCount = @($exit.steps | Where-Object { $_.actionType -eq 'RESTORE_TRAINING_ENVIRONMENT' }).Count
@@ -194,6 +198,14 @@ try {
     $summary.Add('final=TRAINING')
     Write-Host ('competition mode flow passed: ' + ($summary -join '; '))
 } finally {
+    if ($script:fakeAgentFailureEnabled) {
+        try {
+            Invoke-FakeAgentHook $env:XKP_TEST_FAKE_AGENT_RECOVER_URL
+            $script:fakeAgentFailureEnabled = $false
+        } catch {
+            Write-Warning 'Cleanup could not restore the fake Agent fixture'
+        }
+    }
     if ($script:adminToken) {
         try {
             $cleanupMode = Invoke-JsonApi -Method Get -Path 'admin/platform-mode' -Token $script:adminToken
