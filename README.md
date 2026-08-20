@@ -183,6 +183,23 @@ make prod-up
 Docker TCP。详细步骤见 `docs/agents/operator-guide.md`；普通管理员查看在线状态、资源
 占用和告警的方法见 `docs/agents/administrator-guide.md`。
 
+比赛环境按每台处理服务器固定四个槽位管理。超级管理员先创建并验证所需槽位的双容器，
+普通管理员再绑定用户；未绑定槽位在比赛模式切换时不会启动。普通用户在比赛模式与实训
+模式使用完全隔离的界面，模式切换后必须重新登录。未绑定用户仍可答题，但不会获得实操
+环境链接。迁移失败会保留为可诊断、可重试的 `DEGRADED` 状态，退出时只恢复进入前实际
+运行的实训环境。完整操作见上述两份 Agent 运维与管理员手册。
+
+具备真实 MySQL、受信 TLS、在线 fake Agent 和专用测试账号时，可用环境变量运行比赛模式
+冒烟流程：
+
+```powershell
+powershell -NoProfile -File scripts/test-competition-mode-flow-contract.ps1
+powershell -NoProfile -File scripts/test-competition-mode-flow.ps1
+```
+
+脚本不会内置账号、密码或票据，也不会创建或删除已有容器与绑定；缺少测试夹具时只运行
+合同和语法检查，不能据此声称真实端到端通过。
+
 访问 `http://服务器局域网IP:19140`。后端端口为 19141，MySQL 宿主端口为
 3307。生产前应将本地备份 SQL 恢复到服务器，而不是复制 MySQL 数据目录。
 
