@@ -33,7 +33,9 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -194,11 +196,17 @@ public class CompetitionEnvironmentService {
     @Transactional(readOnly = true)
     public List<CompetitionEnvironmentView> list(User actor) {
         requireSuperAdmin(actor);
+        List<CompetitionEnvironmentRecord> environments = environmentMapper.selectAllEnvironments();
         List<CompetitionEnvironmentView> views = new ArrayList<>();
-        for (CompetitionEnvironmentRecord environment : environmentMapper.selectAllEnvironments()) {
-            ProcessingEnvironmentSlotRecord slot = slotMapper.selectById(environment.getSlotId());
+        if (environments == null || environments.isEmpty()) {
+            return views;
+        }
+        DiagnosticData diagnostics = diagnosticData(environments);
+        for (CompetitionEnvironmentRecord environment : environments) {
+            ProcessingEnvironmentSlotRecord slot = diagnostics.slots.get(environment.getSlotId());
             requireStoredIdentity(environment, slot);
-            views.add(view(environment, slot.getUserId(), environment.getCurrentOperationId(), null));
+            views.add(view(environment, slot.getUserId(), environment.getCurrentOperationId(),
+                    null, diagnostics));
         }
         return views;
     }
@@ -423,6 +431,12 @@ public class CompetitionEnvironmentService {
 
     private CompetitionEnvironmentView view(CompetitionEnvironmentRecord environment, Integer userId,
                                             String operationId, AgentCommandView command) {
+        return view(environment, userId, operationId, command, null);
+    }
+
+    private CompetitionEnvironmentView view(CompetitionEnvironmentRecord environment, Integer userId,
+                                            String operationId, AgentCommandView command,
+                                            DiagnosticData diagnostics) {
         CompetitionEnvironmentView view = new CompetitionEnvironmentView();
         view.setEnvironmentId(environment.getEnvironmentId());
         view.setOperationId(operationId);
@@ -431,19 +445,23 @@ public class CompetitionEnvironmentService {
         view.setSlotId(environment.getSlotId());
         view.setSlotNumber(environment.getSlotNumber());
         view.setUserId(userId);
-        EnvironmentOperationRecord latestOperation = latestOperation(environment.getEnvironmentId());
+        EnvironmentOperationRecord latestOperation = diagnostics == null
+                ? latestOperation(environment.getEnvironmentId())
+                : diagnostics.operations.get(environment.getEnvironmentId());
         populateReadiness(view, environment, latestOperation);
         view.setAnnotationTemplateId(environment.getAnnotationTemplateId());
         view.setAnnotationTemplateVersion(environment.getAnnotationTemplateVersion());
         view.setAnnotationImageReference(imageReference(environment.getAnnotationTemplateId(),
-                environment.getAnnotationTemplateVersion(), "ANNOTATION"));
+                environment.getAnnotationTemplateVersion(), "ANNOTATION", diagnostics));
         view.setAnnotationConfigFingerprint(environment.getAnnotationConfigFingerprint());
         view.setEditorTemplateId(environment.getEditorTemplateId());
         view.setEditorTemplateVersion(environment.getEditorTemplateVersion());
         view.setEditorImageReference(imageReference(environment.getEditorTemplateId(),
-                environment.getEditorTemplateVersion(), "EDITOR"));
+                environment.getEditorTemplateVersion(), "EDITOR", diagnostics));
         view.setEditorConfigFingerprint(environment.getEditorConfigFingerprint());
-        List<EnvironmentPortAllocationRecord> allocations = portMapper.selectBySlot(environment.getSlotId());
+        List<EnvironmentPortAllocationRecord> allocations = diagnostics == null
+                ? portMapper.selectBySlot(environment.getSlotId())
+                : diagnostics.ports.get(environment.getSlotId());
         view.setAnnotationPorts(portBindings(allocations, "ANNOTATION"));
         view.setEditorPorts(portBindings(allocations, "EDITOR"));
         view.setWorkspaceRelativePath(environment.getWorkspaceRelativePath());
@@ -492,8 +510,11 @@ public class CompetitionEnvironmentService {
         view.setFailureSummary(operation == null ? null : operation.getResultMessage());
     }
 
-    private String imageReference(String templateId, Integer version, String componentType) {
-        ContainerTemplateRecord template = templateMapper.selectVersion(templateId, version);
+    private String imageReference(String templateId, Integer version, String componentType,
+                                  DiagnosticData diagnostics) {
+        ContainerTemplateRecord template = diagnostics == null
+                ? templateMapper.selectVersion(templateId, version)
+                : diagnostics.templates.get(templateKey(templateId, version));
         if (template == null || !Objects.equals(templateId, template.getTemplateId())
                 || !Objects.equals(version, template.getTemplateVersion())
                 || !Objects.equals(componentType, template.getComponentType())) {
@@ -520,6 +541,54 @@ public class CompetitionEnvironmentService {
         result.sort(Comparator.comparing(EnvironmentPortBinding::getContainerPort)
                 .thenComparing(EnvironmentPortBinding::getProtocol));
         return result;
+    }
+
+    private DiagnosticData diagnosticData(List<CompetitionEnvironmentRecord> environments) {
+        DiagnosticData data = new DiagnosticData();
+        List<String> environmentIds = new ArrayList<>();
+        List<String> slotIds = new ArrayList<>();
+        for (CompetitionEnvironmentRecord environment : environments) {
+            environmentIds.add(environment.getEnvironmentId());
+            slotIds.add(environment.getSlotId());
+        }
+        List<ProcessingEnvironmentSlotRecord> slots = slotMapper.selectAll();
+        if (slots != null) {
+            for (ProcessingEnvironmentSlotRecord slot : slots) {
+                data.slots.put(slot.getSlotId(), slot);
+            }
+        }
+        List<ContainerTemplateRecord> templates = templateMapper.selectAllVersions();
+        if (templates != null) {
+            for (ContainerTemplateRecord template : templates) {
+                data.templates.put(templateKey(template.getTemplateId(),
+                        template.getTemplateVersion()), template);
+            }
+        }
+        List<EnvironmentPortAllocationRecord> ports = portMapper.selectBySlots(slotIds);
+        if (ports != null) {
+            for (EnvironmentPortAllocationRecord port : ports) {
+                data.ports.computeIfAbsent(port.getSlotId(), ignored -> new ArrayList<>()).add(port);
+            }
+        }
+        List<EnvironmentOperationRecord> operations =
+                operationMapper.selectLatestByEnvironments(environmentIds);
+        if (operations != null) {
+            for (EnvironmentOperationRecord operation : operations) {
+                data.operations.put(operation.getEnvironmentId(), operation);
+            }
+        }
+        return data;
+    }
+
+    private String templateKey(String templateId, Integer version) {
+        return templateId + ":" + version;
+    }
+
+    private static final class DiagnosticData {
+        private final Map<String, ProcessingEnvironmentSlotRecord> slots = new HashMap<>();
+        private final Map<String, ContainerTemplateRecord> templates = new HashMap<>();
+        private final Map<String, List<EnvironmentPortAllocationRecord>> ports = new HashMap<>();
+        private final Map<String, EnvironmentOperationRecord> operations = new HashMap<>();
     }
 
     private LocalDateTime now() {

@@ -16,4 +16,13 @@ public interface EnvironmentPortAllocationMapper extends BaseMapper<EnvironmentP
     @Select("SELECT * FROM environment_port_allocation WHERE slot_id = #{slotId} "
             + "ORDER BY component_type, container_port")
     List<EnvironmentPortAllocationRecord> selectBySlot(@Param("slotId") String slotId);
+
+    @Select({"<script>",
+            "SELECT * FROM environment_port_allocation WHERE slot_id IN",
+            "<foreach collection='slotIds' item='slotId' open='(' separator=',' close=')'>",
+            "#{slotId}",
+            "</foreach>",
+            "ORDER BY slot_id, component_type, container_port",
+            "</script>"})
+    List<EnvironmentPortAllocationRecord> selectBySlots(@Param("slotIds") List<String> slotIds);
 }

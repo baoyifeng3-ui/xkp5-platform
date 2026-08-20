@@ -32,6 +32,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -174,6 +175,36 @@ public class CompetitionEnvironmentServiceTest {
         assertEquals(Integer.valueOf(9092), view.getEditorPorts().get(0).getHostPort());
         assertEquals("STARTING", view.getReadiness());
         assertEquals("COMPETITION_ENVIRONMENT_CREATING", view.getReadinessCode());
+    }
+
+    @Test
+    public void listsCompetitionDiagnosticsWithBoundedBatchQueries() {
+        CompetitionEnvironmentRecord environment = existingEnvironment();
+        ProcessingEnvironmentSlotRecord slot = new ProcessingEnvironmentSlotRecord();
+        slot.setSlotId(SLOT_ID);
+        slot.setAgentId(AGENT_ID);
+        slot.setSlotNumber(2);
+        slot.setUserId(42);
+        when(environments.selectAllEnvironments()).thenReturn(Collections.singletonList(environment));
+        when(slots.selectAll()).thenReturn(Collections.singletonList(slot));
+        when(templates.selectAllVersions()).thenReturn(Arrays.asList(
+                template(ANNOTATION_ID, 3, "ANNOTATION", ANNOTATION_FINGERPRINT),
+                template(EDITOR_ID, 5, "EDITOR", EDITOR_FINGERPRINT)));
+        when(ports.selectBySlots(Collections.singletonList(SLOT_ID))).thenReturn(Arrays.asList(
+                allocation(8082), allocation(9092)));
+        when(operations.selectLatestByEnvironments(
+                Collections.singletonList(environment.getEnvironmentId())))
+                .thenReturn(Collections.emptyList());
+
+        CompetitionEnvironmentView view = service.list(superAdmin).get(0);
+
+        assertEquals(Integer.valueOf(42), view.getUserId());
+        assertEquals("READY", view.getReadiness());
+        assertEquals(Integer.valueOf(8082), view.getAnnotationPorts().get(0).getHostPort());
+        verify(slots, never()).selectById(anyString());
+        verify(templates, never()).selectVersion(anyString(), anyInt());
+        verify(ports, never()).selectBySlot(anyString());
+        verify(operations, never()).selectRecent(anyString(), anyInt());
     }
 
     @Test
