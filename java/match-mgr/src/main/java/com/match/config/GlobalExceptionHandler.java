@@ -3,6 +3,7 @@ package com.match.config;
 import cn.dev33.satoken.exception.NotLoginException;
 import com.match.security.AdminAccessException;
 import com.match.security.CompetitionAccessException;
+import com.match.security.ParticipantModeException;
 import com.match.licensing.crypto.InvalidLicenseException;
 import com.match.licensing.guard.LicenseAccessException;
 import com.match.licensing.web.LicenseImportException;
@@ -51,6 +52,18 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(exception.getStatus())
                 .body(Response.makeRsp(exception.getStatus().value(), exception.getMessage(),
                         reason(exception.getCode())));
+    }
+
+    @ExceptionHandler(ParticipantModeException.class)
+    public ResponseEntity<ResponseResult<Object>> handleParticipantMode(
+            ParticipantModeException exception) {
+        if (exception.isGenerationMismatch()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Response.makeRsp(401, exception.getMessage(),
+                            reason(exception.getReasonCode())));
+        }
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Response.makeRsp(403, exception.getMessage()));
     }
 
     @ExceptionHandler(ModeConflictException.class)

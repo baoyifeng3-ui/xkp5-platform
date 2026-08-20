@@ -8,6 +8,9 @@ import com.match.dashboard.service.UserActivityService;
 import com.match.entity.User;
 import com.match.security.UserRole;
 import com.match.security.PasswordCodec;
+import com.match.security.ParticipantModeGuard;
+import com.match.mode.model.PlatformModeView;
+import com.match.mode.service.PlatformModeService;
 import com.match.service.impl.UserServiceImpl;
 import com.match.service.impl.ParticipantLoginGate;
 import com.match.util.result.Response;
@@ -28,15 +31,21 @@ public class UserController {
     private final ParticipantLoginGate participantLoginGate;
     private final PasswordCodec passwordCodec;
     private final UserActivityService userActivityService;
+    private final PlatformModeService platformModeService;
+    private final ParticipantModeGuard participantModeGuard;
 
     public UserController(UserServiceImpl userService,
                           ParticipantLoginGate participantLoginGate,
                           PasswordCodec passwordCodec,
-                          UserActivityService userActivityService) {
+                          UserActivityService userActivityService,
+                          PlatformModeService platformModeService,
+                          ParticipantModeGuard participantModeGuard) {
         this.userService = userService;
         this.participantLoginGate = participantLoginGate;
         this.passwordCodec = passwordCodec;
         this.userActivityService = userActivityService;
+        this.platformModeService = platformModeService;
+        this.participantModeGuard = participantModeGuard;
     }
 
     @PostMapping("login")
@@ -65,7 +74,11 @@ public class UserController {
         StpUtil.login(user.getUserId());
         SaTokenInfo tokenInfo = StpUtil.getTokenInfo();
         userActivityService.recordLogin(user.getUserId(), tokenInfo.getTokenValue(), StpUtil.getTokenTimeout());
-        Map<String, Object> data = currentUserData(user);
+        PlatformModeView platformMode = platformModeService.current();
+        if (roleOf(user) == UserRole.USER) {
+            participantModeGuard.bindCurrentParticipantSession(platformMode.getGeneration());
+        }
+        Map<String, Object> data = currentUserData(user, platformMode);
         data.put("tokenName", tokenInfo.getTokenName());
         data.put("tokenValue", tokenInfo.getTokenValue());
         data.put("loginId", tokenInfo.getLoginId());
@@ -79,7 +92,7 @@ public class UserController {
             StpUtil.logout();
             return Response.makeRsp(401, "账号不存在或已停用");
         }
-        return Response.makeOKRsp(currentUserData(user));
+        return Response.makeOKRsp(currentUserData(user, platformModeService.current()));
     }
 
     @PostMapping("change-password")
@@ -113,13 +126,15 @@ public class UserController {
         return Response.makeOKRsp("ok");
     }
 
-    private Map<String, Object> currentUserData(User user) {
+    private Map<String, Object> currentUserData(User user, PlatformModeView platformMode) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("userId", user.getUserId());
         data.put("userName", user.getUserName());
         data.put("admin", isAdmin(user));
         data.put("role", roleOf(user).name());
         data.put("mustChangePassword", Boolean.TRUE.equals(user.getMustChangePassword()));
+        data.put("platformMode", platformMode.getMode());
+        data.put("modeGeneration", platformMode.getGeneration());
         return data;
     }
 
