@@ -21,6 +21,10 @@ public interface CompetitionEnvironmentMapper extends BaseMapper<CompetitionEnvi
     @Select("SELECT * FROM competition_environment ORDER BY agent_id, slot_number")
     List<CompetitionEnvironmentRecord> selectAllEnvironments();
 
+    @Select("SELECT * FROM competition_environment WHERE agent_id = #{agentId} "
+            + "ORDER BY slot_number FOR UPDATE")
+    List<CompetitionEnvironmentRecord> selectByAgent(@Param("agentId") String agentId);
+
     @Update("UPDATE competition_environment SET desired_state = #{desiredState}, "
             + "actual_state = #{actualState}, current_operation_id = #{operationId}, "
             + "updated_by = #{updatedBy}, updated_at = #{updatedAt}, lock_version = lock_version + 1 "

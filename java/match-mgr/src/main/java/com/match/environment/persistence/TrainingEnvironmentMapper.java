@@ -19,6 +19,10 @@ public interface TrainingEnvironmentMapper extends BaseMapper<TrainingEnvironmen
             + "ORDER BY environment_id FOR UPDATE")
     List<TrainingEnvironmentRecord> selectUserEnvironmentsForUpdate(@Param("userId") int userId);
 
+    @Select("SELECT * FROM training_environment WHERE agent_id = #{agentId} "
+            + "ORDER BY environment_id FOR UPDATE")
+    List<TrainingEnvironmentRecord> selectByAgentForUpdate(@Param("agentId") String agentId);
+
     @Select("SELECT * FROM training_environment WHERE user_id = #{userId} "
             + "ORDER BY course_id, environment_id")
     List<TrainingEnvironmentRecord> selectByUser(@Param("userId") int userId);
