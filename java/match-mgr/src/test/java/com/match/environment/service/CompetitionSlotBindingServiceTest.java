@@ -26,6 +26,7 @@ import com.match.security.UserRole;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.InOrder;
+import org.apache.ibatis.annotations.Select;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DeadlockLoserDataAccessException;
 import org.springframework.dao.DuplicateKeyException;
@@ -34,12 +35,14 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -87,6 +90,16 @@ public class CompetitionSlotBindingServiceTest {
                 new ProcessingAgentModeGuard(agentModes), templates, users,
                 agents, ports, roleGuard, modeGuard, audit, new ObjectMapper(),
                 Clock.fixed(NOW, ZoneOffset.UTC));
+    }
+
+    @Test
+    public void slotMapperLocksWholeAgentSetInStableOrder() throws Exception {
+        Method method = ProcessingEnvironmentSlotMapper.class.getMethod(
+                "selectByAgentForUpdate", String.class);
+        Select select = method.getAnnotation(Select.class);
+
+        assertTrue(select.value()[0].contains("WHERE agent_id = #{agentId}"));
+        assertTrue(select.value()[0].contains("ORDER BY slot_number FOR UPDATE"));
     }
 
     @Test
@@ -273,6 +286,8 @@ public class CompetitionSlotBindingServiceTest {
         ProcessingEnvironmentSlotRecord occupied = slot(99);
         stubBoundary(admin());
         when(slots.selectForUpdate(SLOT_ID)).thenReturn(occupied);
+        when(slots.selectById(SLOT_ID)).thenReturn(occupied);
+        when(slots.selectByAgentForUpdate(AGENT_ID)).thenReturn(lockedAgentSlots(99));
         when(agentModes.selectForUpdate(AGENT_ID)).thenReturn(normalMode());
         CompetitionEnvironmentRecord environment = readyEnvironment();
         when(environments.selectBySlotForUpdate(SLOT_ID)).thenReturn(environment);
@@ -310,7 +325,7 @@ public class CompetitionSlotBindingServiceTest {
 
         assertCode("PLATFORM_MODE_NOT_TRAINING", () -> service.bind(SLOT_ID, 21, actor));
 
-        verify(slots, never()).selectForUpdate(anyString());
+        verify(slots, never()).selectById(anyString());
     }
 
     @Test
@@ -326,13 +341,43 @@ public class CompetitionSlotBindingServiceTest {
         InOrder order = inOrder(roleGuard, modeGuard, slots, agentModes, environments, users, audit);
         order.verify(roleGuard).roleOf(actor);
         order.verify(modeGuard).requireAdministrativeTrainingMode();
-        order.verify(slots).selectForUpdate(SLOT_ID);
+        order.verify(slots).selectById(SLOT_ID);
+        order.verify(slots).selectByAgentForUpdate(AGENT_ID);
         order.verify(agentModes).selectForUpdate(AGENT_ID);
         order.verify(environments).selectBySlotForUpdate(SLOT_ID);
         order.verify(users).selectById(21);
         order.verify(slots).selectByAgentAndUserForUpdate(AGENT_ID, 21);
         order.verify(slots).bindIfUnbound(SLOT_ID, 21, utcNow());
         order.verify(audit).recordSuccess("COMPETITION_SLOT_BOUND", 7, AGENT_ID, null);
+    }
+
+    @Test
+    public void refusesExistingSlotWhenAgentHasOnlyThreeLockedSlots() {
+        stubReadyInfrastructure(readyEnvironment(), 21);
+        when(slots.selectByAgentForUpdate(AGENT_ID)).thenReturn(Arrays.asList(
+                slot(null), slotRecord(2), slotRecord(4)));
+        when(slots.bindIfUnbound(SLOT_ID, 21, utcNow())).thenReturn(1);
+
+        assertCode("COMPETITION_AGENT_SLOTS_NOT_READY",
+                () -> service.bind(SLOT_ID, 21, admin()));
+
+        verify(slots, never()).bindIfUnbound(anyString(), anyInt(), any(LocalDateTime.class));
+    }
+
+    @Test
+    public void refusesExistingSlotWhenAgentHasIllegalFifthSlot() {
+        stubReadyInfrastructure(readyEnvironment(), 21);
+        ProcessingEnvironmentSlotRecord fifth = slotRecord(4);
+        fifth.setSlotId("99999999-9999-4999-8999-999999999999");
+        fifth.setSlotNumber(5);
+        when(slots.selectByAgentForUpdate(AGENT_ID)).thenReturn(Arrays.asList(
+                slot(null), slotRecord(2), slotRecord(3), slotRecord(4), fifth));
+        when(slots.bindIfUnbound(SLOT_ID, 21, utcNow())).thenReturn(1);
+
+        assertCode("COMPETITION_AGENT_SLOTS_NOT_READY",
+                () -> service.bind(SLOT_ID, 21, admin()));
+
+        verify(slots, never()).bindIfUnbound(anyString(), anyInt(), any(LocalDateTime.class));
     }
 
     @Test
@@ -350,6 +395,8 @@ public class CompetitionSlotBindingServiceTest {
         User actor = admin();
         stubBoundary(actor);
         when(slots.selectForUpdate(SLOT_ID)).thenReturn(slot(21));
+        when(slots.selectById(SLOT_ID)).thenReturn(slot(21));
+        when(slots.selectByAgentForUpdate(AGENT_ID)).thenReturn(lockedAgentSlots(21));
         when(agentModes.selectForUpdate(AGENT_ID)).thenReturn(normalMode());
         when(environments.selectBySlotForUpdate(SLOT_ID)).thenReturn(environment);
         stubTemplates(environment);
@@ -367,6 +414,8 @@ public class CompetitionSlotBindingServiceTest {
         CompetitionEnvironmentRecord environment = readyEnvironment();
         stubBoundary(admin());
         when(slots.selectForUpdate(SLOT_ID)).thenReturn(slot(21));
+        when(slots.selectById(SLOT_ID)).thenReturn(slot(21));
+        when(slots.selectByAgentForUpdate(AGENT_ID)).thenReturn(lockedAgentSlots(21));
         when(agentModes.selectForUpdate(AGENT_ID)).thenReturn(normalMode());
         when(environments.selectBySlotForUpdate(SLOT_ID)).thenReturn(environment);
         stubTemplates(environment);
@@ -540,12 +589,13 @@ public class CompetitionSlotBindingServiceTest {
         List<CompetitionSlotView> result = service.list(actor);
 
         assertEquals(4, result.size());
-        assertEquals(Integer.valueOf(3), result.get(2).getSlotNumber());
-        assertNull(result.get(2).getSlotId());
-        assertNull(result.get(2).getEnvironmentId());
-        assertNull(result.get(2).getUserId());
-        assertEquals("DEGRADED", result.get(2).getReadiness());
-        assertEquals("COMPETITION_SLOT_NOT_PROVISIONED", result.get(2).getReadinessCode());
+        for (CompetitionSlotView view : result) {
+            assertNull(view.getSlotId());
+            assertNull(view.getEnvironmentId());
+            assertNull(view.getUserId());
+            assertEquals("DEGRADED", view.getReadiness());
+            assertEquals("COMPETITION_AGENT_SLOTS_NOT_READY", view.getReadinessCode());
+        }
     }
 
     @Test
@@ -564,7 +614,7 @@ public class CompetitionSlotBindingServiceTest {
             assertEquals(Integer.valueOf(index + 1), view.getSlotNumber());
             assertNull(view.getSlotId());
             assertEquals("DEGRADED", view.getReadiness());
-            assertEquals("COMPETITION_SLOT_NOT_PROVISIONED", view.getReadinessCode());
+            assertEquals("COMPETITION_AGENT_SLOTS_NOT_READY", view.getReadinessCode());
         }
     }
 
@@ -586,7 +636,7 @@ public class CompetitionSlotBindingServiceTest {
         for (CompetitionSlotView view : result) {
             assertNull(view.getSlotId());
             assertEquals("DEGRADED", view.getReadiness());
-            assertEquals("COMPETITION_SLOT_PROVISIONING_INVALID", view.getReadinessCode());
+            assertEquals("COMPETITION_AGENT_SLOTS_NOT_READY", view.getReadinessCode());
         }
     }
 
@@ -604,6 +654,8 @@ public class CompetitionSlotBindingServiceTest {
     private void stubBoundaryAndSlot(User actor, int userId) {
         stubBoundary(actor);
         when(slots.selectForUpdate(SLOT_ID)).thenReturn(slot(null));
+        when(slots.selectById(SLOT_ID)).thenReturn(slot(null));
+        when(slots.selectByAgentForUpdate(AGENT_ID)).thenReturn(lockedAgentSlots(null));
     }
 
     private void stubBoundary(User actor) {
@@ -742,6 +794,10 @@ public class CompetitionSlotBindingServiceTest {
         slot.setAgentId(AGENT_ID);
         slot.setSlotNumber(number);
         return slot;
+    }
+
+    private List<ProcessingEnvironmentSlotRecord> lockedAgentSlots(Integer targetUserId) {
+        return Arrays.asList(slot(targetUserId), slotRecord(2), slotRecord(3), slotRecord(4));
     }
 
     private void stubTemplates(CompetitionEnvironmentRecord environment) {

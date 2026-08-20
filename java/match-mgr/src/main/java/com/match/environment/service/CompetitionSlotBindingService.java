@@ -242,13 +242,41 @@ public class CompetitionSlotBindingService {
         if (blank(slotId)) {
             throw new IllegalArgumentException("比赛槽位编号不能为空");
         }
-        ProcessingEnvironmentSlotRecord slot = slotMapper.selectForUpdate(slotId);
-        if (slot == null || !Objects.equals(slotId, slot.getSlotId())
-                || blank(slot.getAgentId()) || slot.getSlotNumber() == null
-                || slot.getSlotNumber() < 1 || slot.getSlotNumber() > 4) {
+        ProcessingEnvironmentSlotRecord observed = slotMapper.selectById(slotId);
+        if (observed == null || !Objects.equals(slotId, observed.getSlotId())
+                || blank(observed.getAgentId()) || observed.getSlotNumber() == null
+                || observed.getSlotNumber() < 1 || observed.getSlotNumber() > 4) {
             throw conflict("COMPETITION_SLOT_NOT_FOUND", "Competition slot does not exist");
         }
-        return slot;
+        List<ProcessingEnvironmentSlotRecord> locked = slotMapper.selectByAgentForUpdate(
+                observed.getAgentId());
+        if (locked == null || locked.size() != 4) {
+            throw agentSlotsNotReady();
+        }
+        Set<Integer> numbers = new HashSet<>();
+        Set<String> ids = new HashSet<>();
+        ProcessingEnvironmentSlotRecord target = null;
+        for (ProcessingEnvironmentSlotRecord slot : locked) {
+            if (slot == null || !Objects.equals(observed.getAgentId(), slot.getAgentId())
+                    || blank(slot.getSlotId()) || slot.getSlotNumber() == null
+                    || slot.getSlotNumber() < 1 || slot.getSlotNumber() > 4
+                    || !numbers.add(slot.getSlotNumber()) || !ids.add(slot.getSlotId())) {
+                throw agentSlotsNotReady();
+            }
+            if (Objects.equals(slotId, slot.getSlotId())) {
+                target = slot;
+            }
+        }
+        if (target == null || numbers.size() != 4
+                || !Objects.equals(observed.getSlotNumber(), target.getSlotNumber())) {
+            throw agentSlotsNotReady();
+        }
+        return target;
+    }
+
+    private ModeConflictException agentSlotsNotReady() {
+        return conflict("COMPETITION_AGENT_SLOTS_NOT_READY",
+                "Processing Agent competition slots are not ready");
     }
 
     private void requireIdleAgent(String agentId) {
@@ -618,12 +646,15 @@ public class CompetitionSlotBindingService {
     private void appendAgentSlots(List<CompetitionSlotView> result, String agentId,
                                   List<ProcessingEnvironmentSlotRecord> records) {
         Map<Integer, ProcessingEnvironmentSlotRecord> byNumber = new HashMap<>();
-        boolean invalid = false;
+        Set<String> slotIds = new HashSet<>();
+        boolean invalid = records == null || records.size() != 4;
         if (records != null) {
             for (ProcessingEnvironmentSlotRecord record : records) {
                 Integer number = record.getSlotNumber();
                 if (number == null || number < 1 || number > 4
-                        || blank(record.getSlotId()) || byNumber.put(number, record) != null) {
+                        || !Objects.equals(agentId, record.getAgentId())
+                        || blank(record.getSlotId()) || !slotIds.add(record.getSlotId())
+                        || byNumber.put(number, record) != null) {
                     invalid = true;
                 }
             }
@@ -631,14 +662,10 @@ public class CompetitionSlotBindingService {
         for (int number = 1; number <= 4; number++) {
             if (invalid) {
                 result.add(placeholder(agentId, number,
-                        "COMPETITION_SLOT_PROVISIONING_INVALID"));
+                        "COMPETITION_AGENT_SLOTS_NOT_READY"));
                 continue;
             }
             ProcessingEnvironmentSlotRecord slot = byNumber.get(number);
-            if (slot == null) {
-                result.add(placeholder(agentId, number, "COMPETITION_SLOT_NOT_PROVISIONED"));
-                continue;
-            }
             CompetitionEnvironmentRecord environment = environmentMapper.selectBySlot(slot.getSlotId());
             String readinessCode = readinessCode(slot, environment);
             CompetitionSlotView view = view(slot, environment, readinessCode);

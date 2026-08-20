@@ -13,6 +13,10 @@ public interface ProcessingEnvironmentSlotMapper extends BaseMapper<ProcessingEn
     ProcessingEnvironmentSlotRecord selectForUpdate(@Param("slotId") String slotId);
 
     @Select("SELECT * FROM processing_environment_slot WHERE agent_id = #{agentId} "
+            + "ORDER BY slot_number FOR UPDATE")
+    List<ProcessingEnvironmentSlotRecord> selectByAgentForUpdate(@Param("agentId") String agentId);
+
+    @Select("SELECT * FROM processing_environment_slot WHERE agent_id = #{agentId} "
             + "AND slot_number = #{slotNumber} FOR UPDATE")
     ProcessingEnvironmentSlotRecord selectByAgentAndNumberForUpdate(@Param("agentId") String agentId,
                                                                      @Param("slotNumber") int slotNumber);
