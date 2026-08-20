@@ -40,6 +40,8 @@ public class WebConfig implements WebMvcConfigurer {
                     .check(participantModeGuard::requireCurrentGeneration);
             SaRouter.match("/user/training-environments/**")
                     .check(participantModeGuard::requireTrainingMode);
+            SaRouter.match("/user/competition-environment/**")
+                    .check(participantModeGuard::requireCompetitionMode);
             SaRouter.match("/testPaper/**", "/score/**", "/train-url/**")
                     .check(participantModeGuard::requireCompetitionMode)
                     .check(participantAccessGuard::requireCompetitionStarted);

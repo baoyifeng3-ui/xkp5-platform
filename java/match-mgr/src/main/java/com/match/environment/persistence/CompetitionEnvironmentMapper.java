@@ -12,6 +12,9 @@ public interface CompetitionEnvironmentMapper extends BaseMapper<CompetitionEnvi
     @Select("SELECT * FROM competition_environment WHERE slot_id = #{slotId} FOR UPDATE")
     CompetitionEnvironmentRecord selectBySlotForUpdate(@Param("slotId") String slotId);
 
+    @Select("SELECT * FROM competition_environment WHERE slot_id = #{slotId}")
+    CompetitionEnvironmentRecord selectBySlot(@Param("slotId") String slotId);
+
     @Select("SELECT * FROM competition_environment WHERE environment_id = #{environmentId} FOR UPDATE")
     CompetitionEnvironmentRecord selectForUpdate(@Param("environmentId") String environmentId);
 
