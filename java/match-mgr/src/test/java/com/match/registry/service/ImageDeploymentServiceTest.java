@@ -132,6 +132,16 @@ public class ImageDeploymentServiceTest {
     }
 
     @Test
+    public void runningDeploymentIgnoresLatePulledResult() {
+        ImageDeploymentRecord deployment = deployment("deployment-1", "command-1");
+        deployment.setState("RUNNING");
+        when(deployments.selectByCommandIdForUpdate("command-1")).thenReturn(deployment);
+        service.reconcile(new AgentCommandFinishedEvent("command-1", "agent-1", "DEPLOY_IMAGE", true,
+                "PULLED", "late", "{}"));
+        assertEquals("RUNNING", deployment.getState());
+    }
+
+    @Test
     public void failedDeploymentKeepsPreviousDigestAndClearsSlot() {
         ImageDeploymentRecord deployment = deployment("deployment-1", "command-1");
         deployment.setPreviousDigest("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");

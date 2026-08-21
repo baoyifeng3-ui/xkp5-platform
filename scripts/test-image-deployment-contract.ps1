@@ -23,5 +23,6 @@ if ($migration -notmatch 'active_agent_component_key VARCHAR') { throw 'Active s
 if ($migration -notmatch 'command_id VARCHAR') { throw 'Deployment command identity migration is missing' }
 if ($migration -notmatch 'idempotency_key VARCHAR') { throw 'Immutable idempotency key migration is missing' }
 if ($migration -notmatch 'uk_image_deployment_agent_component_idempotency') { throw 'Idempotency uniqueness migration is missing' }
+if ($migration -notmatch 'SUBSTRING_INDEX\(active_deployment_key') { throw 'Historical active idempotency backfill is missing' }
 if ($agentCommand -notmatch 'deploymentId') { throw 'Deployment identity is missing from command payload' }
 Write-Output 'Image deployment contract checks passed.'

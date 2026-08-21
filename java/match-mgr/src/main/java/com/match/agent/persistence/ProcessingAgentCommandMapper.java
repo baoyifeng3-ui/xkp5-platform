@@ -83,8 +83,9 @@ public interface ProcessingAgentCommandMapper extends BaseMapper<ProcessingAgent
     List<ProcessingAgentCommandRecord> selectExpiredLeases(@Param("now") LocalDateTime now,
                                                             @Param("limit") int limit);
 
-    @Select("SELECT * FROM processing_agent_command WHERE command_type = 'DEPLOY_IMAGE' "
-            + "AND state IN ('FAILED','SUCCEEDED') ORDER BY completed_at, command_id LIMIT #{limit}")
+    @Select("SELECT c.* FROM processing_agent_command c JOIN image_deployment d ON d.command_id = c.command_id "
+            + "WHERE c.command_type = 'DEPLOY_IMAGE' AND c.state IN ('FAILED','SUCCEEDED') "
+            + "AND d.state NOT IN ('FAILED','SUCCEEDED') ORDER BY c.completed_at, c.command_id LIMIT #{limit}")
     List<ProcessingAgentCommandRecord> selectTerminalImageCommands(@Param("limit") int limit);
 
     @Update("UPDATE processing_agent_command SET state = 'FAILED', active_dedup_key = NULL, "

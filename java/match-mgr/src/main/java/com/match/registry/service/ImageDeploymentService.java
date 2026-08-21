@@ -137,6 +137,11 @@ public class ImageDeploymentService {
         String code = event.getResultCode();
         String state;
         boolean terminal = false;
+        String current = deployment.getState();
+        if ("PULLED".equals(code) && ("PULLED".equals(current) || "RUNNING".equals(current))) return;
+        if ("RUNNING".equals(code) && "RUNNING".equals(current)) return;
+        if ("PULLED".equals(code) && !"PENDING".equals(current)) return;
+        if ("RUNNING".equals(code) && !"PENDING".equals(current) && !"PULLED".equals(current)) return;
         if ("PULLED".equals(code)) state = "PULLED";
         else if ("RUNNING".equals(code)) state = "RUNNING";
         else if (event.isSuccess() && "SUCCEEDED".equals(code)) { state = "SUCCEEDED"; terminal = true; }
