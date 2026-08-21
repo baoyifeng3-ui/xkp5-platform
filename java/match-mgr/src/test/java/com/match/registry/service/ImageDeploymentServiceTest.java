@@ -58,7 +58,7 @@ public class ImageDeploymentServiceTest {
         when(agents.selectForManagement("agent-1")).thenReturn(agent);
         when(deployments.selectActiveForUpdate("agent-1", "EDITOR")).thenReturn(null);
         when(commands.requestImageDeploymentCommand(eq(agent), eq("EDITOR"), eq(DIGEST),
-                eq("UPDATE_CONTAINERS"), eq("request-1"), eq(7), eq("SUPER_ADMIN")))
+                eq("UPDATE_CONTAINERS"), anyString(), eq("request-1"), eq(7), eq("SUPER_ADMIN")))
                 .thenReturn(command());
 
         ImageDeploymentRecord result = service.deploy("SUPER_ADMIN", "release-1", "agent-1",
@@ -68,7 +68,7 @@ public class ImageDeploymentServiceTest {
         assertEquals("UPDATE_CONTAINERS", result.getUpdatePolicy());
         verify(deployments).insert(any(ImageDeploymentRecord.class));
         verify(commands).requestImageDeploymentCommand(eq(agent), eq("EDITOR"), eq(DIGEST),
-                eq("UPDATE_CONTAINERS"), eq("request-1"), eq(7), eq("SUPER_ADMIN"));
+                eq("UPDATE_CONTAINERS"), anyString(), eq("request-1"), eq(7), eq("SUPER_ADMIN"));
     }
 
     @Test
@@ -79,7 +79,7 @@ public class ImageDeploymentServiceTest {
         when(agents.selectForManagement("agent-1")).thenReturn(agent);
         when(deployments.selectActiveForUpdate("agent-1", "ANNOTATION")).thenReturn(null);
         when(commands.requestImageDeploymentCommand(any(ProcessingAgentRecord.class), eq("ANNOTATION"), eq(DIGEST),
-                eq("IMAGE_ONLY"), eq("request-2"), eq(7), eq("SUPER_ADMIN"))).thenReturn(command());
+                eq("IMAGE_ONLY"), anyString(), eq("request-2"), eq(7), eq("SUPER_ADMIN"))).thenReturn(command());
 
         assertEquals("IMAGE_ONLY", service.deploy("SUPER_ADMIN", "release-1", "agent-1",
                 "ANNOTATION", "IMAGE_ONLY", "request-2", false, 7).getUpdatePolicy());
@@ -95,7 +95,7 @@ public class ImageDeploymentServiceTest {
         assertSame(existing, service.deploy("SUPER_ADMIN", "release-1", "agent-1", "EDITOR",
                 null, "request-1", true, 7));
         verify(releases, never()).selectById(anyString());
-        verify(commands, never()).requestImageDeploymentCommand(any(), anyString(), anyString(), anyString(), anyString(), any(), anyString());
+        verify(commands, never()).requestImageDeploymentCommand(any(), anyString(), anyString(), anyString(), anyString(), anyString(), any(), anyString());
     }
 
     @Test

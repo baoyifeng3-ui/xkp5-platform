@@ -142,6 +142,7 @@ CREATE TABLE image_deployment (
     updated_at DATETIME(3) NOT NULL,
     PRIMARY KEY (deployment_id),
     UNIQUE KEY uk_image_deployment_active (active_deployment_key),
+    UNIQUE KEY uk_image_deployment_agent_component_active (agent_id, component_type, active_deployment_key),
     KEY idx_image_deployment_agent_component (agent_id, component_type, requested_at),
     CONSTRAINT chk_image_deployment_target_digest CHECK (
         BINARY target_digest = BINARY LOWER(target_digest)

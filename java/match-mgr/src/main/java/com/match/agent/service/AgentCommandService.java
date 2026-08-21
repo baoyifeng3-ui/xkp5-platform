@@ -44,7 +44,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 public class AgentCommandService {
     static final String SHUTDOWN_SERVER = "SHUTDOWN_SERVER";
     static final String OPEN_ROOT_TERMINAL = "OPEN_ROOT_TERMINAL";
-    static final String DEPLOY_IMAGE = "DEPLOY_IMAGE";
+    public static final String DEPLOY_IMAGE = "DEPLOY_IMAGE";
     static final int COMMAND_VERSION = 1;
     static final int MAX_DELIVERY_ATTEMPTS = 5;
     static final long LEASE_SECONDS = 30;
@@ -330,7 +330,7 @@ public class AgentCommandService {
     @Transactional
     public AgentCommandView requestImageDeploymentCommand(ProcessingAgentRecord agent, String componentType,
                                                            String registryDigest, String updatePolicy,
-                                                           String idempotencyKey, Integer requesterUserId,
+                                                           String deploymentId, String idempotencyKey, Integer requesterUserId,
                                                            String requesterRole) {
         String agentId = requireAgentId(agent);
         if (mapper.selectEnabledAgentForUpdate(agentId) == null) {
@@ -349,10 +349,12 @@ public class AgentCommandService {
             throw new IllegalArgumentException("Image deployment idempotency key is invalid");
         }
         String dedupKey = agentId + ":" + DEPLOY_IMAGE + ":" + idempotencyKey;
+        if (dedupKey.length() > 128) throw new IllegalArgumentException("Image deployment idempotency key is invalid");
         ProcessingAgentCommandRecord existing = mapper.selectActiveByDedup(agentId, DEPLOY_IMAGE, dedupKey);
         if (existing != null) return toView(existing);
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("agentId", agentId);
+        payload.put("deploymentId", deploymentId);
         payload.put("componentType", componentType);
         payload.put("registryDigest", registryDigest);
         payload.put("updatePolicy", updatePolicy);
@@ -472,6 +474,15 @@ public class AgentCommandService {
                 throw leaseConflict();
             }
         }
+        if (result.success && ("PULLED".equals(result.code) || "RUNNING".equals(result.code))) {
+            if (mapper.markImageProgress(commandId, agentId, result.leaseToken, result.code,
+                    result.message, result.json, now) == 1) {
+                ProcessingAgentCommandRecord persisted = mapper.selectById(commandId);
+                if (persisted != null) eventPublisher.publishEvent(new AgentCommandFinishedEvent(commandId, agentId,
+                        persisted.getCommandType(), true, result.code, result.message, result.json));
+                return toView(persisted);
+            }
+        }
         String terminalState = result.success ? "SUCCEEDED" : result.state;
         if (mapper.markTerminal(commandId, agentId, result.leaseToken, terminalState, now,
                 result.code, result.message, result.json) == 1) {
@@ -499,7 +510,7 @@ public class AgentCommandService {
             if (persisted != null && Objects.equals(agentId, persisted.getAgentId())
                     && persisted.getCommandType() != null) {
                 eventPublisher.publishEvent(new AgentCommandFinishedEvent(commandId, agentId,
-                        persisted.getCommandType(), result.success, result.code, result.message));
+                        persisted.getCommandType(), result.success, result.code, result.message, result.json));
             }
             return toView(completed);
         }

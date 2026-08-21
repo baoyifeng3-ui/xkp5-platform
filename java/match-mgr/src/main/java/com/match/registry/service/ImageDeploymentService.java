@@ -1,6 +1,7 @@
 package com.match.registry.service;
 
 import com.match.agent.model.AgentCommandView;
+import com.match.agent.model.AgentCommandFinishedEvent;
 import com.match.agent.persistence.ProcessingAgentMapper;
 import com.match.agent.persistence.ProcessingAgentRecord;
 import com.match.agent.service.AgentCommandService;
@@ -92,7 +93,7 @@ public class ImageDeploymentService {
             throw collision;
         }
         AgentCommandView command = commands.requestImageDeploymentCommand(agent, component, digest, policy,
-                key, actorId, role);
+                deployment.getDeploymentId(), key, actorId, role);
         if (command == null) throw new IllegalStateException("DEPLOYMENT_COMMAND_NOT_CREATED");
         return deployment;
     }
@@ -115,6 +116,34 @@ public class ImageDeploymentService {
     public ImageDeploymentRecord status(String role, String deploymentId) {
         if (!"ADMIN".equals(role) && !"SUPER_ADMIN".equals(role)) throw new IllegalArgumentException("ADMIN_REQUIRED");
         return deployments.selectById(deploymentId);
+    }
+
+    @Transactional
+    public void reconcile(AgentCommandFinishedEvent event) {
+        if (event == null || !AgentCommandService.DEPLOY_IMAGE.equals(event.getCommandType())) return;
+        String deploymentId = deploymentId(event.getResultJson());
+        if (deploymentId == null) return;
+        ImageDeploymentRecord deployment = deployments.selectById(deploymentId);
+        if (deployment == null || !event.getAgentId().equals(deployment.getAgentId())) return;
+        String code = event.getResultCode();
+        String state;
+        boolean terminal = false;
+        if ("PULLED".equals(code)) state = "PULLED";
+        else if ("RUNNING".equals(code)) state = "RUNNING";
+        else if (event.isSuccess() && "SUCCEEDED".equals(code)) { state = "SUCCEEDED"; terminal = true; }
+        else { state = "FAILED"; terminal = true; }
+        deployment.setState(state); deployment.setFailureCode(terminal && !event.isSuccess() ? code : null);
+        deployment.setFailureMessage(terminal && !event.isSuccess() ? event.getResultMessage() : null);
+        deployment.setUpdatedAt(LocalDateTime.now(clock));
+        if (terminal) { deployment.setCompletedAt(deployment.getUpdatedAt()); deployment.setActiveDeploymentKey(null); }
+        deployments.updateById(deployment);
+    }
+
+    private String deploymentId(String json) {
+        if (json == null) return null;
+        try { com.fasterxml.jackson.databind.JsonNode node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(json).get("deploymentId");
+            return node == null ? null : node.asText();
+        } catch (Exception ignored) { return null; }
     }
 
     private void requireSuperAdmin(String role) { if (!"SUPER_ADMIN".equals(role)) throw new IllegalArgumentException("SUPER_ADMIN_REQUIRED"); }

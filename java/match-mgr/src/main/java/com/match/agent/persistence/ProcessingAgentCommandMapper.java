@@ -136,6 +136,15 @@ public interface ProcessingAgentCommandMapper extends BaseMapper<ProcessingAgent
                      @Param("resultMessage") String resultMessage,
                      @Param("resultJson") String resultJson);
 
+    @Update("UPDATE processing_agent_command SET result_code = #{resultCode}, result_message = #{resultMessage}, "
+            + "result_json = #{resultJson}, updated_at = #{updatedAt} WHERE command_id = #{commandId} "
+            + "AND agent_id = #{agentId} AND state = 'RUNNING' AND lease_token = #{leaseToken} "
+            + "AND command_type = 'DEPLOY_IMAGE'")
+    int markImageProgress(@Param("commandId") String commandId, @Param("agentId") String agentId,
+                          @Param("leaseToken") String leaseToken, @Param("resultCode") String resultCode,
+                          @Param("resultMessage") String resultMessage, @Param("resultJson") String resultJson,
+                          @Param("updatedAt") LocalDateTime updatedAt);
+
     @Update("UPDATE processing_agent_command SET result_code = #{resultCode}, "
             + "result_message = #{resultMessage}, result_json = #{resultJson}, updated_at = #{updatedAt} "
             + "WHERE command_id = #{commandId} AND agent_id = #{agentId} "

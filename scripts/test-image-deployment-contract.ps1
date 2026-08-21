@@ -16,4 +16,6 @@ if ($agentCommand -notmatch 'DEPLOY_IMAGE') { throw 'Image command type is missi
 if ($agentCommand -notmatch '\^sha256:\[0-9a-f\]\{64\}') { throw 'Command digest validation is missing' }
 if ($agentCommand -match 'password|credential|rawImage|imageContents') { throw 'Command contract contains sensitive payload fields' }
 if ($schema -notmatch 'uk_image_deployment_active') { throw 'Active deployment uniqueness contract is missing' }
+if ($schema -notmatch 'uk_image_deployment_agent_component_active') { throw 'Agent/component uniqueness contract is missing' }
+if ($agentCommand -notmatch 'deploymentId') { throw 'Deployment identity is missing from command payload' }
 Write-Output 'Image deployment contract checks passed.'
