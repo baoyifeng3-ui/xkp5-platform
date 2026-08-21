@@ -1,0 +1,192 @@
+package com.match.registry.service;
+
+import com.match.registry.persistence.ImageArtifactMapper;
+import com.match.registry.persistence.ImageArtifactRecord;
+import com.match.registry.persistence.ImageUploadMapper;
+import com.match.registry.persistence.ImageUploadRecord;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+public class ImageImportWorkerTest {
+    private static final Instant NOW = Instant.parse("2026-08-21T08:09:10Z");
+    private static final String ARTIFACT_ID = "artifact-1";
+    private static final String UPLOAD_ID = "upload-1";
+    private static final String DIGEST = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    @Rule
+    public TemporaryFolder temp = new TemporaryFolder();
+
+    private ImageArtifactMapper artifacts;
+    private ImageUploadMapper uploads;
+    private RegistryImportTool tool;
+    private Path archive;
+
+    @Before
+    public void setUp() throws Exception {
+        artifacts = mock(ImageArtifactMapper.class);
+        uploads = mock(ImageUploadMapper.class);
+        tool = mock(RegistryImportTool.class);
+        archive = temp.getRoot().toPath().resolve(UPLOAD_ID).resolve("archive");
+        Files.createDirectories(archive.getParent());
+        Files.write(archive, new byte[]{1, 2, 3});
+        when(uploads.selectByArtifactId(ARTIFACT_ID)).thenReturn(upload());
+    }
+
+    @Test
+    public void importsApprovedArtifactAndDeletesStagingOnlyAfterDigestPersistence() throws Exception {
+        when(artifacts.selectById(ARTIFACT_ID)).thenReturn(approved());
+        when(artifacts.claimImport(eq(ARTIFACT_ID), any(LocalDateTime.class))).thenReturn(1);
+        when(tool.importArchive(any(RegistryImportTool.ImportRequest.class)))
+                .thenReturn(new RegistryImportTool.ImportResult(DIGEST, "copied"));
+        when(artifacts.completeImport(eq(ARTIFACT_ID), eq(DIGEST), any(LocalDateTime.class))).thenAnswer(invocation -> {
+            assertTrue("archive must exist until digest persistence succeeds", Files.exists(archive));
+            return 1;
+        });
+
+        assertTrue(worker().process(ARTIFACT_ID));
+
+        verify(artifacts).claimImport(eq(ARTIFACT_ID), any(LocalDateTime.class));
+        verify(artifacts).completeImport(eq(ARTIFACT_ID), eq(DIGEST), any(LocalDateTime.class));
+        assertFalse(Files.exists(archive));
+    }
+
+    @Test
+    public void ignoresArtifactsThatAreNotApproved() {
+        ImageArtifactRecord pending = approved();
+        pending.setReviewState("PENDING_REVIEW");
+        when(artifacts.selectById(ARTIFACT_ID)).thenReturn(pending);
+
+        assertFalse(worker().process(ARTIFACT_ID));
+
+        verify(artifacts, never()).claimImport(eq(ARTIFACT_ID), any(LocalDateTime.class));
+        verify(tool, never()).importArchive(any(RegistryImportTool.ImportRequest.class));
+    }
+
+    @Test
+    public void atomicClaimAllowsOnlyOneImportAttemptPerArtifact() {
+        when(artifacts.selectById(ARTIFACT_ID)).thenReturn(approved());
+        when(artifacts.claimImport(eq(ARTIFACT_ID), any(LocalDateTime.class))).thenReturn(0);
+
+        assertFalse(worker().process(ARTIFACT_ID));
+
+        verify(tool, never()).importArchive(any(RegistryImportTool.ImportRequest.class));
+    }
+
+    @Test
+    public void toolFailureIsRecordedAndStagingIsRetainedForRetry() {
+        when(artifacts.selectById(ARTIFACT_ID)).thenReturn(approved());
+        when(artifacts.claimImport(eq(ARTIFACT_ID), any(LocalDateTime.class))).thenReturn(1);
+        when(tool.importArchive(any(RegistryImportTool.ImportRequest.class)))
+                .thenThrow(new RegistryImportTool.ImportException("TOOL_FAILED", "copy failed"));
+
+        assertFalse(worker().process(ARTIFACT_ID));
+
+        verify(artifacts).failImport(eq(ARTIFACT_ID), eq("TOOL_FAILED"), eq("copy failed"),
+                any(LocalDateTime.class));
+        verify(artifacts, never()).completeImport(eq(ARTIFACT_ID), any(String.class),
+                any(LocalDateTime.class));
+        assertTrue(Files.exists(archive));
+    }
+
+    @Test
+    public void failedArtifactCanBeClaimedAndRetried() throws Exception {
+        ImageArtifactRecord failed = approved();
+        failed.setImportState("FAILED");
+        when(artifacts.selectById(ARTIFACT_ID)).thenReturn(failed);
+        when(artifacts.claimImport(eq(ARTIFACT_ID), any(LocalDateTime.class))).thenReturn(1);
+        when(tool.importArchive(any(RegistryImportTool.ImportRequest.class)))
+                .thenReturn(new RegistryImportTool.ImportResult(DIGEST, "copied"));
+        when(artifacts.completeImport(eq(ARTIFACT_ID), eq(DIGEST), any(LocalDateTime.class))).thenReturn(1);
+
+        assertTrue(worker().process(ARTIFACT_ID));
+
+        verify(tool).importArchive(any(RegistryImportTool.ImportRequest.class));
+    }
+
+    @Test
+    public void readyArtifactReprocessingIsIdempotentAndCleansPersistedStaging() {
+        ImageArtifactRecord ready = approved();
+        ready.setImportState("READY");
+        ready.setRegistryDigest(DIGEST);
+        when(artifacts.selectById(ARTIFACT_ID)).thenReturn(ready);
+
+        assertTrue(worker().process(ARTIFACT_ID));
+
+        verify(artifacts, never()).claimImport(eq(ARTIFACT_ID), any(LocalDateTime.class));
+        verify(tool, never()).importArchive(any(RegistryImportTool.ImportRequest.class));
+        assertFalse(Files.exists(archive));
+    }
+
+    @Test
+    public void invalidToolDigestFailsWithoutPersistingOrDeletingStaging() throws Exception {
+        when(artifacts.selectById(ARTIFACT_ID)).thenReturn(approved());
+        when(artifacts.claimImport(eq(ARTIFACT_ID), any(LocalDateTime.class))).thenReturn(1);
+        when(tool.importArchive(any(RegistryImportTool.ImportRequest.class)))
+                .thenReturn(new RegistryImportTool.ImportResult("SHA256:not-immutable", "copied"));
+
+        assertFalse(worker().process(ARTIFACT_ID));
+
+        verify(artifacts, never()).completeImport(eq(ARTIFACT_ID), any(String.class),
+                any(LocalDateTime.class));
+        verify(artifacts).failImport(eq(ARTIFACT_ID), eq("INVALID_REGISTRY_DIGEST"),
+                any(String.class), any(LocalDateTime.class));
+        assertTrue(Files.exists(archive));
+    }
+
+    @Test
+    public void persistenceFailureRetainsStagingAndRecordsFailure() throws Exception {
+        when(artifacts.selectById(ARTIFACT_ID)).thenReturn(approved());
+        when(artifacts.claimImport(eq(ARTIFACT_ID), any(LocalDateTime.class))).thenReturn(1);
+        when(tool.importArchive(any(RegistryImportTool.ImportRequest.class)))
+                .thenReturn(new RegistryImportTool.ImportResult(DIGEST, "copied"));
+        when(artifacts.completeImport(eq(ARTIFACT_ID), eq(DIGEST), any(LocalDateTime.class))).thenReturn(0);
+
+        assertFalse(worker().process(ARTIFACT_ID));
+
+        verify(artifacts).failImport(eq(ARTIFACT_ID), eq("DIGEST_PERSIST_FAILED"),
+                any(String.class), any(LocalDateTime.class));
+        assertTrue(Files.exists(archive));
+    }
+
+    private ImageImportWorker worker() {
+        return new ImageImportWorker(artifacts, uploads, tool, temp.getRoot().toPath(),
+                Clock.fixed(NOW, ZoneOffset.UTC));
+    }
+
+    private ImageArtifactRecord approved() {
+        ImageArtifactRecord result = new ImageArtifactRecord();
+        result.setArtifactId(ARTIFACT_ID);
+        result.setReviewState("APPROVED");
+        result.setImportState("NOT_IMPORTED");
+        result.setImageRepository("courses/vision");
+        result.setImageTag("1.0.0");
+        return result;
+    }
+
+    private ImageUploadRecord upload() {
+        ImageUploadRecord result = new ImageUploadRecord();
+        result.setUploadId(UPLOAD_ID);
+        result.setArtifactId(ARTIFACT_ID);
+        result.setState("PENDING_REVIEW");
+        return result;
+    }
+}

@@ -9,6 +9,9 @@ public interface ImageUploadMapper extends BaseMapper<ImageUploadRecord> {
     @Select("SELECT * FROM image_upload WHERE upload_id = #{uploadId} FOR UPDATE")
     ImageUploadRecord selectForUpdate(@Param("uploadId") String uploadId);
 
+    @Select("SELECT * FROM image_upload WHERE artifact_id = #{artifactId} LIMIT 1")
+    ImageUploadRecord selectByArtifactId(@Param("artifactId") String artifactId);
+
     @Update("UPDATE image_upload SET state = #{state}, final_sha256 = #{finalSha256}, "
             + "completed_at = #{completedAt}, updated_at = #{updatedAt} "
             + "WHERE upload_id = #{uploadId} AND state = 'UPLOADING'")
