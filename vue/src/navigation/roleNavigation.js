@@ -10,24 +10,23 @@ const userItems = [
 
 const competitionItems = [
   { key: 'mode', label: '模式与环境', route: '/management/competition-mode' },
-  { key: 'preview', label: '比赛预览', route: '/competition-preview' },
+  { key: 'preview', label: '参赛端预览', route: '/competition-preview' },
   { key: 'control', label: '比赛控制', route: '/Admin?tab=timer' },
-  { key: 'rules', label: '赛程赛规编辑', route: '/Admin?tab=rules' },
+  { key: 'rules', label: '赛程赛规', route: '/Admin?tab=rules' },
   { key: 'subjects', label: '试卷题目', route: '/Admin?tab=subjects' },
   { key: 'grading', label: '试卷评分', route: '/Admin?tab=grading' },
-  { key: 'accounts', label: '比赛账号', route: '/Admin?tab=users' },
-  { key: 'devices', label: '比赛设备', route: '/Admin?tab=training' },
-  { key: 'settings', label: '平台设置', route: '/Admin?tab=settings' }
+  { key: 'accounts', label: '比赛账号', route: '/Admin?tab=users' }
 ]
 
 const managementItems = [
   { key: 'home', label: '主页', icon: 'el-icon-house', route: '/management' },
+  { key: 'competition', label: '竞赛管理', icon: 'el-icon-trophy', route: '/management/competition' },
   { key: 'courses', label: '课程管理', icon: 'el-icon-reading', route: '/management/courses' },
   { key: 'resources', label: '资源管理', icon: 'el-icon-folder-opened', route: '/management/resources' },
   { key: 'training', label: '实训管理', icon: 'el-icon-monitor', route: '/management/training' },
-  { key: 'competition', label: '竞赛管理', icon: 'el-icon-trophy', children: competitionItems },
   { key: 'users', label: '用户管理', icon: 'el-icon-user', route: '/management/users' },
   { key: 'devices', label: '设备管理', icon: 'el-icon-cpu', route: '/management/devices' },
+  { key: 'settings', label: '平台设置', icon: 'el-icon-setting', route: '/management/platform-settings' },
   { key: 'image-registry', label: '镜像仓库', icon: 'el-icon-coin', route: '/operations/image-registry' }
 ]
 

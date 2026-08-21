@@ -21,8 +21,10 @@ import ManagementHome from '@/views/management/ManagementHome.vue'
 import CourseManagement from '@/views/management/CourseManagement.vue'
 import ResourceManagement from '@/views/management/ResourceManagement.vue'
 import TrainingManagement from '@/views/management/TrainingManagement.vue'
+import CompetitionManagement from '@/views/management/CompetitionManagement.vue'
 import UserManagement from '@/views/management/UserManagement.vue'
 import DeviceManagement from '@/views/management/DeviceManagement.vue'
+import PlatformSettings from '@/views/management/PlatformSettings.vue'
 import PlatformLicense from '@/views/management/PlatformLicense.vue'
 import CompetitionPreview from '@/views/management/CompetitionPreview.vue'
 import CoursePlatform from '@/views/user/CoursePlatform.vue'
@@ -63,12 +65,14 @@ const routes = [
     path: '/management', component: ManagementShell, meta: { roles: ['ADMIN'] },
     children: [
       { path: '', name: 'ManagementHome', component: ManagementHome },
+      { path: 'competition', name: 'CompetitionManagement', component: CompetitionManagement },
       { path: 'courses', name: 'CourseManagement', component: CourseManagement },
       { path: 'resources', name: 'ResourceManagement', component: ResourceManagement },
       { path: 'training', name: 'TrainingManagement', component: TrainingManagement },
       { path: 'competition-mode', name: 'CompetitionMode', component: CompetitionMode },
       { path: 'users', name: 'UserManagement', component: UserManagement },
       { path: 'devices', name: 'DeviceManagement', component: DeviceManagement },
+      { path: 'platform-settings', name: 'PlatformSettings', component: PlatformSettings },
       { path: 'license', name: 'PlatformLicense', component: PlatformLicense },
       { path: '/competition-preview', name: 'CompetitionPreview', component: CompetitionPreview },
       { path: '/Admin', name: 'Admin', component: Admin }
