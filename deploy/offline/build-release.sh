@@ -50,6 +50,10 @@ env_value() {
   local key=$1
   local fallback=$2
   local value
+  if [[ -n "${!key+x}" ]]; then
+    printf '%s\n' "${!key}"
+    return
+  fi
   value=$(awk -F= -v key="$key" '$1 == key {sub(/^[^=]*=/, ""); print; exit}' "$env_file" 2>/dev/null || true)
   value=${value#\"}; value=${value%\"}; value=${value#\'}; value=${value%\'}
   printf '%s\n' "${value:-$fallback}"

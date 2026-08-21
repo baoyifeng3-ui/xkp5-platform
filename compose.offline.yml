@@ -2,7 +2,7 @@ name: match-v2
 
 services:
   registry:
-    image: ${XKP_REGISTRY_IMAGE:-registry:2}
+    image: ${MATCH_REGISTRY_IMAGE:-${XKP_REGISTRY_IMAGE:-registry:2}}
     pull_policy: never
     restart: unless-stopped
     environment:
@@ -17,7 +17,7 @@ services:
       - ${XKP_REGISTRY_TLS_DIR:-/etc/xkp/registry-tls}:/etc/xkp/registry-tls:ro
 
   registry-importer:
-    image: ${XKP_REGISTRY_IMPORTER_IMAGE:-xkp5/registry-importer:latest}
+    image: ${MATCH_REGISTRY_IMPORTER_IMAGE:-${XKP_REGISTRY_IMPORTER_IMAGE:-xkp5/registry-importer:latest}}
     pull_policy: never
     restart: unless-stopped
     environment:
