@@ -44,6 +44,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 public class AgentCommandService {
     static final String SHUTDOWN_SERVER = "SHUTDOWN_SERVER";
     static final String OPEN_ROOT_TERMINAL = "OPEN_ROOT_TERMINAL";
+    static final String DEPLOY_IMAGE = "DEPLOY_IMAGE";
     static final int COMMAND_VERSION = 1;
     static final int MAX_DELIVERY_ATTEMPTS = 5;
     static final long LEASE_SECONDS = 30;
@@ -322,6 +323,60 @@ public class AgentCommandService {
             if (concurrent != null) {
                 return toView(concurrent);
             }
+            throw collision;
+        }
+    }
+
+    @Transactional
+    public AgentCommandView requestImageDeploymentCommand(ProcessingAgentRecord agent, String componentType,
+                                                           String registryDigest, String updatePolicy,
+                                                           String idempotencyKey, Integer requesterUserId,
+                                                           String requesterRole) {
+        String agentId = requireAgentId(agent);
+        if (mapper.selectEnabledAgentForUpdate(agentId) == null) {
+            throw new IllegalArgumentException("Processing server is disabled");
+        }
+        if (!"ANNOTATION".equals(componentType) && !"EDITOR".equals(componentType)) {
+            throw new IllegalArgumentException("Image component is invalid");
+        }
+        if (registryDigest == null || !Pattern.matches("^sha256:[0-9a-f]{64}$", registryDigest)) {
+            throw new IllegalArgumentException("Image deployment requires an immutable digest");
+        }
+        if (!"UPDATE_CONTAINERS".equals(updatePolicy) && !"IMAGE_ONLY".equals(updatePolicy)) {
+            throw new IllegalArgumentException("Image update policy is invalid");
+        }
+        if (idempotencyKey == null || idempotencyKey.trim().isEmpty() || idempotencyKey.length() > 128) {
+            throw new IllegalArgumentException("Image deployment idempotency key is invalid");
+        }
+        String dedupKey = agentId + ":" + DEPLOY_IMAGE + ":" + idempotencyKey;
+        ProcessingAgentCommandRecord existing = mapper.selectActiveByDedup(agentId, DEPLOY_IMAGE, dedupKey);
+        if (existing != null) return toView(existing);
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("agentId", agentId);
+        payload.put("componentType", componentType);
+        payload.put("registryDigest", registryDigest);
+        payload.put("updatePolicy", updatePolicy);
+        payload.put("idempotencyKey", idempotencyKey);
+        final String payloadJson;
+        try {
+            payloadJson = objectMapper.writeValueAsString(payload);
+        } catch (IOException exception) {
+            throw new IllegalArgumentException("Image deployment payload is invalid", exception);
+        }
+        LocalDateTime now = utcNow();
+        ProcessingAgentCommandRecord record = new ProcessingAgentCommandRecord();
+        record.setCommandId(UUID.randomUUID().toString()); record.setAgentId(agentId);
+        record.setCommandType(DEPLOY_IMAGE); record.setCommandVersion(COMMAND_VERSION);
+        record.setPayloadJson(payloadJson); record.setState("PENDING"); record.setActiveDedupKey(dedupKey);
+        record.setRequesterUserId(requesterUserId); record.setRequesterRole(requireRole(requesterRole));
+        record.setCorrelationId(UUID.randomUUID().toString()); record.setRequestedAt(now);
+        record.setAvailableAt(now); record.setAttemptCount(0); record.setUpdatedAt(now);
+        try {
+            mapper.insert(record);
+            return toView(record);
+        } catch (DuplicateKeyException collision) {
+            ProcessingAgentCommandRecord concurrent = mapper.selectActiveByDedup(agentId, DEPLOY_IMAGE, dedupKey);
+            if (concurrent != null) return toView(concurrent);
             throw collision;
         }
     }
