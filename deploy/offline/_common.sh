@@ -184,8 +184,10 @@ restore_database() {
 
 check_loaded_images() {
   local version=$1
+  local registry_image=${2:-${MATCH_REGISTRY_IMAGE:-${XKP_REGISTRY_IMAGE:-registry:2}}}
+  local registry_importer_image=${3:-${MATCH_REGISTRY_IMPORTER_IMAGE:-${XKP_REGISTRY_IMPORTER_IMAGE:-xkp5/registry-importer:latest}}}
   local image architecture
-  for image in "match-v2_java:$version" "match-v2_vue:$version" mysql:8.0 delron/fastdfs:latest registry:2 "${XKP_REGISTRY_IMPORTER_IMAGE:-xkp5/registry-importer:latest}"; do
+  for image in "match-v2_java:$version" "match-v2_vue:$version" mysql:8.0 delron/fastdfs:latest "$registry_image" "$registry_importer_image"; do
     architecture=$(docker image inspect --format '{{.Architecture}}' "$image" 2>/dev/null) || die "Image not loaded: $image"
     [[ "$architecture" == amd64 ]] || die "Image $image has unsupported architecture: $architecture"
   done

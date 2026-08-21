@@ -46,6 +46,18 @@ done
 [[ -d "$REPO_ROOT/download/dataset" ]] || die "Dataset directory not found"
 [[ -d "$REPO_ROOT/python" ]] || die "Scoring directory not found"
 
+env_value() {
+  local key=$1
+  local fallback=$2
+  local value
+  value=$(awk -F= -v key="$key" '$1 == key {sub(/^[^=]*=/, ""); print; exit}' "$env_file" 2>/dev/null || true)
+  value=${value#\"}; value=${value%\"}; value=${value#\'}; value=${value%\'}
+  printf '%s\n' "${value:-$fallback}"
+}
+
+registry_image=$(env_value XKP_REGISTRY_IMAGE registry:2)
+registry_importer_image=$(env_value XKP_REGISTRY_IMPORTER_IMAGE xkp5/registry-importer:latest)
+
 release_name="match-v2-$version"
 stage_dir="$output_dir/$release_name"
 archive_file="$output_dir/$release_name.tar.gz"
@@ -95,7 +107,7 @@ vue_image_id=$(compose_source images -q vue | head -n 1)
 docker tag "$java_image_id" "match-v2_java:$version"
 docker tag "$vue_image_id" "match-v2_vue:$version"
 
-check_loaded_images "$version"
+check_loaded_images "$version" "$registry_image" "$registry_importer_image"
 
 log "Stopping application writes"
 source_stopped=1
@@ -120,8 +132,8 @@ docker save \
   "match-v2_vue:$version" \
   mysql:8.0 \
   delron/fastdfs:latest \
-  registry:2 \
-  "${XKP_REGISTRY_IMPORTER_IMAGE:-xkp5/registry-importer:latest}" \
+  "$registry_image" \
+  "$registry_importer_image" \
   | gzip -c > "$stage_dir/images/match-v2-images.tar.gz"
 
 dataset_file_count=$(find "$REPO_ROOT/download/dataset" -type f | wc -l | tr -d ' ')
@@ -145,6 +157,8 @@ fi
   printf 'MATCH_SCORING_FILE_COUNT=%q\n' "$scoring_file_count"
   printf 'MATCH_FASTDFS_FILE_COUNT=%q\n' "$fastdfs_file_count"
   printf 'MATCH_FASTDFS_SAMPLE_PATH=%q\n' "$fastdfs_sample"
+  printf 'MATCH_REGISTRY_IMAGE=%q\n' "$registry_image"
+  printf 'MATCH_REGISTRY_IMPORTER_IMAGE=%q\n' "$registry_importer_image"
 } > "$stage_dir/release.env"
 
 {
@@ -157,8 +171,8 @@ fi
   printf 'Vue image: %s\n' "$(docker image inspect --format '{{.Id}}' "match-v2_vue:$version")"
   printf 'MySQL image: %s\n' "$(docker image inspect --format '{{.Id}}' mysql:8.0)"
   printf 'FastDFS image: %s\n' "$(docker image inspect --format '{{.Id}}' delron/fastdfs:latest)"
-  printf 'Registry image: %s\n' "$(docker image inspect --format '{{.Id}}' registry:2)"
-  printf 'Registry importer image: %s\n' "$(docker image inspect --format '{{.Id}}' "${XKP_REGISTRY_IMPORTER_IMAGE:-xkp5/registry-importer:latest}")"
+  printf 'Registry image (%s): %s\n' "$registry_image" "$(docker image inspect --format '{{.Id}}' "$registry_image")"
+  printf 'Registry importer image (%s): %s\n' "$registry_importer_image" "$(docker image inspect --format '{{.Id}}' "$registry_importer_image")"
   printf 'Dataset files: %s\n' "$dataset_file_count"
   printf 'Scoring files: %s\n' "$scoring_file_count"
   printf 'FastDFS storage files: %s\n' "$fastdfs_file_count"
