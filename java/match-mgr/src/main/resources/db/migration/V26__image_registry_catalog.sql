@@ -134,6 +134,8 @@ CREATE TABLE image_deployment (
     update_policy VARCHAR(24) NOT NULL,
     state VARCHAR(24) NOT NULL,
     active_deployment_key VARCHAR(128) NULL,
+    active_agent_component_key VARCHAR(128) NULL,
+    command_id VARCHAR(36) NULL,
     failure_code VARCHAR(64) NULL,
     failure_message VARCHAR(512) NULL,
     requested_by INT NOT NULL,
@@ -142,7 +144,7 @@ CREATE TABLE image_deployment (
     updated_at DATETIME(3) NOT NULL,
     PRIMARY KEY (deployment_id),
     UNIQUE KEY uk_image_deployment_active (active_deployment_key),
-    UNIQUE KEY uk_image_deployment_agent_component_active (agent_id, component_type, active_deployment_key),
+    UNIQUE KEY uk_image_deployment_agent_component_active (active_agent_component_key),
     KEY idx_image_deployment_agent_component (agent_id, component_type, requested_at),
     CONSTRAINT chk_image_deployment_target_digest CHECK (
         BINARY target_digest = BINARY LOWER(target_digest)

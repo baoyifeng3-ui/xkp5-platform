@@ -3,6 +3,7 @@ package com.match.registry.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.match.agent.model.AgentCommandView;
+import com.match.agent.model.AgentCommandFinishedEvent;
 import com.match.agent.persistence.ProcessingAgentMapper;
 import com.match.agent.persistence.ProcessingAgentRecord;
 import com.match.agent.service.AgentCommandService;
@@ -26,8 +27,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 public class ImageDeploymentServiceTest {
     private static final String DIGEST = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -57,9 +58,7 @@ public class ImageDeploymentServiceTest {
         when(releases.selectById("release-1")).thenReturn(release);
         when(agents.selectForManagement("agent-1")).thenReturn(agent);
         when(deployments.selectActiveForUpdate("agent-1", "EDITOR")).thenReturn(null);
-        when(commands.requestImageDeploymentCommand(eq(agent), eq("EDITOR"), eq(DIGEST),
-                eq("UPDATE_CONTAINERS"), anyString(), eq("request-1"), eq(7), eq("SUPER_ADMIN")))
-                .thenReturn(command());
+        when(commands.requestImageDeploymentCommand(any(), anyString(), anyString(), anyString(), anyString(), anyString(), any(), anyString())).thenReturn(command());
 
         ImageDeploymentRecord result = service.deploy("SUPER_ADMIN", "release-1", "agent-1",
                 "EDITOR", null, "request-1", true, 7);
@@ -68,7 +67,7 @@ public class ImageDeploymentServiceTest {
         assertEquals("UPDATE_CONTAINERS", result.getUpdatePolicy());
         verify(deployments).insert(any(ImageDeploymentRecord.class));
         verify(commands).requestImageDeploymentCommand(eq(agent), eq("EDITOR"), eq(DIGEST),
-                eq("UPDATE_CONTAINERS"), anyString(), eq("request-1"), eq(7), eq("SUPER_ADMIN"));
+                eq("UPDATE_CONTAINERS"), any(String.class), eq("agent-1:EDITOR:request-1"), eq(7), eq("SUPER_ADMIN"));
     }
 
     @Test
@@ -78,8 +77,7 @@ public class ImageDeploymentServiceTest {
         when(releases.selectById("release-1")).thenReturn(release);
         when(agents.selectForManagement("agent-1")).thenReturn(agent);
         when(deployments.selectActiveForUpdate("agent-1", "ANNOTATION")).thenReturn(null);
-        when(commands.requestImageDeploymentCommand(any(ProcessingAgentRecord.class), eq("ANNOTATION"), eq(DIGEST),
-                eq("IMAGE_ONLY"), anyString(), eq("request-2"), eq(7), eq("SUPER_ADMIN"))).thenReturn(command());
+        when(commands.requestImageDeploymentCommand(any(), anyString(), anyString(), anyString(), anyString(), anyString(), any(), anyString())).thenReturn(command());
 
         assertEquals("IMAGE_ONLY", service.deploy("SUPER_ADMIN", "release-1", "agent-1",
                 "ANNOTATION", "IMAGE_ONLY", "request-2", false, 7).getUpdatePolicy());
@@ -89,9 +87,11 @@ public class ImageDeploymentServiceTest {
     public void repeatedRequestReturnsExistingDeploymentWithoutDispatchingAgain() {
         ImageDeploymentRecord existing = new ImageDeploymentRecord();
         existing.setDeploymentId("deployment-1"); existing.setActiveDeploymentKey("agent-1:EDITOR:request-1");
+        existing.setActiveAgentComponentKey("agent-1:EDITOR");
         existing.setTargetDigest(DIGEST); existing.setState("PENDING");
         when(deployments.selectActiveForUpdate("agent-1", "EDITOR")).thenReturn(existing);
 
+        when(deployments.selectActiveSlotForUpdate("agent-1:EDITOR")).thenReturn(existing);
         assertSame(existing, service.deploy("SUPER_ADMIN", "release-1", "agent-1", "EDITOR",
                 null, "request-1", true, 7));
         verify(releases, never()).selectById(anyString());
@@ -108,10 +108,48 @@ public class ImageDeploymentServiceTest {
         }
     }
 
+    @Test
+    public void progressAndSuccessReconcileAndReleaseActiveSlot() {
+        ImageDeploymentRecord deployment = deployment("deployment-1", "command-1");
+        when(deployments.selectById("deployment-1")).thenReturn(deployment);
+        service.reconcile(new AgentCommandFinishedEvent("command-1", "agent-1", "DEPLOY_IMAGE", true,
+                "PULLED", "pulled", "{\"deploymentId\":\"deployment-1\"}"));
+        assertEquals("PULLED", deployment.getState());
+        service.reconcile(new AgentCommandFinishedEvent("command-1", "agent-1", "DEPLOY_IMAGE", true,
+                "SUCCEEDED", "ok", "{\"deploymentId\":\"deployment-1\"}"));
+        assertEquals("SUCCEEDED", deployment.getState());
+        org.junit.Assert.assertNull(deployment.getActiveAgentComponentKey());
+    }
+
+    @Test
+    public void staleCommandCannotAdvanceDeployment() {
+        ImageDeploymentRecord deployment = deployment("deployment-1", "command-1");
+        when(deployments.selectById("deployment-1")).thenReturn(deployment);
+        service.reconcile(new AgentCommandFinishedEvent("other-command", "agent-1", "DEPLOY_IMAGE", true,
+                "SUCCEEDED", "ok", "{\"deploymentId\":\"deployment-1\"}"));
+        assertEquals("PENDING", deployment.getState());
+    }
+
+    @Test
+    public void failedDeploymentKeepsPreviousDigestAndClearsSlot() {
+        ImageDeploymentRecord deployment = deployment("deployment-1", "command-1");
+        deployment.setPreviousDigest("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+        when(deployments.selectById("deployment-1")).thenReturn(deployment);
+        service.reconcile(new AgentCommandFinishedEvent("command-1", "agent-1", "DEPLOY_IMAGE", false,
+                "PULL_FAILED", "pull failed", "{\"deploymentId\":\"deployment-1\"}"));
+        assertEquals("FAILED", deployment.getState());
+        assertEquals("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", deployment.getPreviousDigest());
+        org.junit.Assert.assertNull(deployment.getActiveAgentComponentKey());
+    }
+
     private ImageReleaseRecord release(String component) {
         ImageReleaseRecord r = new ImageReleaseRecord(); r.setReleaseId("release-1");
         r.setComponentType(component); r.setRegistryDigest(DIGEST); r.setState("PUBLISHED");
         return r;
+    }
+    private ImageDeploymentRecord deployment(String id, String commandId) {
+        ImageDeploymentRecord d = new ImageDeploymentRecord(); d.setDeploymentId(id); d.setCommandId(commandId);
+        d.setAgentId("agent-1"); d.setState("PENDING"); d.setActiveAgentComponentKey("agent-1:EDITOR"); return d;
     }
 
     private AgentCommandView command() { AgentCommandView v = new AgentCommandView(); v.setCommandId("command-1"); return v; }

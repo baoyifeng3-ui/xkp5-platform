@@ -63,8 +63,10 @@ public class ImageDeploymentService {
         if (idempotencyKey == null || idempotencyKey.trim().isEmpty() || idempotencyKey.length() > 128) {
             throw new IllegalArgumentException("IDEMPOTENCY_KEY_REQUIRED");
         }
-        ImageDeploymentRecord active = deployments.selectActiveForUpdate(agentId, component);
         String key = agentId + ":" + component + ":" + idempotencyKey;
+        if (key.length() > 128) throw new IllegalArgumentException("IDEMPOTENCY_KEY_REQUIRED");
+        String slotKey = agentId + ":" + component;
+        ImageDeploymentRecord active = deployments.selectActiveSlotForUpdate(slotKey);
         if (active != null) {
             if (key.equals(active.getActiveDeploymentKey())) return active;
             throw new IllegalArgumentException("DEPLOYMENT_ALREADY_ACTIVE");
@@ -86,15 +88,18 @@ public class ImageDeploymentService {
         ImageDeploymentRecord prior = deployments.selectLatestSucceeded(agentId, component);
         if (prior != null) deployment.setPreviousDigest(prior.getTargetDigest());
         deployment.setUpdatePolicy(policy); deployment.setState("PENDING"); deployment.setActiveDeploymentKey(key);
+        deployment.setActiveAgentComponentKey(slotKey);
         deployment.setRequestedBy(actorId); deployment.setRequestedAt(now); deployment.setUpdatedAt(now);
         try { deployments.insert(deployment); } catch (DuplicateKeyException collision) {
-            ImageDeploymentRecord concurrent = deployments.selectActiveForUpdate(agentId, component);
+            ImageDeploymentRecord concurrent = deployments.selectActiveSlotForUpdate(slotKey);
             if (concurrent != null && key.equals(concurrent.getActiveDeploymentKey())) return concurrent;
             throw collision;
         }
         AgentCommandView command = commands.requestImageDeploymentCommand(agent, component, digest, policy,
                 deployment.getDeploymentId(), key, actorId, role);
         if (command == null) throw new IllegalStateException("DEPLOYMENT_COMMAND_NOT_CREATED");
+        deployment.setCommandId(command.getCommandId());
+        deployments.updateById(deployment);
         return deployment;
     }
 
@@ -124,7 +129,8 @@ public class ImageDeploymentService {
         String deploymentId = deploymentId(event.getResultJson());
         if (deploymentId == null) return;
         ImageDeploymentRecord deployment = deployments.selectById(deploymentId);
-        if (deployment == null || !event.getAgentId().equals(deployment.getAgentId())) return;
+        if (deployment == null || !event.getAgentId().equals(deployment.getAgentId())
+                || !event.getCommandId().equals(deployment.getCommandId())) return;
         String code = event.getResultCode();
         String state;
         boolean terminal = false;
@@ -135,7 +141,7 @@ public class ImageDeploymentService {
         deployment.setState(state); deployment.setFailureCode(terminal && !event.isSuccess() ? code : null);
         deployment.setFailureMessage(terminal && !event.isSuccess() ? event.getResultMessage() : null);
         deployment.setUpdatedAt(LocalDateTime.now(clock));
-        if (terminal) { deployment.setCompletedAt(deployment.getUpdatedAt()); deployment.setActiveDeploymentKey(null); }
+        if (terminal) { deployment.setCompletedAt(deployment.getUpdatedAt()); deployment.setActiveDeploymentKey(null); deployment.setActiveAgentComponentKey(null); }
         deployments.updateById(deployment);
     }
 

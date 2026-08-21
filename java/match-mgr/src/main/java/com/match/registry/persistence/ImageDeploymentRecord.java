@@ -20,6 +20,8 @@ public class ImageDeploymentRecord {
     private String updatePolicy;
     private String state;
     private String activeDeploymentKey;
+    private String activeAgentComponentKey;
+    private String commandId;
     private String failureCode;
     private String failureMessage;
     private Integer requestedBy;

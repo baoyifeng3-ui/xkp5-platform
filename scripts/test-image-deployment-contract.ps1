@@ -17,5 +17,7 @@ if ($agentCommand -notmatch '\^sha256:\[0-9a-f\]\{64\}') { throw 'Command digest
 if ($agentCommand -match 'password|credential|rawImage|imageContents') { throw 'Command contract contains sensitive payload fields' }
 if ($schema -notmatch 'uk_image_deployment_active') { throw 'Active deployment uniqueness contract is missing' }
 if ($schema -notmatch 'uk_image_deployment_agent_component_active') { throw 'Agent/component uniqueness contract is missing' }
+if ($schema -notmatch 'active_agent_component_key VARCHAR') { throw 'Active slot column is missing' }
+if ($schema -notmatch 'command_id VARCHAR') { throw 'Deployment command identity column is missing' }
 if ($agentCommand -notmatch 'deploymentId') { throw 'Deployment identity is missing from command payload' }
 Write-Output 'Image deployment contract checks passed.'
