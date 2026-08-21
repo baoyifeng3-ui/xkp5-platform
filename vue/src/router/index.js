@@ -48,15 +48,15 @@ const routes = [
   { path: '/login', name: 'Login', component: Login },
   { path: '/change-password', name: 'ChangePassword', component: ChangePassword },
   {
-    path: '/operations', component: OperationsShell, meta: { roles: ['SUPER_ADMIN'] },
+    path: '/operations', component: OperationsShell, meta: { roles: ['ADMIN', 'SUPER_ADMIN'] },
     children: [
-      { path: '', name: 'OperationsHome', component: OperationsHome },
-      { path: 'processing-agents', name: 'ProcessingAgents', component: ProcessingAgents },
-      { path: 'container-templates', name: 'ContainerTemplates', component: ContainerTemplates },
-      { path: 'competition-environments', name: 'CompetitionEnvironments', component: CompetitionEnvironments },
+      { path: '', name: 'OperationsHome', component: OperationsHome, meta: { roles: ['SUPER_ADMIN'] } },
+      { path: 'processing-agents', name: 'ProcessingAgents', component: ProcessingAgents, meta: { roles: ['SUPER_ADMIN'] } },
+      { path: 'container-templates', name: 'ContainerTemplates', component: ContainerTemplates, meta: { roles: ['SUPER_ADMIN'] } },
+      { path: 'competition-environments', name: 'CompetitionEnvironments', component: CompetitionEnvironments, meta: { roles: ['SUPER_ADMIN'] } },
       { path: 'image-registry', name: 'ImageRegistry', component: ImageRegistryView, meta: { roles: ['ADMIN', 'SUPER_ADMIN'] } },
-      { path: 'administrators', name: 'AdministratorManagement', component: AdministratorManagement },
-      { path: 'license', name: 'LicenseDiagnostics', component: LicenseDiagnostics }
+      { path: 'administrators', name: 'AdministratorManagement', component: AdministratorManagement, meta: { roles: ['SUPER_ADMIN'] } },
+      { path: 'license', name: 'LicenseDiagnostics', component: LicenseDiagnostics, meta: { roles: ['SUPER_ADMIN'] } }
     ]
   },
   {

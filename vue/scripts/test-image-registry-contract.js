@@ -15,6 +15,9 @@ const deployment = source('src/components/operations/ImageDeploymentDialog.vue')
 
 assert.ok(router.includes("path: 'image-registry'"), 'registry route must be registered')
 assert.ok(router.includes("roles: ['ADMIN', 'SUPER_ADMIN']"), 'route must be admin-only')
+assert.ok(router.includes("path: '/operations', component: OperationsShell, meta: { roles: ['ADMIN', 'SUPER_ADMIN'] }"), 'operations shell must be reachable for registry readers')
+assert.ok(router.includes("path: '', name: 'OperationsHome', component: OperationsHome, meta: { roles: ['SUPER_ADMIN'] }"), 'operations home must remain super-admin only')
+assert.ok(router.includes("path: 'processing-agents', name: 'ProcessingAgents', component: ProcessingAgents, meta: { roles: ['SUPER_ADMIN'] }"), 'processing agents must remain super-admin only')
 assert.ok(navigation.includes('/operations/image-registry'), 'operations navigation must expose registry')
 assert.ok(!navigation.includes("route: '/course-platform/image-registry'"), 'participant navigation must not expose registry')
 
@@ -35,6 +38,8 @@ assert.ok(view.includes("componentType === 'EDITOR'"), 'editor releases must be 
 assert.ok(view.includes('PENDING_REVIEW'), 'pending review state must be visible')
 assert.ok(view.includes('failureMessage'), 'deployment failures must be visible')
 assert.ok(view.includes('rollbackImageDeployment'), 'rollback must be available')
+assert.ok(view.includes('() => this.refreshDeployments()'), 'deployment polling must retain component context')
+assert.ok(view.includes('.catch(() => {})'), 'deployment polling errors must not create unhandled rejections')
 
 assert.ok(upload.includes('getImageUploadStatus'), 'upload dialog must resume from server status')
 assert.ok(upload.includes('localStorage'), 'unfinished upload identity must survive a reload')

@@ -75,7 +75,7 @@ export default {
     filteredReleases () { const term = this.query.toLowerCase(); return this.releases.filter(item => (!this.componentFilter || item.componentType === this.componentFilter) && (!term || `${item.version || ''} ${item.registryDigest || ''} ${item.groupId || ''}`.toLowerCase().includes(term))) },
     filteredDeployments () { const term = this.query.toLowerCase(); return this.deployments.filter(item => (!this.componentFilter || item.componentType === this.componentFilter) && (!term || `${item.agentName || ''} ${item.agentId || ''} ${item.targetDigest || ''}`.toLowerCase().includes(term))) }
   },
-  created () { this.loadAll(); this.poller = setInterval(this.refreshDeployments, 5000) },
+  created () { this.loadAll(); this.poller = setInterval(() => this.refreshDeployments().catch(() => {}), 5000) },
   beforeDestroy () { clearInterval(this.poller) },
   methods: {
     async loadAll () {
