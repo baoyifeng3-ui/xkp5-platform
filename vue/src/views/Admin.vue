@@ -291,7 +291,7 @@
           </section>
         </el-tab-pane>
 
-        <el-tab-pane name="training">
+        <el-tab-pane v-if="false" name="training">
           <span slot="label" class="admin-tab-label" title="比赛设备"><i class="el-icon-monitor" /><span>比赛设备</span></span>
           <section class="workspace-page training-panel">
             <header class="workspace-heading"><div><h1>比赛设备</h1><p>查看比赛服务器、节点与端口运行状态</p></div><el-button v-if="canManageCompetitionDevices" type="primary" icon="el-icon-plus" @click="newServer">新增服务器</el-button></header>
@@ -333,7 +333,7 @@
           </section>
         </el-tab-pane>
 
-        <el-tab-pane name="settings">
+        <el-tab-pane v-if="false" name="settings">
           <span slot="label" class="admin-tab-label" title="平台设置"><i class="el-icon-setting" /><span>平台设置</span></span>
           <section class="workspace-page settings-panel">
             <header class="workspace-heading"><div><h1>平台设置</h1><p>平台基础信息</p></div></header>
@@ -1007,7 +1007,7 @@ export default {
   },
   methods: {
     normalizeAdminTab (value) {
-      return ['timer', 'rules', 'subjects', 'grading', 'users', 'training', 'settings'].includes(String(value || ''))
+      return ['timer', 'rules', 'subjects', 'grading', 'users'].includes(String(value || ''))
         ? String(value)
         : 'timer'
     },

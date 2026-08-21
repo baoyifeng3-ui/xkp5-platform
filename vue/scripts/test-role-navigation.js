@@ -40,4 +40,9 @@ const routerSource = fs.readFileSync(path.join(__dirname, '../src/router/index.j
 assert.match(routerSource, new RegExp("path:\\s*['\"]competition['\"],\\s*name:\\s*['\"]CompetitionManagement['\"]"))
 assert.match(routerSource, new RegExp("path:\\s*['\"]platform-settings['\"],\\s*name:\\s*['\"]PlatformSettings['\"]"))
 
+const adminSource = fs.readFileSync(path.join(__dirname, '../src/views/Admin.vue'), 'utf8')
+assert.match(adminSource, /<el-tab-pane\s+v-if="false"\s+name=["']training["']/)
+assert.match(adminSource, /<el-tab-pane\s+v-if="false"\s+name=["']settings["']/)
+assert.match(adminSource, /\['timer',\s*'rules',\s*'subjects',\s*'grading',\s*'users'\]/)
+
 console.log('role navigation tests passed')
