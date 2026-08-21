@@ -27,13 +27,15 @@ const managementItems = [
   { key: 'training', label: '实训管理', icon: 'el-icon-monitor', route: '/management/training' },
   { key: 'competition', label: '竞赛管理', icon: 'el-icon-trophy', children: competitionItems },
   { key: 'users', label: '用户管理', icon: 'el-icon-user', route: '/management/users' },
-  { key: 'devices', label: '设备管理', icon: 'el-icon-cpu', route: '/management/devices' }
+  { key: 'devices', label: '设备管理', icon: 'el-icon-cpu', route: '/management/devices' },
+  { key: 'image-registry', label: '镜像仓库', icon: 'el-icon-coin', route: '/operations/image-registry' }
 ]
 
 const operationsItems = [
   { key: 'home', label: '运维主页', icon: 'el-icon-odometer', route: '/operations' },
   { key: 'processing-agents', label: '处理服务器', icon: 'el-icon-cpu', route: '/operations/processing-agents' },
   { key: 'container-templates', label: '容器模板', icon: 'el-icon-box', route: '/operations/container-templates' },
+  { key: 'image-registry', label: '镜像仓库', icon: 'el-icon-coin', route: '/operations/image-registry', roles: [ADMIN, SUPER_ADMIN] },
   { key: 'competition-environments', label: '比赛容器', icon: 'el-icon-trophy', route: '/operations/competition-environments' },
   { key: 'administrators', label: '管理员账号', icon: 'el-icon-user', route: '/operations/administrators' },
   { key: 'license', label: '授权诊断', icon: 'el-icon-key', route: '/operations/license' }

@@ -34,6 +34,7 @@ import LicenseDiagnostics from '@/views/operations/LicenseDiagnostics.vue'
 import ProcessingAgents from '@/views/operations/ProcessingAgents.vue'
 import ContainerTemplates from '@/views/operations/ContainerTemplates.vue'
 import CompetitionEnvironments from '@/views/operations/CompetitionEnvironments.vue'
+import ImageRegistryView from '@/views/operations/ImageRegistryView.vue'
 import CompetitionMode from '@/views/management/CompetitionMode.vue'
 import ChangePassword from '@/views/ChangePassword.vue'
 import CompetitionPractical from '@/views/competition/CompetitionPractical.vue'
@@ -53,6 +54,7 @@ const routes = [
       { path: 'processing-agents', name: 'ProcessingAgents', component: ProcessingAgents },
       { path: 'container-templates', name: 'ContainerTemplates', component: ContainerTemplates },
       { path: 'competition-environments', name: 'CompetitionEnvironments', component: CompetitionEnvironments },
+      { path: 'image-registry', name: 'ImageRegistry', component: ImageRegistryView, meta: { roles: ['ADMIN', 'SUPER_ADMIN'] } },
       { path: 'administrators', name: 'AdministratorManagement', component: AdministratorManagement },
       { path: 'license', name: 'LicenseDiagnostics', component: LicenseDiagnostics }
     ]

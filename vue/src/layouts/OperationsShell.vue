@@ -5,9 +5,9 @@
   </el-container>
 </template>
 <script>
-const { operationsItems } = require('@/navigation/roleNavigation')
-import { clearSession, getUserName } from '@/utils/auth'
+const { operationsItems, SUPER_ADMIN } = require('@/navigation/roleNavigation')
+import { clearSession, getUserName, getRole } from '@/utils/auth'
 import { logoutUser, startUserActivity, stopUserActivity } from '@/services/userActivity'
-export default { data: () => ({ items: operationsItems }), computed: { userName: () => getUserName() || '超级管理员' }, mounted () { startUserActivity() }, beforeDestroy () { stopUserActivity() }, methods: { async logout () { try { await logoutUser() } finally { clearSession(); this.$router.replace('/login') } } } }
+export default { data: () => ({ items: getRole() === SUPER_ADMIN ? operationsItems : operationsItems.filter(item => item.roles && item.roles.includes(getRole())) }), computed: { userName: () => getUserName() || '管理员' }, mounted () { startUserActivity() }, beforeDestroy () { stopUserActivity() }, methods: { async logout () { try { await logoutUser() } finally { clearSession(); this.$router.replace('/login') } } } }
 </script>
 <style>@import url(../assets/style/platform-shell.css);</style>

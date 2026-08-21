@@ -30,6 +30,19 @@ Boot 基线，但后续提交、版本和部署均与原 `competition` 仓库分
 | FastDFS | 22122 / 23000 / 8888 |
 | 处理 Agent TLS | https://管理服务器固定IP:19443 |
 
+## 私有镜像仓库
+
+超级管理员可在“镜像仓库”上传可续传的 Docker `save` 归档、审批并异步导入，按不可变
+摘要独立发布图像标注或代码编辑镜像，再逐台推送到 Agent。普通管理员仅能查看目录、
+摘要和推送状态。默认推送策略会在健康检查保护下更新容器，也可选择只缓存镜像；失败时
+保留上一可用版本供显式回滚。
+
+生产启用前必须配置 Registry 内部 CA、持久化 staging/import 目录和部署密钥。单文件
+上限默认 20 GiB，总暂存容量默认 100 GiB，Registry 历史由超级管理员确认无引用后手工
+清理。详细部署和轮转步骤见 `deploy/registry/README.md` 与
+`docs/agents/operator-guide.md`。在真实 TLS Registry、导入器、fake Agent 和专用测试
+账号齐备前，自动合同测试不代表真实端到端推送已验收。
+
 ## 第一次配置
 
 环境要求：JDK 17、Maven 3.9、Node.js 16、Docker Desktop 与 Docker Compose。
