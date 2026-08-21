@@ -67,6 +67,8 @@ public class ImageDeploymentService {
         String key = agentId + ":" + component + ":" + idempotencyKey;
         if (key.length() > 128) throw new IllegalArgumentException("IDEMPOTENCY_KEY_REQUIRED");
         String slotKey = agentId + ":" + component;
+        ImageDeploymentRecord sameRequest = deployments.selectByIdempotencyKeyForUpdate(agentId, component, idempotencyKey);
+        if (sameRequest != null) return sameRequest;
         ImageDeploymentRecord active = deployments.selectActiveSlotForUpdate(slotKey);
         if (active != null) {
             if (key.equals(active.getActiveDeploymentKey())) return active;
@@ -90,6 +92,7 @@ public class ImageDeploymentService {
         if (prior != null) deployment.setPreviousDigest(prior.getTargetDigest());
         deployment.setUpdatePolicy(policy); deployment.setState("PENDING"); deployment.setActiveDeploymentKey(key);
         deployment.setActiveAgentComponentKey(slotKey);
+        deployment.setIdempotencyKey(idempotencyKey);
         deployment.setRequestedBy(actorId); deployment.setRequestedAt(now); deployment.setUpdatedAt(now);
         try { deployments.insert(deployment); } catch (DuplicateKeyException collision) {
             ImageDeploymentRecord concurrent = deployments.selectActiveSlotForUpdate(slotKey);
@@ -128,8 +131,9 @@ public class ImageDeploymentService {
     public void reconcile(AgentCommandFinishedEvent event) {
         if (event == null || !AgentCommandService.DEPLOY_IMAGE.equals(event.getCommandType())) return;
         ImageDeploymentRecord deployment = deployments.selectByCommandIdForUpdate(event.getCommandId());
-        if (deployment == null || !event.getAgentId().equals(deployment.getAgentId())
+        if (deployment == null || !Objects.equals(event.getAgentId(), deployment.getAgentId())
                 || !Objects.equals(event.getCommandId(), deployment.getCommandId())) return;
+        if ("SUCCEEDED".equals(deployment.getState()) || "FAILED".equals(deployment.getState())) return;
         String code = event.getResultCode();
         String state;
         boolean terminal = false;
@@ -142,6 +146,17 @@ public class ImageDeploymentService {
         deployment.setUpdatedAt(LocalDateTime.now(clock));
         if (terminal) { deployment.setCompletedAt(deployment.getUpdatedAt()); deployment.setActiveDeploymentKey(null); deployment.setActiveAgentComponentKey(null); }
         deployments.updateById(deployment);
+    }
+
+    @Transactional
+    public void recoverTerminalCommand(String commandId, String terminalState, String failureCode, String failureMessage) {
+        if (!"FAILED".equals(terminalState) && !"SUCCEEDED".equals(terminalState)) return;
+        ImageDeploymentRecord deployment = deployments.selectByCommandIdForUpdate(commandId);
+        if (deployment == null || "SUCCEEDED".equals(deployment.getState()) || "FAILED".equals(deployment.getState())) return;
+        deployment.setState(terminalState); deployment.setFailureCode(failureCode);
+        deployment.setFailureMessage(failureMessage); deployment.setCompletedAt(LocalDateTime.now(clock));
+        deployment.setUpdatedAt(deployment.getCompletedAt()); deployment.setActiveDeploymentKey(null);
+        deployment.setActiveAgentComponentKey(null); deployments.updateById(deployment);
     }
 
     private void requireSuperAdmin(String role) { if (!"SUPER_ADMIN".equals(role)) throw new IllegalArgumentException("SUPER_ADMIN_REQUIRED"); }

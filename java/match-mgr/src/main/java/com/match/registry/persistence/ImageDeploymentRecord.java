@@ -22,6 +22,7 @@ public class ImageDeploymentRecord {
     private String activeDeploymentKey;
     private String activeAgentComponentKey;
     private String commandId;
+    private String idempotencyKey;
     private String failureCode;
     private String failureMessage;
     private Integer requestedBy;
