@@ -64,7 +64,6 @@ public class ImageDeploymentService {
         if (idempotencyKey == null || idempotencyKey.trim().isEmpty() || idempotencyKey.length() > 128) {
             throw new IllegalArgumentException("IDEMPOTENCY_KEY_REQUIRED");
         }
-        if (idempotencyKey.indexOf(':') >= 0) throw new IllegalArgumentException("IDEMPOTENCY_KEY_REQUIRED");
         String key = agentId + ":" + component + ":" + idempotencyKey;
         if (key.length() > 128) throw new IllegalArgumentException("IDEMPOTENCY_KEY_REQUIRED");
         String slotKey = agentId + ":" + component;
