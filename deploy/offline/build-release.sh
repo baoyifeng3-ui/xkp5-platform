@@ -50,7 +50,7 @@ env_value() {
   local key=$1
   local fallback=$2
   local value
-  if [[ -n "${!key+x}" ]]; then
+  if [[ -n "${!key:-}" ]]; then
     printf '%s\n' "${!key}"
     return
   fi

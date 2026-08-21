@@ -38,8 +38,8 @@ grep -q 'MATCH_REGISTRY_IMAGE:-\${XKP_REGISTRY_IMAGE' "$REPO_ROOT/compose.offlin
   || fail "Offline Compose must prefer packaged Registry metadata"
 grep -q 'MATCH_REGISTRY_IMPORTER_IMAGE:-\${XKP_REGISTRY_IMPORTER_IMAGE' "$REPO_ROOT/compose.offline.yml" \
   || fail "Offline Compose must prefer packaged importer metadata"
-grep -q 'if \[\[ -n "\${!key+x}" \]\]' "$REPO_ROOT/deploy/offline/build-release.sh" \
-  || fail "Offline release must honor Compose process environment precedence"
+grep -q 'if \[\[ -n "\${!key:-}" \]\]' "$REPO_ROOT/deploy/offline/build-release.sh" \
+  || fail "Offline release must honor Compose precedence and ignore empty overrides"
 
 for compose_file in "$REPO_ROOT/compose.prod.yml" "$REPO_ROOT/compose.offline.yml"; do
   java_block=$(awk '/^  java:/{on=1} on{print} on && /^  [A-Za-z0-9_-]+:/{if ($0 !~ /^  java:/) exit}' "$compose_file")
