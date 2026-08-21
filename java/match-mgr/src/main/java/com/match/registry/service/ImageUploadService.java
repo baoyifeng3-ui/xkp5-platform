@@ -29,6 +29,7 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
 import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Instant;
@@ -154,7 +155,13 @@ public class ImageUploadService {
             if (existing.getChunkSha256().equals(normalized) && Files.exists(target)) return view(upload, existing);
             throw error(CODE_CONFLICT, "chunk checksum conflicts with existing chunk");
         }
-        Path reservation = dir.resolve(index + ".reserve"); reserveCapacity(reservation, size);
+        if (Files.exists(target)) {
+            if (fileMatches(target, size, normalized)) return persistRecoveredChunk(upload, index, size, normalized);
+            deleteQuietly(target);
+        }
+        Path reservation = dir.resolve(index + ".reserve");
+        try (ActivityLease ignored = ActivityLease.acquire(dir.resolve(index + ".active"))) {
+        reserveCapacity(reservation, size);
         try {
             Files.createDirectories(dir); MessageDigest md = MessageDigest.getInstance("SHA-256");
             long copied = 0; byte[] buf = new byte[8192];
@@ -167,7 +174,11 @@ public class ImageUploadService {
             ImageUploadChunkRecord record = new ImageUploadChunkRecord(); record.setUploadId(uploadId); record.setChunkIndex(index); record.setChunkSize((int) size); record.setChunkSha256(actual); record.setStoredBytes(size); record.setCreatedAt(now()); chunkMapper.insertOrRetry(uploadId, index, (int) size, actual, size, record.getCreatedAt());
             upload.setReceivedBytes(upload.getReceivedBytes() + size); upload.setUpdatedAt(now()); uploadMapper.updateById(upload); return view(upload, record);
         } catch (UploadException e) { throw e; } catch (Exception e) { throw error(CODE_STAGING, e.getMessage()); } finally { deleteQuietly(reservation); }
+        } catch (IOException e) { throw error(CODE_STAGING, e.getMessage()); }
     }
+
+    private ImageUploadChunkView persistRecoveredChunk(ImageUploadRecord upload, int index, long size, String checksum) { ImageUploadChunkRecord record = new ImageUploadChunkRecord(); record.setUploadId(upload.getUploadId()); record.setChunkIndex(index); record.setChunkSize((int) size); record.setChunkSha256(checksum); record.setStoredBytes(size); record.setCreatedAt(now()); chunkMapper.insertOrRetry(upload.getUploadId(), index, (int) size, checksum, size, record.getCreatedAt()); upload.setReceivedBytes(upload.getReceivedBytes() + size); upload.setUpdatedAt(now()); uploadMapper.updateById(upload); return view(upload, record); }
+    private boolean fileMatches(Path file, long size, String checksum) { try { return checksum != null && Files.size(file) == size && checksum.equals(digestFile(file)); } catch (Exception e) { return false; } }
 
     private long stagedBytes() {
         if (!Files.exists(stagingRoot)) return 0;
@@ -197,18 +208,24 @@ public class ImageUploadService {
         if (!UPLOADING.equals(upload.getState())) throw error(CODE_STATE, "upload cannot complete");
         List<ImageUploadChunkRecord> chunks = chunkMapper.selectByUpload(uploadId); if (chunks.size() != upload.getTotalChunks() || upload.getReceivedBytes().longValue() != upload.getTotalSize().longValue()) throw error(CODE_STATE, "missing or inconsistent chunks");
         Path assembled = stagingRoot.resolve(uploadId).resolve("archive");
-        Path reservation = stagingRoot.resolve(uploadId).resolve("archive.reserve"); reserveCapacity(reservation, upload.getTotalSize());
+        if (Files.exists(assembled)) { if (validCompletedArchive(upload, assembled)) return transitionToReview(upload, assembled); deleteQuietly(assembled); }
+        Path reservation = stagingRoot.resolve(uploadId).resolve("archive.reserve");
+        try (ActivityLease ignored = ActivityLease.acquire(stagingRoot.resolve(uploadId).resolve("archive.active"))) { reserveCapacity(reservation, upload.getTotalSize());
             try (java.io.RandomAccessFile out = new java.io.RandomAccessFile(reservation.toFile(), "rw")) {
                 out.seek(0); long written = 0; byte[] buffer = new byte[8192];
                 for (int i = 0; i < upload.getTotalChunks(); i++) { Path p = stagingRoot.resolve(uploadId).resolve(i + ".part"); if (!Files.exists(p)) throw error(CODE_STATE, "missing chunk"); try (InputStream part = Files.newInputStream(p)) { int n; while ((n = part.read(buffer)) != -1) { written += n; if (written > upload.getTotalSize()) throw error(CODE_SIZE, "assembled archive exceeds declared size"); out.write(buffer, 0, n); } } }
                 if (written != upload.getTotalSize()) throw error(CODE_SIZE, "assembled archive size mismatch"); out.getFD().sync();
             } catch (UploadException e) { deleteQuietly(reservation); throw e; } catch (IOException e) { deleteQuietly(reservation); throw error(CODE_STAGING, e.getMessage()); }
             try { Files.move(reservation, assembled, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); } catch (IOException e) { deleteQuietly(reservation); throw error(CODE_STAGING, e.getMessage()); }
-        String sha = digestFile(assembled); if (!upload.getExpectedSha256().equals(sha)) { deleteQuietly(assembled); throw error(CODE_CHECKSUM, "archive checksum mismatch"); }
-        if (!isDockerSave(assembled)) { deleteQuietly(assembled); throw error(CODE_ARCHIVE, "Docker save archive is invalid"); }
-        upload.setFinalSha256(sha); upload.setState(PENDING_REVIEW); upload.setCompletedAt(now()); upload.setUpdatedAt(now()); uploadMapper.updateById(upload);
+        } catch (IOException e) { throw error(CODE_STAGING, e.getMessage()); }
+        if (!validCompletedArchive(upload, assembled)) { deleteQuietly(assembled); throw error(CODE_ARCHIVE, "archive integrity validation failed"); }
+        return transitionToReview(upload, assembled);
+    }
+    private boolean validCompletedArchive(ImageUploadRecord upload, Path assembled) { try { return Files.size(assembled) == upload.getTotalSize() && upload.getExpectedSha256().equals(digestFile(assembled)) && isDockerSave(assembled); } catch (Exception e) { return false; } }
+    private ImageUploadRecord transitionToReview(ImageUploadRecord upload, Path assembled) {
+        String sha = digestFile(assembled); upload.setFinalSha256(sha); upload.setState(PENDING_REVIEW); upload.setCompletedAt(now()); upload.setUpdatedAt(now()); uploadMapper.updateById(upload);
         ImageArtifactRecord artifact = artifactMapper.selectById(upload.getArtifactId()); if (artifact != null) { artifact.setSha256(sha); artifact.setReviewState(PENDING_REVIEW); artifact.setUpdatedAt(now()); artifactMapper.updateById(artifact); }
-        afterCommit(() -> { for (int i = 0; i < upload.getTotalChunks(); i++) deleteQuietly(stagingRoot.resolve(uploadId).resolve(i + ".part")); });
+        afterCommit(() -> { for (int i = 0; i < upload.getTotalChunks(); i++) deleteQuietly(stagingRoot.resolve(upload.getUploadId()).resolve(i + ".part")); });
         return upload;
     }
 
@@ -233,7 +250,8 @@ public class ImageUploadService {
     public void cleanupExpiredUploads() { List<ImageUploadRecord> expired = uploadMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ImageUploadRecord>().eq("state", UPLOADING).lt("expires_at", now())); for (ImageUploadRecord candidate : expired) { ImageUploadRecord upload = uploadMapper.selectForUpdate(candidate.getUploadId()); if (upload == null || !UPLOADING.equals(upload.getState()) || upload.getExpiresAt() == null || !upload.getExpiresAt().isBefore(now())) continue; upload.setState(EXPIRED); upload.setUpdatedAt(now()); if (uploadMapper.updateById(upload) == 1) afterCommit(() -> cleanupStaging(upload.getUploadId())); } afterCommit(this::retryTerminalCleanup); }
     private void retryTerminalCleanup() { if (!Files.isDirectory(stagingRoot)) return; try (Stream<Path> dirs = Files.list(stagingRoot)) { dirs.filter(Files::isDirectory).forEach(dir -> { String id = dir.getFileName().toString(); ImageUploadRecord upload = uploadMapper.selectById(id); if (upload == null) { try { if (Files.getLastModifiedTime(dir).toInstant().isBefore(clock.instant().minusSeconds(86400)) && id.matches("[0-9a-fA-F-]{36}")) cleanupStaging(id); } catch (IOException ignored) { } return; } ImageArtifactRecord artifact = artifactMapper.selectById(upload.getArtifactId()); boolean terminal = CANCELLED.equals(upload.getState()) || EXPIRED.equals(upload.getState()) || artifact != null && REJECTED.equals(artifact.getReviewState()); if (terminal) cleanupStaging(upload.getUploadId()); else if (PENDING_REVIEW.equals(upload.getState()) || artifact != null && (APPROVED.equals(artifact.getReviewState()) || "READY".equals(artifact.getImportState()) || "IMPORTING".equals(artifact.getImportState()))) cleanupCompletedFiles(dir); else if (UPLOADING.equals(upload.getState())) reconcileUploadingFiles(upload, dir); }); } catch (IOException ignored) { } }
     private void cleanupCompletedFiles(Path dir) { try (Stream<Path> files = Files.list(dir)) { files.filter(Files::isRegularFile).filter(p -> !"archive".equals(p.getFileName().toString())).forEach(this::deleteQuietly); } catch (IOException ignored) { } }
-    private void reconcileUploadingFiles(ImageUploadRecord upload, Path dir) { Set<Integer> tracked = new HashSet<>(); List<ImageUploadChunkRecord> records = chunkMapper.selectByUpload(upload.getUploadId()); if (records != null) for (ImageUploadChunkRecord record : records) tracked.add(record.getChunkIndex()); Instant stale = clock.instant().minusSeconds(3600); try (Stream<Path> files = Files.list(dir)) { files.filter(Files::isRegularFile).forEach(path -> { String name = path.getFileName().toString(); try { if (!Files.getLastModifiedTime(path).toInstant().isBefore(stale)) return; if (name.endsWith(".part")) { try { int index = Integer.parseInt(name.substring(0, name.length() - 5)); if (!tracked.contains(index)) deleteQuietly(path); } catch (NumberFormatException ignored) { } } else if (name.endsWith(".reserve") || name.endsWith(".tmp")) deleteQuietly(path); } catch (IOException ignored) { } }); } catch (IOException ignored) { } }
+    private void reconcileUploadingFiles(ImageUploadRecord upload, Path dir) { Set<Integer> tracked = new HashSet<>(); List<ImageUploadChunkRecord> records = chunkMapper.selectByUpload(upload.getUploadId()); if (records != null) for (ImageUploadChunkRecord record : records) tracked.add(record.getChunkIndex()); Instant stale = clock.instant().minusSeconds(3600); try (Stream<Path> files = Files.list(dir)) { files.filter(Files::isRegularFile).forEach(path -> { String name = path.getFileName().toString(); try { if (!Files.getLastModifiedTime(path).toInstant().isBefore(stale)) return; String stem = name.substring(0, name.indexOf('.')); if (activityLocked(dir.resolve(stem + ".active"))) return; if (name.endsWith(".part")) { try { int index = Integer.parseInt(name.substring(0, name.length() - 5)); if (!tracked.contains(index)) deleteQuietly(path); } catch (NumberFormatException ignored) { } } else if (name.endsWith(".reserve") || name.endsWith(".tmp") || name.endsWith(".active")) deleteQuietly(path); } catch (IOException | StringIndexOutOfBoundsException ignored) { } }); } catch (IOException ignored) { } }
+    private boolean activityLocked(Path path) { if (!Files.exists(path)) return false; try (FileChannel channel = FileChannel.open(path, StandardOpenOption.WRITE)) { try (FileLock lock = channel.tryLock()) { return lock == null; } } catch (OverlappingFileLockException e) { return true; } catch (IOException e) { return true; } }
     private void afterCommit(Runnable action) { if (!TransactionSynchronizationManager.isSynchronizationActive()) { action.run(); return; } TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() { @Override public void afterCommit() { action.run(); } }); }
     private void cleanupArtifactStaging(String artifactId) { ImageUploadRecord upload = uploadMapper.selectOne(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ImageUploadRecord>().eq("artifact_id", artifactId)); if (upload != null) cleanupStaging(upload.getUploadId()); }
     public boolean cleanupStaging(String uploadId) { Path dir = stagingRoot.resolve(uploadId).normalize(); if (!dir.getParent().equals(stagingRoot.normalize())) return false; try { if (!Files.exists(dir)) return true; try (Stream<Path> paths = Files.walk(dir)) { paths.sorted(Comparator.reverseOrder()).forEach(this::deleteQuietly); } return !Files.exists(dir); } catch (IOException e) { return false; } }
@@ -241,6 +259,7 @@ public class ImageUploadService {
     private void requireText(String value, String field) { if (value == null || value.trim().isEmpty()) throw error(CODE_STATE, field + " is required"); }
     private boolean validSha256(String value) { return value != null && value.matches("[0-9a-f]{64}"); }
     private static class BoundedInputStream extends java.io.FilterInputStream { private long remaining; BoundedInputStream(InputStream in, long limit) { super(in); remaining = limit; } public int read() throws IOException { if (remaining == 0) throw new IOException("archive exceeds limit"); int r = super.read(); if (r >= 0) remaining--; return r; } public int read(byte[] b, int o, int l) throws IOException { if (remaining == 0) throw new IOException("archive exceeds limit"); int r = super.read(b, o, (int) Math.min(l, remaining)); if (r > 0) remaining -= r; return r; } }
+    private static class ActivityLease implements AutoCloseable { private final Path path; private final FileChannel channel; private final FileLock lock; private ActivityLease(Path path, FileChannel channel, FileLock lock) { this.path = path; this.channel = channel; this.lock = lock; } static ActivityLease acquire(Path path) throws IOException { Files.createDirectories(path.getParent()); FileChannel channel = FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.WRITE); try { return new ActivityLease(path, channel, channel.lock()); } catch (IOException | RuntimeException e) { channel.close(); throw e; } } public void close() throws IOException { try { lock.release(); } finally { channel.close(); Files.deleteIfExists(path); } } }
 
     private ImageUploadRecord locked(String id) { ImageUploadRecord x = uploadMapper.selectForUpdate(id); if (x == null) throw error(CODE_STATE, "upload not found"); return x; }
     private void expireIfNeeded(ImageUploadRecord x) { if (x.getExpiresAt() != null && x.getExpiresAt().isBefore(now()) && UPLOADING.equals(x.getState())) { x.setState(EXPIRED); x.setUpdatedAt(now()); uploadMapper.updateById(x); afterCommit(() -> cleanupStaging(x.getUploadId())); throw error(CODE_STATE, "upload expired"); } }
