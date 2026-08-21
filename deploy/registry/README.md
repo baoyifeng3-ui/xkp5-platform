@@ -24,6 +24,14 @@ The importer reads its write credential from files named `username` and
 deployment secret; Compose mounts it read-only. Do not put those files or their
 values in `.env`, Compose source, or Git.
 
+The Registry requires an htpasswd file at `XKP_REGISTRY_AUTH_FILE` (default
+`/etc/xkp/registry-auth/htpasswd`), mounted read-only into the Registry and
+importer. Generate it with `htpasswd -B`; never commit it. The standalone
+`compose.registry.yml` is an overlay for an existing platform database; set
+`MATCH_DB_HOST`, `MATCH_DB_PORT`, `MATCH_DB_NAME`, `MATCH_DB_USER`, and
+`MATCH_DB_PASSWORD` before starting it. Use `compose.prod.yml` or
+`compose.offline.yml` when platform MySQL is part of the stack.
+
 ## Storage policy
 
 `XKP_REGISTRY_MAX_FILE_BYTES` defaults to 20 GiB. Staging capacity and cleanup

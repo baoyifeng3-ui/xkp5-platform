@@ -32,6 +32,8 @@ public class ImageRegistrySchemaTest {
         assertTrue(sql.contains("sha256 CHAR(64) NOT NULL"));
         assertTrue(sql.contains("UNIQUE KEY uk_image_artifact_sha256 (sha256)"));
         assertTrue(sql.contains("registry_digest CHAR(71)"));
+        assertTrue(sql.contains("import_attempt_token VARCHAR(36)"));
+        assertTrue(sql.contains("import_lease_expires_at DATETIME(3)"));
         assertTrue(sql.contains("BINARY sha256 = BINARY LOWER(sha256)"));
         assertTrue(sql.contains("BINARY sha256 REGEXP '^[0-9a-f]{64}$'"));
         assertTrue(sql.contains("BINARY registry_digest = BINARY LOWER(registry_digest)"));
@@ -82,6 +84,9 @@ public class ImageRegistrySchemaTest {
         assertEquals(Long.class, ImageUploadRecord.class.getDeclaredField("totalSize").getType());
         assertEquals(Long.class, ImageUploadRecord.class.getDeclaredField("receivedBytes").getType());
         assertEquals(String.class, ImageArtifactRecord.class.getDeclaredField("failureCode").getType());
+        assertEquals(String.class, ImageArtifactRecord.class.getDeclaredField("importAttemptToken").getType());
+        assertEquals(java.time.LocalDateTime.class,
+                ImageArtifactRecord.class.getDeclaredField("importLeaseExpiresAt").getType());
         assertEquals(String.class, ImageDeploymentRecord.class.getDeclaredField("failureMessage").getType());
     }
 

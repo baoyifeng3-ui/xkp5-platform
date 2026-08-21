@@ -6,6 +6,7 @@ import com.match.registry.persistence.ImageUploadMapper;
 import com.match.registry.persistence.ImageUploadRecord;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -17,9 +18,11 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 @Component
+@ConditionalOnProperty(prefix = "xkp.registry.import", name = "enabled", havingValue = "true")
 public class ImageImportWorker {
     private static final int BATCH_SIZE = 10;
     private static final int MAX_FAILURE_MESSAGE = 512;
@@ -30,26 +33,36 @@ public class ImageImportWorker {
     private final RegistryImportTool importTool;
     private final Path stagingRoot;
     private final Clock clock;
+    private final long leaseSeconds;
 
     @Autowired
     public ImageImportWorker(ImageArtifactMapper artifactMapper, ImageUploadMapper uploadMapper,
                              RegistryImportTool importTool,
-                             @Value("${xkp.registry.staging-dir:${REGISTRY_STAGING_ROOT:/data/registry-staging}}") String stagingRoot) {
-        this(artifactMapper, uploadMapper, importTool, Paths.get(stagingRoot), Clock.systemUTC());
+                             @Value("${xkp.registry.staging-dir:${REGISTRY_STAGING_ROOT:/data/registry-staging}}") String stagingRoot,
+                             @Value("${xkp.registry.import.lease-seconds:900}") long leaseSeconds) {
+        this(artifactMapper, uploadMapper, importTool, Paths.get(stagingRoot), Clock.systemUTC(),
+                leaseSeconds);
     }
 
     public ImageImportWorker(ImageArtifactMapper artifactMapper, ImageUploadMapper uploadMapper,
                              RegistryImportTool importTool, Path stagingRoot, Clock clock) {
+        this(artifactMapper, uploadMapper, importTool, stagingRoot, clock, 900);
+    }
+
+    ImageImportWorker(ImageArtifactMapper artifactMapper, ImageUploadMapper uploadMapper,
+                      RegistryImportTool importTool, Path stagingRoot, Clock clock,
+                      long leaseSeconds) {
         this.artifactMapper = artifactMapper;
         this.uploadMapper = uploadMapper;
         this.importTool = importTool;
         this.stagingRoot = stagingRoot.toAbsolutePath().normalize();
         this.clock = clock;
+        this.leaseSeconds = leaseSeconds;
     }
 
     @Scheduled(fixedDelayString = "${xkp.registry.import.poll-delay-ms:5000}")
     public void poll() {
-        List<ImageArtifactRecord> candidates = artifactMapper.selectImportCandidates(BATCH_SIZE);
+        List<ImageArtifactRecord> candidates = artifactMapper.selectImportCandidates(now(), BATCH_SIZE);
         for (ImageArtifactRecord candidate : candidates) {
             try {
                 process(candidate.getArtifactId());
@@ -74,14 +87,17 @@ public class ImageImportWorker {
         }
 
         LocalDateTime now = now();
-        if (artifactMapper.claimImport(artifactId, now) != 1) {
+        String attemptToken = UUID.randomUUID().toString();
+        if (artifactMapper.claimImport(artifactId, attemptToken, now,
+                now.plusSeconds(leaseSeconds)) != 1) {
             return false;
         }
 
         try {
             ImageUploadRecord upload = uploadMapper.selectByArtifactId(artifactId);
             if (upload == null) {
-                return fail(artifactId, "UPLOAD_NOT_FOUND", "Completed upload metadata is missing");
+                return fail(artifactId, attemptToken, "UPLOAD_NOT_FOUND",
+                        "Completed upload metadata is missing");
             }
             Path archive = archive(upload.getUploadId());
             RegistryImportTool.ImportResult result = importTool.importArchive(
@@ -89,24 +105,24 @@ public class ImageImportWorker {
                             artifact.getImageTag()));
             String digest = result == null ? null : result.getDigest();
             if (!IMMUTABLE_DIGEST.matcher(value(digest)).matches()) {
-                return fail(artifactId, "INVALID_REGISTRY_DIGEST",
+                return fail(artifactId, attemptToken, "INVALID_REGISTRY_DIGEST",
                         "Importer did not return an immutable lowercase SHA-256 digest");
             }
-            if (artifactMapper.completeImport(artifactId, digest, now()) != 1) {
-                return fail(artifactId, "DIGEST_PERSIST_FAILED",
+            if (artifactMapper.completeImport(artifactId, attemptToken, digest, now()) != 1) {
+                return fail(artifactId, attemptToken, "DIGEST_PERSIST_FAILED",
                         "Registry digest could not be persisted");
             }
             deleteImportedArchive(archive);
             return true;
         } catch (RegistryImportTool.ImportException e) {
-            return fail(artifactId, e.getCode(), e.getMessage());
+            return fail(artifactId, attemptToken, e.getCode(), e.getMessage());
         } catch (RuntimeException e) {
-            return fail(artifactId, "IMPORT_FAILED", e.getMessage());
+            return fail(artifactId, attemptToken, "IMPORT_FAILED", e.getMessage());
         }
     }
 
-    private boolean fail(String artifactId, String code, String message) {
-        artifactMapper.failImport(artifactId, code, bounded(message), now());
+    private boolean fail(String artifactId, String attemptToken, String code, String message) {
+        artifactMapper.failImport(artifactId, attemptToken, code, bounded(message), now());
         return false;
     }
 

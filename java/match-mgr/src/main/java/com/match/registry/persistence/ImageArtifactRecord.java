@@ -21,6 +21,8 @@ public class ImageArtifactRecord {
     private String imageTag;
     private String version;
     private String registryDigest;
+    private String importAttemptToken;
+    private LocalDateTime importLeaseExpiresAt;
     private String reviewState;
     private String importState;
     private String failureCode;

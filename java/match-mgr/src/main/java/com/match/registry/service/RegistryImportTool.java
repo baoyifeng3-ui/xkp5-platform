@@ -1,6 +1,7 @@
 package com.match.registry.service;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayOutputStream;
@@ -19,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 @Component
+@ConditionalOnProperty(prefix = "xkp.registry.import", name = "enabled", havingValue = "true")
 public class RegistryImportTool {
     static final int MAX_CAPTURE_BYTES = 64 * 1024;
     private static final int MAX_CREDENTIAL_BYTES = 4096;
@@ -33,6 +35,9 @@ public class RegistryImportTool {
     private final Path passwordFile;
     private final Path importRoot;
     private final long timeoutSeconds;
+    private final ProcessLauncher launcher;
+    private final long terminationWaitMillis;
+    private final long collectorJoinMillis;
 
     public RegistryImportTool(
             @Value("${xkp.registry.import.executable:skopeo}") String executable,
@@ -49,12 +54,34 @@ public class RegistryImportTool {
         this.passwordFile = Paths.get(passwordFile);
         this.importRoot = Paths.get(importRoot);
         this.timeoutSeconds = timeoutSeconds;
+        this.launcher = command -> new ProcessBuilder(command).start();
+        this.terminationWaitMillis = 5000;
+        this.collectorJoinMillis = 5000;
+    }
+
+    RegistryImportTool(String executable, String registryUrl, Path registryCaFile,
+                       Path usernameFile, Path passwordFile, Path importRoot,
+                       long timeoutSeconds, ProcessLauncher launcher,
+                       long terminationWaitMillis, long collectorJoinMillis) {
+        this.executable = executable;
+        this.registryAuthority = authority(registryUrl);
+        this.registryCaFile = registryCaFile;
+        this.usernameFile = usernameFile;
+        this.passwordFile = passwordFile;
+        this.importRoot = importRoot;
+        this.timeoutSeconds = timeoutSeconds;
+        this.launcher = launcher;
+        this.terminationWaitMillis = terminationWaitMillis;
+        this.collectorJoinMillis = collectorJoinMillis;
     }
 
     public ImportResult importArchive(ImportRequest request) {
         validate(request);
         Path digestFile = null;
         Path authFile = null;
+        Process process = null;
+        BoundedStreamCollector stdout = null;
+        BoundedStreamCollector stderr = null;
         try {
             Files.createDirectories(importRoot);
             digestFile = Files.createTempFile(importRoot, "registry-digest-", ".txt");
@@ -80,17 +107,19 @@ public class RegistryImportTool {
             command.add("docker://" + registryAuthority + "/" + request.getRepository()
                     + ":" + request.getTag());
 
-            Process process = new ProcessBuilder(command).start();
-            BoundedStreamCollector stdout = new BoundedStreamCollector(process.getInputStream());
-            BoundedStreamCollector stderr = new BoundedStreamCollector(process.getErrorStream());
+            process = launcher.start(command);
+            stdout = new BoundedStreamCollector(process.getInputStream());
+            stderr = new BoundedStreamCollector(process.getErrorStream());
             stdout.start();
             stderr.start();
             boolean completed = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
             if (!completed) {
-                process.destroyForcibly();
+                terminate(process);
             }
-            stdout.join();
-            stderr.join();
+            closeQuietly(process.getInputStream());
+            closeQuietly(process.getErrorStream());
+            stdout.join(collectorJoinMillis);
+            stderr.join(collectorJoinMillis);
             if (!completed) {
                 throw new ImportException("IMPORT_TIMEOUT", "Registry import timed out: " + stderr.text());
             }
@@ -103,6 +132,13 @@ public class RegistryImportTool {
         } catch (ImportException e) {
             throw e;
         } catch (InterruptedException e) {
+            if (process != null) {
+                terminate(process);
+            }
+            closeQuietly(process == null ? null : process.getInputStream());
+            closeQuietly(process == null ? null : process.getErrorStream());
+            joinCollector(stdout);
+            joinCollector(stderr);
             Thread.currentThread().interrupt();
             throw new ImportException("IMPORT_INTERRUPTED", "Registry import interrupted", e);
         } catch (IOException e) {
@@ -122,6 +158,32 @@ public class RegistryImportTool {
                     // Import root is private to the dedicated worker and cleaned operationally.
                 }
             }
+        }
+    }
+
+    private void terminate(Process process) {
+        process.destroyForcibly();
+        try {
+            if (!process.waitFor(terminationWaitMillis, TimeUnit.MILLISECONDS)) {
+                process.destroy();
+            }
+        } catch (InterruptedException e) {
+            process.destroy();
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private void closeQuietly(InputStream stream) {
+        if (stream == null) return;
+        try { stream.close(); } catch (IOException ignored) { }
+    }
+
+    private void joinCollector(BoundedStreamCollector collector) {
+        if (collector == null) return;
+        try {
+            collector.join(collectorJoinMillis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -228,6 +290,10 @@ public class RegistryImportTool {
         public String getTag() {
             return tag;
         }
+    }
+
+    interface ProcessLauncher {
+        Process start(List<String> command) throws IOException;
     }
 
     public static final class ImportResult {

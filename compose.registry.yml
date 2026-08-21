@@ -6,18 +6,29 @@ services:
       REGISTRY_HTTP_ADDR: 0.0.0.0:5000
       REGISTRY_HTTP_TLS_CERTIFICATE: /etc/xkp/registry-tls/tls.crt
       REGISTRY_HTTP_TLS_KEY: /etc/xkp/registry-tls/tls.key
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: XKP Private Registry
+      REGISTRY_AUTH_HTPASSWD_PATH: /run/xkp/registry-auth/htpasswd
       REGISTRY_STORAGE_DELETE_ENABLED: ${XKP_REGISTRY_DELETE_ENABLED:-false}
     expose:
       - "5000"
     volumes:
       - registry_data:/var/lib/registry
       - ${XKP_REGISTRY_TLS_DIR:-/etc/xkp/registry-tls}:/etc/xkp/registry-tls:ro
+      - ${XKP_REGISTRY_AUTH_FILE:-/etc/xkp/registry-auth/htpasswd}:/run/xkp/registry-auth/htpasswd:ro
 
   registry-importer:
     image: ${XKP_REGISTRY_IMPORTER_IMAGE:-xkp5/registry-importer:latest}
     restart: unless-stopped
     environment:
       REGISTRY_URL: https://registry:5000
+      SPRING_PROFILES_ACTIVE: prod
+      XKP_REGISTRY_IMPORT_ENABLED: "true"
+      MATCH_DB_HOST: ${MATCH_DB_HOST:?Set MATCH_DB_HOST for external platform database}
+      MATCH_DB_PORT: ${MATCH_DB_PORT:-3306}
+      MATCH_DB_NAME: ${MATCH_DB_NAME:-match}
+      MATCH_DB_USER: ${MATCH_DB_USER:-root}
+      MATCH_DB_PASSWORD: ${MATCH_DB_PASSWORD:?Set MATCH_DB_PASSWORD}
       REGISTRY_CA_FILE: /etc/xkp/registry-tls/ca.crt
       REGISTRY_USERNAME_FILE: /run/xkp/registry-secrets/username
       REGISTRY_PASSWORD_FILE: /run/xkp/registry-secrets/password
@@ -29,6 +40,7 @@ services:
       - ${XKP_REGISTRY_IMPORT_DIR:-./runtime/registry/import}:/data/registry-import
       - ${XKP_REGISTRY_CA_FILE:-/etc/xkp/registry-tls/ca.crt}:/etc/xkp/registry-tls/ca.crt:ro
       - ${XKP_REGISTRY_IMPORTER_SECRETS_DIR:-/etc/xkp/registry-secrets}:/run/xkp/registry-secrets:ro
+      - ${XKP_REGISTRY_AUTH_FILE:-/etc/xkp/registry-auth/htpasswd}:/run/xkp/registry-auth/htpasswd:ro
     depends_on:
       - registry
 

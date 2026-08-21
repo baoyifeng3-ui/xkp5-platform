@@ -37,6 +37,10 @@ match:
     timeout-seconds: ${MATCH_SCORING_TIMEOUT_SECONDS:30}
 
 xkp:
+  registry:
+    import:
+      enabled: ${XKP_REGISTRY_IMPORT_ENABLED:false}
+    staging-dir: ${XKP_REGISTRY_STAGING_ROOT:/data/registry-staging}
   licensing:
     environment: PRODUCTION
     host-identity-file: ${XKP_HOST_IDENTITY_FILE:/etc/xkp/host-identity.json}

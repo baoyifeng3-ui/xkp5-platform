@@ -23,6 +23,8 @@ CREATE TABLE image_artifact (
     image_tag VARCHAR(128) NULL,
     version VARCHAR(128) NOT NULL,
     registry_digest CHAR(71) NULL,
+    import_attempt_token VARCHAR(36) NULL,
+    import_lease_expires_at DATETIME(3) NULL,
     review_state VARCHAR(24) NOT NULL,
     import_state VARCHAR(24) NOT NULL,
     failure_code VARCHAR(64) NULL,
@@ -37,6 +39,7 @@ CREATE TABLE image_artifact (
     UNIQUE KEY uk_image_artifact_sha256 (sha256),
     UNIQUE KEY uk_image_artifact_digest (registry_digest),
     KEY idx_image_artifact_group_component (group_id, component_type),
+    KEY idx_image_artifact_import_lease (review_state, import_state, import_lease_expires_at),
     CONSTRAINT chk_image_artifact_size CHECK (size_bytes >= 0),
     CONSTRAINT chk_image_artifact_sha256 CHECK (
         BINARY sha256 = BINARY LOWER(sha256) AND BINARY sha256 REGEXP '^[0-9a-f]{64}$'

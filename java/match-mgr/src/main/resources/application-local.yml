@@ -40,6 +40,10 @@ match:
     timeout-seconds: ${MATCH_SCORING_TIMEOUT_SECONDS:30}
 
 xkp:
+  registry:
+    import:
+      enabled: ${XKP_REGISTRY_IMPORT_ENABLED:false}
+    staging-dir: ${XKP_REGISTRY_STAGING_ROOT:${java.io.tmpdir}/xkp-registry-staging}
   licensing:
     environment: DEVELOPMENT
     development-identity: ${XKP_DEVELOPMENT_IDENTITY:windows-docker-development}
