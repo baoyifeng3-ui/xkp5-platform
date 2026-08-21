@@ -4,11 +4,13 @@ import com.match.entity.User;
 import com.match.registry.persistence.ImageDeploymentRecord;
 import com.match.registry.persistence.ImageReleaseRecord;
 import com.match.registry.service.ImageDeploymentService;
+import com.match.registry.service.ImageCatalogQueryService;
 import com.match.registry.service.ImageReleaseService;
 import com.match.security.RoleGuard;
 import com.match.util.result.Response;
 import com.match.util.result.ResponseResult;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @RestController
 @RequestMapping("/admin/image-releases")
@@ -16,10 +18,17 @@ public class ImageReleaseController {
     private final RoleGuard roleGuard;
     private final ImageReleaseService releases;
     private final ImageDeploymentService deployments;
+    private final ImageCatalogQueryService catalog;
+
+    @Autowired
+    public ImageReleaseController(RoleGuard roleGuard, ImageReleaseService releases,
+                                  ImageDeploymentService deployments, ImageCatalogQueryService catalog) {
+        this.roleGuard = roleGuard; this.releases = releases; this.deployments = deployments; this.catalog = catalog;
+    }
 
     public ImageReleaseController(RoleGuard roleGuard, ImageReleaseService releases,
                                   ImageDeploymentService deployments) {
-        this.roleGuard = roleGuard; this.releases = releases; this.deployments = deployments;
+        this(roleGuard, releases, deployments, null);
     }
 
     @PostMapping("/publish/{artifactId}")
@@ -42,6 +51,30 @@ public class ImageReleaseController {
                 request.componentType, request.updatePolicy, request.idempotencyKey,
                 request.confirm, actor.getUserId());
         return Response.makeOKRsp(result);
+    }
+
+    @GetMapping("/deployments")
+    public ResponseResult<Object> deploymentList(@RequestParam(defaultValue = "50") Integer limit) {
+        User actor = roleGuard.requireAnyAdmin();
+        return Response.makeOKRsp(catalog.deployments(roleGuard.roleOf(actor).name(), limit));
+    }
+
+    @GetMapping
+    public ResponseResult<Object> releaseList(@RequestParam(defaultValue = "50") Integer limit) {
+        User actor = roleGuard.requireAnyAdmin();
+        return Response.makeOKRsp(catalog.releases(roleGuard.roleOf(actor).name(), limit));
+    }
+
+    @GetMapping("/groups")
+    public ResponseResult<Object> groupList(@RequestParam(defaultValue = "50") Integer limit) {
+        User actor = roleGuard.requireAnyAdmin();
+        return Response.makeOKRsp(catalog.groups(roleGuard.roleOf(actor).name(), limit));
+    }
+
+    @GetMapping("/artifacts")
+    public ResponseResult<Object> artifactList(@RequestParam(defaultValue = "50") Integer limit) {
+        User actor = roleGuard.requireAnyAdmin();
+        return Response.makeOKRsp(catalog.artifacts(roleGuard.roleOf(actor).name(), limit));
     }
 
     @GetMapping("/deployments/{deploymentId}")
