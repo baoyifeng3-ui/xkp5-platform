@@ -64,6 +64,7 @@ public class ImageDeploymentService {
         if (idempotencyKey == null || idempotencyKey.trim().isEmpty() || idempotencyKey.length() > 128) {
             throw new IllegalArgumentException("IDEMPOTENCY_KEY_REQUIRED");
         }
+        if (idempotencyKey.indexOf(':') >= 0) throw new IllegalArgumentException("IDEMPOTENCY_KEY_REQUIRED");
         String key = agentId + ":" + component + ":" + idempotencyKey;
         if (key.length() > 128) throw new IllegalArgumentException("IDEMPOTENCY_KEY_REQUIRED");
         String slotKey = agentId + ":" + component;
@@ -116,7 +117,7 @@ public class ImageDeploymentService {
                 || !DIGEST.matcher(failed.getPreviousDigest()).matches()) {
             throw new IllegalArgumentException("ROLLBACK_DIGEST_UNAVAILABLE");
         }
-        String key = "rollback:" + deploymentId;
+        String key = "rollback-" + deploymentId;
         return deployInternal(role, failed.getReleaseId(), failed.getAgentId(), failed.getComponentType(),
                 UPDATE_CONTAINERS, key, true, actorId, failed.getPreviousDigest());
     }

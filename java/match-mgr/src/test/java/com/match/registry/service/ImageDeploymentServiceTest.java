@@ -110,6 +110,17 @@ public class ImageDeploymentServiceTest {
     }
 
     @Test
+    public void idempotencyKeyRejectsColonBecauseLegacyBackfillUsesCompositeKey() {
+        try {
+            service.deploy("SUPER_ADMIN", "release-1", "agent-1", "EDITOR", "IMAGE_ONLY",
+                    "request:with-colon", false, 7);
+            org.junit.Assert.fail();
+        } catch (IllegalArgumentException expected) {
+            assertEquals("IDEMPOTENCY_KEY_REQUIRED", expected.getMessage());
+        }
+    }
+
+    @Test
     public void progressAndSuccessReconcileAndReleaseActiveSlot() {
         ImageDeploymentRecord deployment = deployment("deployment-1", "command-1");
         when(deployments.selectByCommandIdForUpdate("command-1")).thenReturn(deployment);

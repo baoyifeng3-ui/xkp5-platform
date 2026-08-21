@@ -15,8 +15,12 @@ public class ImageDeploymentRecovery {
     @Scheduled(fixedDelayString = "${xkp.image-deployment.recovery-delay-ms:30000}")
     public void recover() {
         for (ProcessingAgentCommandRecord command : commands.selectTerminalImageCommands(100)) {
-            deployments.recoverTerminalCommand(command.getCommandId(), command.getState(),
-                    command.getResultCode(), command.getResultMessage());
+            try {
+                deployments.recoverTerminalCommand(command.getCommandId(), command.getState(),
+                        command.getResultCode(), command.getResultMessage());
+            } catch (RuntimeException ignored) {
+                // A corrupt deployment must not starve recovery of later commands.
+            }
         }
     }
 }
