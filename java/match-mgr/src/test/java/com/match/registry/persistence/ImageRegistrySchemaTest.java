@@ -32,9 +32,15 @@ public class ImageRegistrySchemaTest {
         assertTrue(sql.contains("sha256 CHAR(64) NOT NULL"));
         assertTrue(sql.contains("UNIQUE KEY uk_image_artifact_sha256 (sha256)"));
         assertTrue(sql.contains("registry_digest CHAR(71)"));
-        assertTrue(sql.contains("sha256 = LOWER(sha256)"));
-        assertTrue(sql.contains("sha256 REGEXP '^[0-9a-f]{64}$'"));
-        assertTrue(sql.contains("registry_digest REGEXP '^sha256:[0-9a-f]{64}$'"));
+        assertTrue(sql.contains("BINARY sha256 = BINARY LOWER(sha256)"));
+        assertTrue(sql.contains("BINARY sha256 REGEXP '^[0-9a-f]{64}$'"));
+        assertTrue(sql.contains("BINARY registry_digest = BINARY LOWER(registry_digest)"));
+        assertTrue(sql.contains("BINARY registry_digest REGEXP '^sha256:[0-9a-f]{64}$'"));
+        assertTrue(sql.contains("BINARY expected_sha256 = BINARY LOWER(expected_sha256)"));
+        assertTrue(sql.contains("BINARY final_sha256 = BINARY LOWER(final_sha256)"));
+        assertTrue(sql.contains("BINARY chunk_sha256 = BINARY LOWER(chunk_sha256)"));
+        assertTrue(sql.contains("BINARY target_digest = BINARY LOWER(target_digest)"));
+        assertTrue(sql.contains("BINARY previous_digest = BINARY LOWER(previous_digest)"));
         assertTrue(sql.contains("CREATE TABLE image_upload"));
         assertTrue(sql.contains("CREATE TABLE image_upload_chunk"));
         assertTrue(sql.contains("UNIQUE KEY uk_image_upload_chunk (upload_id, chunk_index)"));
@@ -65,6 +71,8 @@ public class ImageRegistrySchemaTest {
                 int.class, String.class, long.class, java.time.LocalDateTime.class)
                 .getAnnotation(org.apache.ibatis.annotations.Insert.class).value()[0]
                 .contains("ON DUPLICATE KEY UPDATE"));
+        assertTrue(ImageUploadChunkMapper.class.getMethod("selectExistingChecksumForUpdate",
+                String.class, int.class).getAnnotation(Select.class).value()[0].endsWith("FOR UPDATE"));
     }
 
     @Test

@@ -39,12 +39,12 @@ CREATE TABLE image_artifact (
     KEY idx_image_artifact_group_component (group_id, component_type),
     CONSTRAINT chk_image_artifact_size CHECK (size_bytes >= 0),
     CONSTRAINT chk_image_artifact_sha256 CHECK (
-        sha256 = LOWER(sha256) AND sha256 REGEXP '^[0-9a-f]{64}$'
+        BINARY sha256 = BINARY LOWER(sha256) AND BINARY sha256 REGEXP '^[0-9a-f]{64}$'
     ),
     CONSTRAINT chk_image_artifact_registry_digest CHECK (
         registry_digest IS NULL OR (
-            registry_digest = LOWER(registry_digest)
-            AND registry_digest REGEXP '^sha256:[0-9a-f]{64}$'
+            BINARY registry_digest = BINARY LOWER(registry_digest)
+            AND BINARY registry_digest REGEXP '^sha256:[0-9a-f]{64}$'
         )
     )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -69,7 +69,19 @@ CREATE TABLE image_upload (
     PRIMARY KEY (upload_id),
     UNIQUE KEY uk_image_upload_artifact (artifact_id),
     CONSTRAINT chk_image_upload_total_size CHECK (total_size >= 0),
-    CONSTRAINT chk_image_upload_received_bytes CHECK (received_bytes >= 0)
+    CONSTRAINT chk_image_upload_received_bytes CHECK (received_bytes >= 0),
+    CONSTRAINT chk_image_upload_expected_sha256 CHECK (
+        expected_sha256 IS NULL OR (
+            BINARY expected_sha256 = BINARY LOWER(expected_sha256)
+            AND BINARY expected_sha256 REGEXP '^[0-9a-f]{64}$'
+        )
+    ),
+    CONSTRAINT chk_image_upload_final_sha256 CHECK (
+        final_sha256 IS NULL OR (
+            BINARY final_sha256 = BINARY LOWER(final_sha256)
+            AND BINARY final_sha256 REGEXP '^[0-9a-f]{64}$'
+        )
+    )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE image_upload_chunk (
@@ -82,7 +94,11 @@ CREATE TABLE image_upload_chunk (
     PRIMARY KEY (upload_id, chunk_index),
     UNIQUE KEY uk_image_upload_chunk (upload_id, chunk_index),
     CONSTRAINT chk_image_upload_chunk_index CHECK (chunk_index >= 0),
-    CONSTRAINT chk_image_upload_chunk_bytes CHECK (stored_bytes >= 0)
+    CONSTRAINT chk_image_upload_chunk_bytes CHECK (stored_bytes >= 0),
+    CONSTRAINT chk_image_upload_chunk_sha256 CHECK (
+        BINARY chunk_sha256 = BINARY LOWER(chunk_sha256)
+        AND BINARY chunk_sha256 REGEXP '^[0-9a-f]{64}$'
+    )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE image_release (
@@ -98,7 +114,11 @@ CREATE TABLE image_release (
     published_at DATETIME(3) NULL,
     PRIMARY KEY (release_id),
     UNIQUE KEY uk_image_release_component_version (group_id, component_type, version),
-    KEY idx_image_release_digest (registry_digest)
+    KEY idx_image_release_digest (registry_digest),
+    CONSTRAINT chk_image_release_digest CHECK (
+        BINARY registry_digest = BINARY LOWER(registry_digest)
+        AND BINARY registry_digest REGEXP '^sha256:[0-9a-f]{64}$'
+    )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE image_deployment (
@@ -119,5 +139,15 @@ CREATE TABLE image_deployment (
     updated_at DATETIME(3) NOT NULL,
     PRIMARY KEY (deployment_id),
     UNIQUE KEY uk_image_deployment_active (active_deployment_key),
-    KEY idx_image_deployment_agent_component (agent_id, component_type, requested_at)
+    KEY idx_image_deployment_agent_component (agent_id, component_type, requested_at),
+    CONSTRAINT chk_image_deployment_target_digest CHECK (
+        BINARY target_digest = BINARY LOWER(target_digest)
+        AND BINARY target_digest REGEXP '^sha256:[0-9a-f]{64}$'
+    ),
+    CONSTRAINT chk_image_deployment_previous_digest CHECK (
+        previous_digest IS NULL OR (
+            BINARY previous_digest = BINARY LOWER(previous_digest)
+            AND BINARY previous_digest REGEXP '^sha256:[0-9a-f]{64}$'
+        )
+    )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
