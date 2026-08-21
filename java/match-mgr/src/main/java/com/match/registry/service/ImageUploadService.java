@@ -31,6 +31,7 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.security.MessageDigest;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Comparator;
@@ -153,19 +154,19 @@ public class ImageUploadService {
             if (existing.getChunkSha256().equals(normalized) && Files.exists(target)) return view(upload, existing);
             throw error(CODE_CONFLICT, "chunk checksum conflicts with existing chunk");
         }
-        Path reservation = dir.resolve(index + ".reserve"); Path tmp = dir.resolve(index + ".part.tmp"); reserveCapacity(reservation, size);
+        Path reservation = dir.resolve(index + ".reserve"); reserveCapacity(reservation, size);
         try {
             Files.createDirectories(dir); MessageDigest md = MessageDigest.getInstance("SHA-256");
             long copied = 0; byte[] buf = new byte[8192];
-            try (OutputStream out = new BufferedOutputStream(Files.newOutputStream(tmp, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING))) {
-                int n; while ((n = in.read(buf)) != -1) { copied += n; if (copied > size) throw error(CODE_SIZE, "chunk size mismatch"); md.update(buf, 0, n); out.write(buf, 0, n); }
+            try (java.io.RandomAccessFile out = new java.io.RandomAccessFile(reservation.toFile(), "rw")) {
+                out.seek(0); int n; while ((n = in.read(buf)) != -1) { copied += n; if (copied > size) throw error(CODE_SIZE, "chunk size mismatch"); md.update(buf, 0, n); out.write(buf, 0, n); } out.getFD().sync();
             }
             if (copied != size) throw error(CODE_SIZE, "chunk size mismatch"); String actual = hex(md.digest());
             if (normalized == null || !actual.equals(normalized)) throw error(CODE_CHECKSUM, "chunk checksum mismatch");
-            Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            Files.move(reservation, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             ImageUploadChunkRecord record = new ImageUploadChunkRecord(); record.setUploadId(uploadId); record.setChunkIndex(index); record.setChunkSize((int) size); record.setChunkSha256(actual); record.setStoredBytes(size); record.setCreatedAt(now()); chunkMapper.insertOrRetry(uploadId, index, (int) size, actual, size, record.getCreatedAt());
             upload.setReceivedBytes(upload.getReceivedBytes() + size); upload.setUpdatedAt(now()); uploadMapper.updateById(upload); return view(upload, record);
-        } catch (UploadException e) { deleteQuietly(tmp); throw e; } catch (Exception e) { deleteQuietly(tmp); throw error(CODE_STAGING, e.getMessage()); } finally { deleteQuietly(reservation); }
+        } catch (UploadException e) { throw e; } catch (Exception e) { throw error(CODE_STAGING, e.getMessage()); } finally { deleteQuietly(reservation); }
     }
 
     private long stagedBytes() {
@@ -196,11 +197,13 @@ public class ImageUploadService {
         if (!UPLOADING.equals(upload.getState())) throw error(CODE_STATE, "upload cannot complete");
         List<ImageUploadChunkRecord> chunks = chunkMapper.selectByUpload(uploadId); if (chunks.size() != upload.getTotalChunks() || upload.getReceivedBytes().longValue() != upload.getTotalSize().longValue()) throw error(CODE_STATE, "missing or inconsistent chunks");
         Path assembled = stagingRoot.resolve(uploadId).resolve("archive");
-        Path reservation = stagingRoot.resolve(uploadId).resolve("archive.reserve"); Path assembledTmp = stagingRoot.resolve(uploadId).resolve("archive.tmp"); reserveCapacity(reservation, upload.getTotalSize());
-            try (OutputStream out = new BufferedOutputStream(Files.newOutputStream(assembledTmp, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING))) {
-                for (int i = 0; i < upload.getTotalChunks(); i++) { Path p = stagingRoot.resolve(uploadId).resolve(i + ".part"); if (!Files.exists(p)) throw error(CODE_STATE, "missing chunk"); Files.copy(p, out); }
-            } catch (UploadException e) { deleteQuietly(assembledTmp); deleteQuietly(reservation); throw e; } catch (IOException e) { deleteQuietly(assembledTmp); deleteQuietly(reservation); throw error(CODE_STAGING, e.getMessage()); }
-            try { Files.move(assembledTmp, assembled, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); } catch (IOException e) { deleteQuietly(assembledTmp); throw error(CODE_STAGING, e.getMessage()); } finally { deleteQuietly(reservation); }
+        Path reservation = stagingRoot.resolve(uploadId).resolve("archive.reserve"); reserveCapacity(reservation, upload.getTotalSize());
+            try (java.io.RandomAccessFile out = new java.io.RandomAccessFile(reservation.toFile(), "rw")) {
+                out.seek(0); long written = 0; byte[] buffer = new byte[8192];
+                for (int i = 0; i < upload.getTotalChunks(); i++) { Path p = stagingRoot.resolve(uploadId).resolve(i + ".part"); if (!Files.exists(p)) throw error(CODE_STATE, "missing chunk"); try (InputStream part = Files.newInputStream(p)) { int n; while ((n = part.read(buffer)) != -1) { written += n; if (written > upload.getTotalSize()) throw error(CODE_SIZE, "assembled archive exceeds declared size"); out.write(buffer, 0, n); } } }
+                if (written != upload.getTotalSize()) throw error(CODE_SIZE, "assembled archive size mismatch"); out.getFD().sync();
+            } catch (UploadException e) { deleteQuietly(reservation); throw e; } catch (IOException e) { deleteQuietly(reservation); throw error(CODE_STAGING, e.getMessage()); }
+            try { Files.move(reservation, assembled, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); } catch (IOException e) { deleteQuietly(reservation); throw error(CODE_STAGING, e.getMessage()); }
         String sha = digestFile(assembled); if (!upload.getExpectedSha256().equals(sha)) { deleteQuietly(assembled); throw error(CODE_CHECKSUM, "archive checksum mismatch"); }
         if (!isDockerSave(assembled)) { deleteQuietly(assembled); throw error(CODE_ARCHIVE, "Docker save archive is invalid"); }
         upload.setFinalSha256(sha); upload.setState(PENDING_REVIEW); upload.setCompletedAt(now()); upload.setUpdatedAt(now()); uploadMapper.updateById(upload);
@@ -228,7 +231,9 @@ public class ImageUploadService {
     @Scheduled(fixedDelayString = "${xkp.registry.expiry-cleanup-ms:3600000}")
     @Transactional(noRollbackFor = UploadException.class)
     public void cleanupExpiredUploads() { List<ImageUploadRecord> expired = uploadMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ImageUploadRecord>().eq("state", UPLOADING).lt("expires_at", now())); for (ImageUploadRecord candidate : expired) { ImageUploadRecord upload = uploadMapper.selectForUpdate(candidate.getUploadId()); if (upload == null || !UPLOADING.equals(upload.getState()) || upload.getExpiresAt() == null || !upload.getExpiresAt().isBefore(now())) continue; upload.setState(EXPIRED); upload.setUpdatedAt(now()); if (uploadMapper.updateById(upload) == 1) afterCommit(() -> cleanupStaging(upload.getUploadId())); } afterCommit(this::retryTerminalCleanup); }
-    private void retryTerminalCleanup() { if (!Files.isDirectory(stagingRoot)) return; try (Stream<Path> dirs = Files.list(stagingRoot)) { dirs.filter(Files::isDirectory).forEach(dir -> { String id = dir.getFileName().toString(); ImageUploadRecord upload = uploadMapper.selectById(id); if (upload == null) { try { if (Files.getLastModifiedTime(dir).toInstant().isBefore(clock.instant().minusSeconds(86400)) && id.matches("[0-9a-fA-F-]{36}")) cleanupStaging(id); } catch (IOException ignored) { } return; } boolean terminal = CANCELLED.equals(upload.getState()) || EXPIRED.equals(upload.getState()); if (!terminal) { ImageArtifactRecord artifact = artifactMapper.selectById(upload.getArtifactId()); terminal = artifact != null && REJECTED.equals(artifact.getReviewState()); } if (terminal) cleanupStaging(upload.getUploadId()); }); } catch (IOException ignored) { } }
+    private void retryTerminalCleanup() { if (!Files.isDirectory(stagingRoot)) return; try (Stream<Path> dirs = Files.list(stagingRoot)) { dirs.filter(Files::isDirectory).forEach(dir -> { String id = dir.getFileName().toString(); ImageUploadRecord upload = uploadMapper.selectById(id); if (upload == null) { try { if (Files.getLastModifiedTime(dir).toInstant().isBefore(clock.instant().minusSeconds(86400)) && id.matches("[0-9a-fA-F-]{36}")) cleanupStaging(id); } catch (IOException ignored) { } return; } ImageArtifactRecord artifact = artifactMapper.selectById(upload.getArtifactId()); boolean terminal = CANCELLED.equals(upload.getState()) || EXPIRED.equals(upload.getState()) || artifact != null && REJECTED.equals(artifact.getReviewState()); if (terminal) cleanupStaging(upload.getUploadId()); else if (PENDING_REVIEW.equals(upload.getState()) || artifact != null && (APPROVED.equals(artifact.getReviewState()) || "READY".equals(artifact.getImportState()) || "IMPORTING".equals(artifact.getImportState()))) cleanupCompletedFiles(dir); else if (UPLOADING.equals(upload.getState())) reconcileUploadingFiles(upload, dir); }); } catch (IOException ignored) { } }
+    private void cleanupCompletedFiles(Path dir) { try (Stream<Path> files = Files.list(dir)) { files.filter(Files::isRegularFile).filter(p -> !"archive".equals(p.getFileName().toString())).forEach(this::deleteQuietly); } catch (IOException ignored) { } }
+    private void reconcileUploadingFiles(ImageUploadRecord upload, Path dir) { Set<Integer> tracked = new HashSet<>(); List<ImageUploadChunkRecord> records = chunkMapper.selectByUpload(upload.getUploadId()); if (records != null) for (ImageUploadChunkRecord record : records) tracked.add(record.getChunkIndex()); Instant stale = clock.instant().minusSeconds(3600); try (Stream<Path> files = Files.list(dir)) { files.filter(Files::isRegularFile).forEach(path -> { String name = path.getFileName().toString(); try { if (!Files.getLastModifiedTime(path).toInstant().isBefore(stale)) return; if (name.endsWith(".part")) { try { int index = Integer.parseInt(name.substring(0, name.length() - 5)); if (!tracked.contains(index)) deleteQuietly(path); } catch (NumberFormatException ignored) { } } else if (name.endsWith(".reserve") || name.endsWith(".tmp")) deleteQuietly(path); } catch (IOException ignored) { } }); } catch (IOException ignored) { } }
     private void afterCommit(Runnable action) { if (!TransactionSynchronizationManager.isSynchronizationActive()) { action.run(); return; } TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() { @Override public void afterCommit() { action.run(); } }); }
     private void cleanupArtifactStaging(String artifactId) { ImageUploadRecord upload = uploadMapper.selectOne(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ImageUploadRecord>().eq("artifact_id", artifactId)); if (upload != null) cleanupStaging(upload.getUploadId()); }
     public boolean cleanupStaging(String uploadId) { Path dir = stagingRoot.resolve(uploadId).normalize(); if (!dir.getParent().equals(stagingRoot.normalize())) return false; try { if (!Files.exists(dir)) return true; try (Stream<Path> paths = Files.walk(dir)) { paths.sorted(Comparator.reverseOrder()).forEach(this::deleteQuietly); } return !Files.exists(dir); } catch (IOException e) { return false; } }
