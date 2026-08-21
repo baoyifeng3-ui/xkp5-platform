@@ -5,6 +5,8 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 public interface ImageDeploymentMapper extends BaseMapper<ImageDeploymentRecord> {
+    @Select("SELECT * FROM image_deployment WHERE command_id = #{commandId} FOR UPDATE")
+    ImageDeploymentRecord selectByCommandIdForUpdate(@Param("commandId") String commandId);
     @Select("SELECT * FROM image_deployment WHERE agent_id = #{agentId} "
             + "AND component_type = #{componentType} AND active_deployment_key IS NOT NULL "
             + "FOR UPDATE")

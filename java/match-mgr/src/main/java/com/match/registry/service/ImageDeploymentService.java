@@ -19,6 +19,7 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.Objects;
 import java.util.regex.Pattern;
 
 @Service
@@ -126,11 +127,9 @@ public class ImageDeploymentService {
     @Transactional
     public void reconcile(AgentCommandFinishedEvent event) {
         if (event == null || !AgentCommandService.DEPLOY_IMAGE.equals(event.getCommandType())) return;
-        String deploymentId = deploymentId(event.getResultJson());
-        if (deploymentId == null) return;
-        ImageDeploymentRecord deployment = deployments.selectById(deploymentId);
+        ImageDeploymentRecord deployment = deployments.selectByCommandIdForUpdate(event.getCommandId());
         if (deployment == null || !event.getAgentId().equals(deployment.getAgentId())
-                || !event.getCommandId().equals(deployment.getCommandId())) return;
+                || !Objects.equals(event.getCommandId(), deployment.getCommandId())) return;
         String code = event.getResultCode();
         String state;
         boolean terminal = false;
@@ -143,13 +142,6 @@ public class ImageDeploymentService {
         deployment.setUpdatedAt(LocalDateTime.now(clock));
         if (terminal) { deployment.setCompletedAt(deployment.getUpdatedAt()); deployment.setActiveDeploymentKey(null); deployment.setActiveAgentComponentKey(null); }
         deployments.updateById(deployment);
-    }
-
-    private String deploymentId(String json) {
-        if (json == null) return null;
-        try { com.fasterxml.jackson.databind.JsonNode node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(json).get("deploymentId");
-            return node == null ? null : node.asText();
-        } catch (Exception ignored) { return null; }
     }
 
     private void requireSuperAdmin(String role) { if (!"SUPER_ADMIN".equals(role)) throw new IllegalArgumentException("SUPER_ADMIN_REQUIRED"); }

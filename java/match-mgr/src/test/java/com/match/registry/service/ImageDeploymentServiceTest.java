@@ -112,12 +112,12 @@ public class ImageDeploymentServiceTest {
     @Test
     public void progressAndSuccessReconcileAndReleaseActiveSlot() {
         ImageDeploymentRecord deployment = deployment("deployment-1", "command-1");
-        when(deployments.selectById("deployment-1")).thenReturn(deployment);
+        when(deployments.selectByCommandIdForUpdate("command-1")).thenReturn(deployment);
         service.reconcile(new AgentCommandFinishedEvent("command-1", "agent-1", "DEPLOY_IMAGE", true,
-                "PULLED", "pulled", "{\"deploymentId\":\"deployment-1\"}"));
+                "PULLED", "pulled", "{}"));
         assertEquals("PULLED", deployment.getState());
         service.reconcile(new AgentCommandFinishedEvent("command-1", "agent-1", "DEPLOY_IMAGE", true,
-                "SUCCEEDED", "ok", "{\"deploymentId\":\"deployment-1\"}"));
+                "SUCCEEDED", "ok", "{}"));
         assertEquals("SUCCEEDED", deployment.getState());
         org.junit.Assert.assertNull(deployment.getActiveAgentComponentKey());
     }
@@ -125,9 +125,9 @@ public class ImageDeploymentServiceTest {
     @Test
     public void staleCommandCannotAdvanceDeployment() {
         ImageDeploymentRecord deployment = deployment("deployment-1", "command-1");
-        when(deployments.selectById("deployment-1")).thenReturn(deployment);
+        when(deployments.selectByCommandIdForUpdate("other-command")).thenReturn(null);
         service.reconcile(new AgentCommandFinishedEvent("other-command", "agent-1", "DEPLOY_IMAGE", true,
-                "SUCCEEDED", "ok", "{\"deploymentId\":\"deployment-1\"}"));
+                "SUCCEEDED", "ok", "{}"));
         assertEquals("PENDING", deployment.getState());
     }
 
@@ -135,9 +135,9 @@ public class ImageDeploymentServiceTest {
     public void failedDeploymentKeepsPreviousDigestAndClearsSlot() {
         ImageDeploymentRecord deployment = deployment("deployment-1", "command-1");
         deployment.setPreviousDigest("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
-        when(deployments.selectById("deployment-1")).thenReturn(deployment);
+        when(deployments.selectByCommandIdForUpdate("command-1")).thenReturn(deployment);
         service.reconcile(new AgentCommandFinishedEvent("command-1", "agent-1", "DEPLOY_IMAGE", false,
-                "PULL_FAILED", "pull failed", "{\"deploymentId\":\"deployment-1\"}"));
+                "PULL_FAILED", "pull failed", "{}"));
         assertEquals("FAILED", deployment.getState());
         assertEquals("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", deployment.getPreviousDigest());
         org.junit.Assert.assertNull(deployment.getActiveAgentComponentKey());
