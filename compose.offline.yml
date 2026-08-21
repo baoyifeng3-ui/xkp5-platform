@@ -1,6 +1,38 @@
 name: match-v2
 
 services:
+  registry:
+    image: ${XKP_REGISTRY_IMAGE:-registry:2}
+    pull_policy: never
+    restart: unless-stopped
+    environment:
+      REGISTRY_HTTP_ADDR: 0.0.0.0:5000
+      REGISTRY_HTTP_TLS_CERTIFICATE: /etc/xkp/registry-tls/tls.crt
+      REGISTRY_HTTP_TLS_KEY: /etc/xkp/registry-tls/tls.key
+      REGISTRY_STORAGE_DELETE_ENABLED: ${XKP_REGISTRY_DELETE_ENABLED:-false}
+    expose:
+      - "5000"
+    volumes:
+      - registry_data:/var/lib/registry
+      - ${XKP_REGISTRY_TLS_DIR:-/etc/xkp/registry-tls}:/etc/xkp/registry-tls:ro
+
+  registry-importer:
+    image: ${XKP_REGISTRY_IMPORTER_IMAGE:-xkp5/registry-importer:latest}
+    pull_policy: never
+    restart: unless-stopped
+    environment:
+      REGISTRY_URL: https://registry:5000
+      REGISTRY_CA_FILE: /etc/xkp/registry-tls/ca.crt
+      REGISTRY_STAGING_ROOT: ${XKP_REGISTRY_STAGING_ROOT:-/data/registry-staging}
+      REGISTRY_IMPORT_ROOT: ${XKP_REGISTRY_IMPORT_ROOT:-/data/registry-import}
+      REGISTRY_MAX_FILE_BYTES: ${XKP_REGISTRY_MAX_FILE_BYTES:-21474836480}
+    volumes:
+      - ${XKP_REGISTRY_STAGING_DIR:-./runtime/registry/staging}:/data/registry-staging
+      - ${XKP_REGISTRY_IMPORT_DIR:-./runtime/registry/import}:/data/registry-import
+      - ${XKP_REGISTRY_CA_FILE:-/etc/xkp/registry-tls/ca.crt}:/etc/xkp/registry-tls/ca.crt:ro
+    depends_on:
+      - registry
+
   mysql:
     image: mysql:8.0
     pull_policy: never
@@ -105,3 +137,5 @@ services:
 volumes:
   match_prod_mysql:
     name: match-v2_mysql_data
+  registry_data:
+    name: ${XKP_REGISTRY_VOLUME_NAME:-match-v2_registry_data}

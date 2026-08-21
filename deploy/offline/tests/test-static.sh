@@ -81,7 +81,9 @@ expected_images=$(printf '%s\n' \
   delron/fastdfs:latest \
   match-v2_java:test-release \
   match-v2_vue:test-release \
-  mysql:8.0 | sort)
+  mysql:8.0 \
+  registry:2 \
+  xkp5/registry-importer:latest | sort)
 [[ "$images" == "$expected_images" ]] || fail "Unexpected offline image set"
 
 compose_at "$temp_dir" config >/dev/null
@@ -89,7 +91,7 @@ compose_at "$temp_dir" config >/dev/null
 grep -q 'name: match-v2_mysql_data' "$REPO_ROOT/compose.offline.yml" \
   || fail "MySQL volume name must be stable"
 pull_policy_count=$(grep -c 'pull_policy: never' "$REPO_ROOT/compose.offline.yml")
-[[ "$pull_policy_count" == 5 ]] || fail "Every offline service must disable image pulls"
+[[ "$pull_policy_count" == 7 ]] || fail "Every offline service must disable image pulls"
 grep -q 'docker image prune -f' "$OFFLINE_DIR/build-release.sh" \
   || fail "Release build must prune dangling images after verification"
 if grep -Eq 'docker compose .*down .*-(v|-v)' "$OFFLINE_DIR/uninstall.sh"; then
