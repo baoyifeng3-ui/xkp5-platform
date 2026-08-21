@@ -5,6 +5,8 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 public interface ImageDeploymentMapper extends BaseMapper<ImageDeploymentRecord> {
+    @Select("SELECT * FROM image_deployment ORDER BY requested_at DESC, deployment_id DESC LIMIT #{limit}")
+    java.util.List<ImageDeploymentRecord> selectVisible(@Param("limit") int limit);
     @Select("SELECT * FROM image_deployment WHERE command_id = #{commandId} FOR UPDATE")
     ImageDeploymentRecord selectByCommandIdForUpdate(@Param("commandId") String commandId);
 
