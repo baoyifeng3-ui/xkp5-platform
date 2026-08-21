@@ -10,7 +10,7 @@ $agentCommand = Get-Content -Raw $command
 $schema = Get-Content -Raw $sql
 if ($deployment -notmatch 'UPDATE_CONTAINERS') { throw 'Default container update policy is missing' }
 if ($deployment -notmatch 'IMAGE_ONLY') { throw 'Image-only policy is missing' }
-if ($deployment -notmatch 'selectActiveForUpdate') { throw 'Per-agent/component lock is missing' }
+if ($deployment -notmatch 'selectActiveSlotForUpdate') { throw 'Per-agent/component active-slot lock is missing' }
 if ($deployment -notmatch 'setTargetDigest') { throw 'Desired digest is not persisted' }
 if ($agentCommand -notmatch 'DEPLOY_IMAGE') { throw 'Image command type is missing' }
 if ($agentCommand -notmatch '\^sha256:\[0-9a-f\]\{64\}') { throw 'Command digest validation is missing' }

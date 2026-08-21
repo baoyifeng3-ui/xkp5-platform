@@ -28,6 +28,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
+import org.mockito.ArgumentCaptor;
 import static org.mockito.Mockito.verify;
 
 public class ImageDeploymentServiceTest {
@@ -142,6 +143,33 @@ public class ImageDeploymentServiceTest {
         org.junit.Assert.assertNull(deployment.getActiveAgentComponentKey());
     }
 
+    @Test
+    public void rollbackUsesPreviousDigestAfterFailedDeployment() {
+        ImageDeploymentRecord failed = deployment("failed-1", "old-command");
+        failed.setReleaseId("release-1");
+        failed.setPreviousDigest("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+        when(deployments.selectById("failed-1")).thenReturn(failed);
+        when(deployments.selectActiveSlotForUpdate("agent-1:EDITOR")).thenReturn(null);
+        when(releases.selectById("release-1")).thenReturn(release("EDITOR"));
+        when(agents.selectForManagement("agent-1")).thenReturn(agent());
+        when(commands.requestImageDeploymentCommand(any(), anyString(), anyString(), anyString(), anyString(), anyString(), any(), anyString())).thenReturn(command());
+        ImageDeploymentRecord result = service.rollback("SUPER_ADMIN", "failed-1", true, 7);
+        ArgumentCaptor<ImageDeploymentRecord> captor = ArgumentCaptor.forClass(ImageDeploymentRecord.class);
+        verify(deployments).insert(captor.capture());
+        assertEquals(failed.getPreviousDigest(), captor.getValue().getTargetDigest());
+        assertEquals(failed.getPreviousDigest(), result.getTargetDigest());
+    }
+
+    @Test
+    public void rollbackRequiresConfirmationAndPreviousDigest() {
+        ImageDeploymentRecord failed = deployment("failed-1", "old-command");
+        when(deployments.selectById("failed-1")).thenReturn(failed);
+        try { service.rollback("SUPER_ADMIN", "failed-1", false, 7); org.junit.Assert.fail(); }
+        catch (IllegalArgumentException expected) { assertEquals("EXPLICIT_CONFIRMATION_REQUIRED", expected.getMessage()); }
+        try { service.rollback("SUPER_ADMIN", "failed-1", true, 7); org.junit.Assert.fail(); }
+        catch (IllegalArgumentException expected) { assertEquals("ROLLBACK_DIGEST_UNAVAILABLE", expected.getMessage()); }
+    }
+
     private ImageReleaseRecord release(String component) {
         ImageReleaseRecord r = new ImageReleaseRecord(); r.setReleaseId("release-1");
         r.setComponentType(component); r.setRegistryDigest(DIGEST); r.setState("PUBLISHED");
@@ -149,8 +177,9 @@ public class ImageDeploymentServiceTest {
     }
     private ImageDeploymentRecord deployment(String id, String commandId) {
         ImageDeploymentRecord d = new ImageDeploymentRecord(); d.setDeploymentId(id); d.setCommandId(commandId);
-        d.setAgentId("agent-1"); d.setState("PENDING"); d.setActiveAgentComponentKey("agent-1:EDITOR"); return d;
+        d.setAgentId("agent-1"); d.setComponentType("EDITOR"); d.setState("PENDING"); d.setActiveAgentComponentKey("agent-1:EDITOR"); return d;
     }
+    private ProcessingAgentRecord agent() { ProcessingAgentRecord a = new ProcessingAgentRecord(); a.setAgentId("agent-1"); a.setEnabled(true); return a; }
 
     private AgentCommandView command() { AgentCommandView v = new AgentCommandView(); v.setCommandId("command-1"); return v; }
 }
