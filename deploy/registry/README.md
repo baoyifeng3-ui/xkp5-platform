@@ -18,6 +18,12 @@ The `registry` service owns the persistent `registry_data` volume. The
 staging/import directories plus the CA certificate. The Java service never
 mounts the Docker socket or a Registry private key.
 
+The importer reads its write credential from files named `username` and
+`password` under `XKP_REGISTRY_IMPORTER_SECRETS_DIR` (default
+`/etc/xkp/registry-secrets`). Create that directory as a root-owned, mode 0700
+deployment secret; Compose mounts it read-only. Do not put those files or their
+values in `.env`, Compose source, or Git.
+
 ## Storage policy
 
 `XKP_REGISTRY_MAX_FILE_BYTES` defaults to 20 GiB. Staging capacity and cleanup

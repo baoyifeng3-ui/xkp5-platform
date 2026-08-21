@@ -19,6 +19,8 @@ services:
     environment:
       REGISTRY_URL: https://registry:5000
       REGISTRY_CA_FILE: /etc/xkp/registry-tls/ca.crt
+      REGISTRY_USERNAME_FILE: /run/xkp/registry-secrets/username
+      REGISTRY_PASSWORD_FILE: /run/xkp/registry-secrets/password
       REGISTRY_STAGING_ROOT: ${XKP_REGISTRY_STAGING_ROOT:-/data/registry-staging}
       REGISTRY_IMPORT_ROOT: ${XKP_REGISTRY_IMPORT_ROOT:-/data/registry-import}
       REGISTRY_MAX_FILE_BYTES: ${XKP_REGISTRY_MAX_FILE_BYTES:-21474836480}
@@ -26,6 +28,7 @@ services:
       - ${XKP_REGISTRY_STAGING_DIR:-./runtime/registry/staging}:/data/registry-staging
       - ${XKP_REGISTRY_IMPORT_DIR:-./runtime/registry/import}:/data/registry-import
       - ${XKP_REGISTRY_CA_FILE:-/etc/xkp/registry-tls/ca.crt}:/etc/xkp/registry-tls/ca.crt:ro
+      - ${XKP_REGISTRY_IMPORTER_SECRETS_DIR:-/etc/xkp/registry-secrets}:/run/xkp/registry-secrets:ro
     depends_on:
       - registry
 
@@ -98,12 +101,14 @@ services:
       MATCH_DATASET_ROOT: /data/dataset
       MATCH_SCORING_SCRIPT: /app/python/evaluation_score.py
       MATCH_SCORING_ANNOTATIONS_ROOT: /data/scoring
+      XKP_REGISTRY_CA_FILE: /etc/xkp/registry-tls/ca.crt
       XKP_LICENSE_PUBLIC_KEYS: ${XKP_LICENSE_PUBLIC_KEYS:?Set production license public keys}
       XKP_HOST_IDENTITY_FILE: /etc/xkp/host-identity.json
     volumes:
       - ./download/dataset:/data/dataset
       - ./python:/data/scoring
       - /etc/xkp/host-identity.json:/etc/xkp/host-identity.json:ro
+      - ${XKP_REGISTRY_CA_FILE:-/etc/xkp/registry-tls/ca.crt}:/etc/xkp/registry-tls/ca.crt:ro
     ports:
       - "${MATCH_BACKEND_PORT:-19141}:19141"
     depends_on:

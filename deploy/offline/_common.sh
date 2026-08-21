@@ -185,7 +185,7 @@ restore_database() {
 check_loaded_images() {
   local version=$1
   local image architecture
-  for image in "match-v2_java:$version" "match-v2_vue:$version" mysql:8.0 delron/fastdfs:latest; do
+  for image in "match-v2_java:$version" "match-v2_vue:$version" mysql:8.0 delron/fastdfs:latest registry:2 "${XKP_REGISTRY_IMPORTER_IMAGE:-xkp5/registry-importer:latest}"; do
     architecture=$(docker image inspect --format '{{.Architecture}}' "$image" 2>/dev/null) || die "Image not loaded: $image"
     [[ "$architecture" == amd64 ]] || die "Image $image has unsupported architecture: $architecture"
   done

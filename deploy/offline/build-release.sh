@@ -87,6 +87,7 @@ trap 'exit 143' TERM
 
 log "Building application images"
 compose_source build java vue
+compose_source pull registry registry-importer
 java_image_id=$(compose_source images -q java | head -n 1)
 vue_image_id=$(compose_source images -q vue | head -n 1)
 [[ -n "$java_image_id" ]] || die "Unable to resolve the Java image"
@@ -119,6 +120,8 @@ docker save \
   "match-v2_vue:$version" \
   mysql:8.0 \
   delron/fastdfs:latest \
+  registry:2 \
+  "${XKP_REGISTRY_IMPORTER_IMAGE:-xkp5/registry-importer:latest}" \
   | gzip -c > "$stage_dir/images/match-v2-images.tar.gz"
 
 dataset_file_count=$(find "$REPO_ROOT/download/dataset" -type f | wc -l | tr -d ' ')
@@ -154,6 +157,8 @@ fi
   printf 'Vue image: %s\n' "$(docker image inspect --format '{{.Id}}' "match-v2_vue:$version")"
   printf 'MySQL image: %s\n' "$(docker image inspect --format '{{.Id}}' mysql:8.0)"
   printf 'FastDFS image: %s\n' "$(docker image inspect --format '{{.Id}}' delron/fastdfs:latest)"
+  printf 'Registry image: %s\n' "$(docker image inspect --format '{{.Id}}' registry:2)"
+  printf 'Registry importer image: %s\n' "$(docker image inspect --format '{{.Id}}' "${XKP_REGISTRY_IMPORTER_IMAGE:-xkp5/registry-importer:latest}")"
   printf 'Dataset files: %s\n' "$dataset_file_count"
   printf 'Scoring files: %s\n' "$scoring_file_count"
   printf 'FastDFS storage files: %s\n' "$fastdfs_file_count"

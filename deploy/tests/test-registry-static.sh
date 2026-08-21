@@ -19,6 +19,7 @@ for compose_file in "$REPO_ROOT/compose.registry.yml" "$REPO_ROOT/compose.prod.y
   grep -Eq 'XKP_REGISTRY_STAGING_ROOT|registry_staging' "$compose_file" || fail "Importer staging configuration missing: $compose_file"
   importer_block=$(awk '/^  registry-importer:/{on=1} on{print} on && /^  [A-Za-z0-9_-]+:/{if ($0 !~ /^  registry-importer:/) exit}' "$compose_file")
   printf '%s\n' "$importer_block" | grep -Eq 'ca\.crt:ro' || fail "Importer must mount only the Registry CA: $compose_file"
+  printf '%s\n' "$importer_block" | grep -Eq 'registry-secrets:ro|REGISTRY_USERNAME_FILE' || fail "Importer write credential boundary missing: $compose_file"
   if printf '%s\n' "$importer_block" | grep -Eq 'tls\.key|tls\.crt'; then
     fail "Importer must not mount Registry private key or server certificate: $compose_file"
   fi
@@ -26,6 +27,15 @@ for compose_file in "$REPO_ROOT/compose.registry.yml" "$REPO_ROOT/compose.prod.y
     fail "Registry must not publish a public write port: $compose_file"
   fi
 done
+
+grep -q 'registry:2' "$REPO_ROOT/deploy/offline/build-release.sh" \
+  || fail "Offline release export must include the Registry image"
+grep -q 'XKP_REGISTRY_IMPORTER_IMAGE' "$REPO_ROOT/deploy/offline/build-release.sh" \
+  || fail "Offline release export must include the importer image"
+grep -q 'registry:2' "$REPO_ROOT/deploy/offline/_common.sh" \
+  || fail "Offline image validation must include the Registry image"
+grep -q 'XKP_REGISTRY_IMPORTER_IMAGE' "$REPO_ROOT/deploy/offline/_common.sh" \
+  || fail "Offline image validation must include the importer image"
 
 for compose_file in "$REPO_ROOT/compose.prod.yml" "$REPO_ROOT/compose.offline.yml"; do
   java_block=$(awk '/^  java:/{on=1} on{print} on && /^  [A-Za-z0-9_-]+:/{if ($0 !~ /^  java:/) exit}' "$compose_file")
@@ -35,6 +45,7 @@ for compose_file in "$REPO_ROOT/compose.prod.yml" "$REPO_ROOT/compose.offline.ym
   if printf '%s\n' "$java_block" | grep -Eiq 'private\.key|private_key|LICENSE_PRIVATE'; then
     fail "Java must not receive a license private key: $compose_file"
   fi
+  printf '%s\n' "$java_block" | grep -Eq 'XKP_REGISTRY_CA_FILE|registry-tls/ca\.crt:ro' || fail "Java Registry CA configuration missing: $compose_file"
 done
 
 printf 'Registry deployment static tests passed.\n'
