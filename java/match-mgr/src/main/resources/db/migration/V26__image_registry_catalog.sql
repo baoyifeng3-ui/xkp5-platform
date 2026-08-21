@@ -37,7 +37,16 @@ CREATE TABLE image_artifact (
     UNIQUE KEY uk_image_artifact_sha256 (sha256),
     UNIQUE KEY uk_image_artifact_digest (registry_digest),
     KEY idx_image_artifact_group_component (group_id, component_type),
-    CONSTRAINT chk_image_artifact_size CHECK (size_bytes >= 0)
+    CONSTRAINT chk_image_artifact_size CHECK (size_bytes >= 0),
+    CONSTRAINT chk_image_artifact_sha256 CHECK (
+        sha256 = LOWER(sha256) AND sha256 REGEXP '^[0-9a-f]{64}$'
+    ),
+    CONSTRAINT chk_image_artifact_registry_digest CHECK (
+        registry_digest IS NULL OR (
+            registry_digest = LOWER(registry_digest)
+            AND registry_digest REGEXP '^sha256:[0-9a-f]{64}$'
+        )
+    )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE image_upload (

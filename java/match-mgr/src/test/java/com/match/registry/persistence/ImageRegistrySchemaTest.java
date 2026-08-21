@@ -32,6 +32,9 @@ public class ImageRegistrySchemaTest {
         assertTrue(sql.contains("sha256 CHAR(64) NOT NULL"));
         assertTrue(sql.contains("UNIQUE KEY uk_image_artifact_sha256 (sha256)"));
         assertTrue(sql.contains("registry_digest CHAR(71)"));
+        assertTrue(sql.contains("sha256 = LOWER(sha256)"));
+        assertTrue(sql.contains("sha256 REGEXP '^[0-9a-f]{64}$'"));
+        assertTrue(sql.contains("registry_digest REGEXP '^sha256:[0-9a-f]{64}$'"));
         assertTrue(sql.contains("CREATE TABLE image_upload"));
         assertTrue(sql.contains("CREATE TABLE image_upload_chunk"));
         assertTrue(sql.contains("UNIQUE KEY uk_image_upload_chunk (upload_id, chunk_index)"));
@@ -55,6 +58,13 @@ public class ImageRegistrySchemaTest {
         Method deployment = ImageDeploymentMapper.class.getMethod(
                 "selectActiveForUpdate", String.class, String.class);
         assertTrue(normalize(deployment.getAnnotation(Select.class).value()).endsWith("FOR UPDATE"));
+        Method chunk = ImageUploadChunkMapper.class.getMethod(
+                "selectForUpdate", String.class, int.class);
+        assertTrue(normalize(chunk.getAnnotation(Select.class).value()).endsWith("FOR UPDATE"));
+        assertTrue(ImageUploadChunkMapper.class.getMethod("insertOrRetry", String.class, int.class,
+                int.class, String.class, long.class, java.time.LocalDateTime.class)
+                .getAnnotation(org.apache.ibatis.annotations.Insert.class).value()[0]
+                .contains("ON DUPLICATE KEY UPDATE"));
     }
 
     @Test
