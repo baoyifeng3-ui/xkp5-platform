@@ -26,6 +26,9 @@
             <el-menu-item index="verification" title="成果验证" @click="doRouter(4)">
               <i class="el-icon-circle-check" /><span class="menu-label">成果验证</span>
             </el-menu-item>
+            <el-menu-item v-if="!isAdmin" index="practical" title="比赛实操" @click="doRouter(5)">
+              <i class="el-icon-monitor" /><span class="menu-label">比赛实操</span>
+            </el-menu-item>
             <el-menu-item v-if="showAdminNavigation" index="admin-timer" class="menu-admin-start" title="比赛控制" @click="openAdmin('timer')">
               <i class="el-icon-odometer" /><span class="menu-label">比赛控制</span>
             </el-menu-item>
@@ -99,6 +102,7 @@ export default {
       if (path === '/Home') return 'schedule'
       if (['/Question', '/QuestionA', '/QuestionB', '/Match', '/Matchs'].includes(path)) return 'paper'
       if (path === '/Detect') return 'verification'
+      if (path === '/competition-practical') return 'practical'
       if (path === '/Admin') {
         const tab = String(this.$route.query.tab || 'timer')
         if (['timer', 'rules', 'subjects', 'grading', 'users', 'training', 'settings'].includes(tab)) return `admin-${tab}`
@@ -207,6 +211,9 @@ export default {
           // Keep the last known paper when the status endpoint is temporarily unavailable.
         }
         this.$router.push({ path: '/Detect' }).catch(() => {})
+      } else if (type === 5) {
+        if (!this.ensureCompetitionAccess()) return
+        this.$router.push({ path: '/competition-practical' }).catch(() => {})
       }
     },
     ensureCompetitionAccess () {

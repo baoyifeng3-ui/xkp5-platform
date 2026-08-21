@@ -64,8 +64,13 @@ export function hasRole (role) {
     return getRole() === role
 }
 
+export function getPlatformMode () {
+    const value = String(getUserInfo().platformMode || '').toUpperCase()
+    return value === 'COMPETITION' ? 'COMPETITION' : 'TRAINING'
+}
+
 export function landingRoute () {
-    return roleNavigation.landingRoute(getRole())
+    return roleNavigation.landingRoute(getRole(), getPlatformMode())
 }
 
 export function mustChangePassword () {

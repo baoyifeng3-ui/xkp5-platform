@@ -19,4 +19,7 @@ public interface ContainerTemplateMapper extends BaseMapper<ContainerTemplateRec
     @Select("SELECT * FROM container_template WHERE template_id = #{templateId} "
             + "ORDER BY template_version DESC LIMIT 1 FOR UPDATE")
     ContainerTemplateRecord selectLatestForUpdate(@Param("templateId") String templateId);
+
+    @Select("SELECT * FROM container_template ORDER BY template_id, template_version")
+    List<ContainerTemplateRecord> selectAllVersions();
 }

@@ -4,8 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.match.environment.model.EnvironmentCommandPayload;
 import com.match.environment.model.EnvironmentComponentSpec;
 import com.match.environment.model.EnvironmentPortBinding;
+import com.match.environment.model.ContainerPortSpec;
 import com.match.environment.persistence.ContainerTemplateMapper;
 import com.match.environment.persistence.ContainerTemplateRecord;
+import com.match.environment.persistence.CompetitionEnvironmentRecord;
 import com.match.environment.persistence.EnvironmentPortAllocationMapper;
 import com.match.environment.persistence.EnvironmentPortAllocationRecord;
 import com.match.environment.persistence.TrainingEnvironmentRecord;
@@ -30,18 +32,45 @@ public class EnvironmentCommandFactory {
     }
 
     public String createPayloadJson(TrainingEnvironmentRecord environment, String operationId) {
-        ContainerTemplateRecord annotation = requireTemplate(environment.getAnnotationTemplateId(),
-                environment.getAnnotationTemplateVersion(), "ANNOTATION");
-        ContainerTemplateRecord editor = requireTemplate(environment.getEditorTemplateId(),
-                environment.getEditorTemplateVersion(), "EDITOR");
-        List<EnvironmentPortAllocationRecord> allocations = portMapper.selectBySlot(environment.getSlotId());
+        return createPayloadJson(environment.getEnvironmentId(), operationId,
+                environment.getWorkspaceRelativePath(), environment.getSlotId(),
+                environment.getAnnotationTemplateId(), environment.getAnnotationTemplateVersion(),
+                environment.getAnnotationContainerName(), null, environment.getEditorTemplateId(),
+                environment.getEditorTemplateVersion(), environment.getEditorContainerName(), null, false);
+    }
+
+    public String createPayloadJson(CompetitionEnvironmentRecord environment, String operationId) {
+        return createPayloadJson(environment.getEnvironmentId(), operationId,
+                environment.getWorkspaceRelativePath(), environment.getSlotId(),
+                environment.getAnnotationTemplateId(), environment.getAnnotationTemplateVersion(),
+                environment.getAnnotationContainerName(), environment.getAnnotationConfigFingerprint(),
+                environment.getEditorTemplateId(), environment.getEditorTemplateVersion(),
+                environment.getEditorContainerName(), environment.getEditorConfigFingerprint(), true);
+    }
+
+    private String createPayloadJson(String environmentId, String operationId, String workspaceRelativePath,
+                                     String slotId, String annotationTemplateId,
+                                     Integer annotationTemplateVersion, String annotationContainerName,
+                                     String annotationConfigFingerprint,
+                                     String editorTemplateId, Integer editorTemplateVersion,
+                                     String editorContainerName, String editorConfigFingerprint,
+                                     boolean pinnedCompetitionPair) {
+        ContainerTemplateRecord annotation = requireTemplate(annotationTemplateId,
+                annotationTemplateVersion, "ANNOTATION");
+        ContainerTemplateRecord editor = requireTemplate(editorTemplateId,
+                editorTemplateVersion, "EDITOR");
+        requirePinnedFingerprint(annotation, annotationConfigFingerprint, "ANNOTATION",
+                pinnedCompetitionPair);
+        requirePinnedFingerprint(editor, editorConfigFingerprint, "EDITOR",
+                pinnedCompetitionPair);
+        List<EnvironmentPortAllocationRecord> allocations = portMapper.selectBySlot(slotId);
         EnvironmentCommandPayload payload = new EnvironmentCommandPayload();
-        payload.setEnvironmentId(environment.getEnvironmentId());
+        payload.setEnvironmentId(environmentId);
         payload.setOperationId(operationId);
-        payload.setWorkspaceRelativePath(environment.getWorkspaceRelativePath());
+        payload.setWorkspaceRelativePath(workspaceRelativePath);
         payload.setComponents(Arrays.asList(
-                component(annotation, environment.getAnnotationContainerName(), allocations),
-                component(editor, environment.getEditorContainerName(), allocations)));
+                component(annotation, annotationContainerName, allocations, pinnedCompetitionPair),
+                component(editor, editorContainerName, allocations, pinnedCompetitionPair)));
         try {
             return objectMapper.writeValueAsString(payload);
         } catch (Exception exception) {
@@ -50,7 +79,8 @@ public class EnvironmentCommandFactory {
     }
 
     private EnvironmentComponentSpec component(ContainerTemplateRecord template, String containerName,
-                                               List<EnvironmentPortAllocationRecord> allocations) {
+                                               List<EnvironmentPortAllocationRecord> allocations,
+                                               boolean exactTemplatePorts) {
         EnvironmentComponentSpec component = new EnvironmentComponentSpec();
         component.setComponentType(template.getComponentType());
         component.setContainerName(containerName);
@@ -59,7 +89,9 @@ public class EnvironmentCommandFactory {
         component.setRuntimeName(template.getRuntimeName());
         component.setRestartPolicy(template.getRestartPolicy());
         component.setMountTarget(template.getMountTarget());
-        component.setPorts(ports(template.getComponentType(), allocations));
+        component.setPorts(exactTemplatePorts
+                ? exactTemplatePorts(template, allocations)
+                : ports(template.getComponentType(), allocations));
         component.setCpuLimitMillis(template.getCpuLimitMillis());
         component.setMemoryLimitBytes(template.getMemoryLimitBytes());
         component.setGpuEnabled(template.getGpuEnabled());
@@ -97,11 +129,68 @@ public class EnvironmentCommandFactory {
         return result;
     }
 
+    private List<EnvironmentPortBinding> exactTemplatePorts(
+            ContainerTemplateRecord template, List<EnvironmentPortAllocationRecord> allocations) {
+        List<ContainerPortSpec> declared;
+        try {
+            declared = objectMapper.readValue(template.getPortsJson(),
+                    objectMapper.getTypeFactory().constructCollectionType(
+                            List.class, ContainerPortSpec.class));
+        } catch (Exception exception) {
+            throw new IllegalStateException("environment pinned template ports are invalid: "
+                    + template.getComponentType(), exception);
+        }
+        if (declared == null || declared.isEmpty()) {
+            throw new IllegalStateException("environment pinned template ports are invalid: "
+                    + template.getComponentType());
+        }
+        List<EnvironmentPortBinding> result = new ArrayList<>();
+        for (ContainerPortSpec port : declared) {
+            EnvironmentPortAllocationRecord match = null;
+            if (allocations != null) {
+                for (EnvironmentPortAllocationRecord allocation : allocations) {
+                    if (template.getComponentType().equals(allocation.getComponentType())
+                            && port.getContainerPort().equals(allocation.getContainerPort())
+                            && port.getProtocol().equals(allocation.getProtocol())) {
+                        if (match != null) {
+                            throw new IllegalStateException("environment port allocation is ambiguous: "
+                                    + template.getComponentType());
+                        }
+                        match = allocation;
+                    }
+                }
+            }
+            if (match == null) {
+                throw new IllegalStateException("environment port allocation is incomplete: "
+                        + template.getComponentType());
+            }
+            if (match.getHostPort() == null || match.getHostPort() < 1
+                    || match.getHostPort() > 65535) {
+                throw new IllegalStateException("environment host port allocation is invalid: "
+                        + template.getComponentType());
+            }
+            EnvironmentPortBinding binding = new EnvironmentPortBinding();
+            binding.setContainerPort(match.getContainerPort());
+            binding.setHostPort(match.getHostPort());
+            binding.setProtocol(match.getProtocol());
+            result.add(binding);
+        }
+        return result;
+    }
+
     private ContainerTemplateRecord requireTemplate(String id, Integer version, String componentType) {
         ContainerTemplateRecord template = templateMapper.selectVersion(id, version);
         if (template == null || !componentType.equals(template.getComponentType())) {
             throw new IllegalStateException("环境固定模板不存在: " + componentType);
         }
         return template;
+    }
+
+    private void requirePinnedFingerprint(ContainerTemplateRecord template, String pinned,
+                                          String componentType, boolean required) {
+        if ((required && pinned == null)
+                || (pinned != null && !pinned.equals(template.getConfigFingerprint()))) {
+            throw new IllegalStateException("环境固定模板指纹不匹配: " + componentType);
+        }
     }
 }

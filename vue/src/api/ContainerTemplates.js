@@ -1,6 +1,6 @@
 import request from '@/utils/request.js'
 
-const BASE = '/super-admin/container-templates'
+const BASE = 'super-admin/container-templates'
 
 export const listContainerTemplates = () => request.get(BASE)
 export const publishContainerTemplate = data => request.post(BASE, data)

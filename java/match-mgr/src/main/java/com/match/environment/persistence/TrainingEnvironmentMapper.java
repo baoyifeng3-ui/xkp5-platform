@@ -19,6 +19,10 @@ public interface TrainingEnvironmentMapper extends BaseMapper<TrainingEnvironmen
             + "ORDER BY environment_id FOR UPDATE")
     List<TrainingEnvironmentRecord> selectUserEnvironmentsForUpdate(@Param("userId") int userId);
 
+    @Select("SELECT * FROM training_environment WHERE agent_id = #{agentId} "
+            + "ORDER BY environment_id FOR UPDATE")
+    List<TrainingEnvironmentRecord> selectByAgentForUpdate(@Param("agentId") String agentId);
+
     @Select("SELECT * FROM training_environment WHERE user_id = #{userId} "
             + "ORDER BY course_id, environment_id")
     List<TrainingEnvironmentRecord> selectByUser(@Param("userId") int userId);
@@ -52,4 +56,14 @@ public interface TrainingEnvironmentMapper extends BaseMapper<TrainingEnvironmen
                            @Param("annotationState") String annotationState,
                            @Param("editorState") String editorState,
                            @Param("updatedAt") LocalDateTime updatedAt);
+
+    @Update("UPDATE training_environment SET desired_state = #{actualState}, actual_state = #{actualState}, "
+            + "annotation_container_state = #{annotationState}, editor_container_state = #{editorState}, "
+            + "updated_at = #{updatedAt}, lock_version = lock_version + 1 "
+            + "WHERE environment_id = #{environmentId}")
+    int reconcileModeStep(@Param("environmentId") String environmentId,
+                          @Param("actualState") String actualState,
+                          @Param("annotationState") String annotationState,
+                          @Param("editorState") String editorState,
+                          @Param("updatedAt") LocalDateTime updatedAt);
 }

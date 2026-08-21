@@ -9,16 +9,20 @@ import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import com.match.security.ParticipantAccessGuard;
+import com.match.security.ParticipantModeGuard;
 
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
     private final ParticipantAccessGuard participantAccessGuard;
+    private final ParticipantModeGuard participantModeGuard;
     private final String[] allowedOrigins;
 
     public WebConfig(ParticipantAccessGuard participantAccessGuard,
+                     ParticipantModeGuard participantModeGuard,
                      @Value("${match.allowed-origins:http://localhost:19140,http://127.0.0.1:19140,http://127.0.0.1:19146,http://172.16.33.154:19140,http://172.16.33.158:19140}")
                      String allowedOrigins) {
         this.participantAccessGuard = participantAccessGuard;
+        this.participantModeGuard = participantModeGuard;
         this.allowedOrigins = java.util.Arrays.stream(allowedOrigins.split(","))
                 .map(String::trim)
                 .filter(value -> !value.isEmpty())
@@ -32,10 +36,18 @@ public class WebConfig implements WebMvcConfigurer {
                     .notMatch("/user/login", "/competition", "/health", "/error", "/agent/v1/**",
                             "/terminal/v1/**",
                             "/v2/api-docs/**", "/swagger-resources/**", "/swagger-ui.html")
-                    .check(() -> StpUtil.checkLogin());
-            SaRouter.match("/testPaper/**").check(participantAccessGuard::requireCompetitionStarted);
-            SaRouter.match("/score/**").check(participantAccessGuard::requireCompetitionStarted);
-            SaRouter.match("/train-url/**").check(participantAccessGuard::requireCompetitionStarted);
+                    .check(() -> StpUtil.checkLogin())
+                    .check(participantModeGuard::requireCurrentGeneration);
+            SaRouter.match("/user/training-environments/**")
+                    .check(participantModeGuard::requireTrainingMode);
+            SaRouter.match("/user/competition-environment/**")
+                    .check(participantModeGuard::requireCompetitionMode);
+            SaRouter.match("/testPaper/**", "/score/**", "/train-url/**")
+                    .check(participantModeGuard::requireCompetitionMode)
+                    .check(participantAccessGuard::requireCompetitionStarted);
+            SaRouter.match("/admin/training-environments/**",
+                            "/super-admin/training-environments/**")
+                    .check(participantModeGuard::requireAdministrativeTrainingMode);
         }))
                 .addPathPatterns("/**");
     }

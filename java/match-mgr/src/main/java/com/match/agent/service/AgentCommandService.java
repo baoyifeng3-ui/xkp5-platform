@@ -16,7 +16,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.http.HttpStatus;
 import com.match.agent.web.AgentProtocolException;
 import com.match.environment.service.EnvironmentOperationReconciler;
+import com.match.mode.service.ModeTransitionReconciler;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
 import org.springframework.context.ApplicationEventPublisher;
@@ -56,32 +58,53 @@ public class AgentCommandService {
     private final AgentAuditService auditService;
     private final Clock clock;
     private final EnvironmentOperationReconciler environmentReconciler;
+    private final ModeTransitionReconciler modeTransitionReconciler;
     private final String terminalRelayBaseUrl;
     private final ApplicationEventPublisher eventPublisher;
 
     public AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper,
                                AgentAuditService auditService, Clock clock) {
         this(mapper, objectMapper, auditService, clock, null,
-                "wss://127.0.0.1:19147/terminal/v1/agent", true, event -> { });
+                null, "wss://127.0.0.1:19147/terminal/v1/agent", true, event -> { });
     }
 
     public AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper,
                                AgentAuditService auditService, Clock clock,
                                EnvironmentOperationReconciler environmentReconciler) {
         this(mapper, objectMapper, auditService, clock, environmentReconciler,
-                "wss://127.0.0.1:19147/terminal/v1/agent", true, event -> { });
+                null, "wss://127.0.0.1:19147/terminal/v1/agent", true, event -> { });
+    }
+
+    public AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper,
+                               AgentAuditService auditService, Clock clock,
+                               EnvironmentOperationReconciler environmentReconciler,
+                               ModeTransitionReconciler modeTransitionReconciler) {
+        this(mapper, objectMapper, auditService, clock, environmentReconciler,
+                modeTransitionReconciler, "wss://127.0.0.1:19147/terminal/v1/agent", true,
+                event -> { });
     }
 
     @Autowired
     public AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper,
                                AgentAuditService auditService, Clock clock,
                                EnvironmentOperationReconciler environmentReconciler,
+                               @Lazy ModeTransitionReconciler modeTransitionReconciler,
                                @Value("${match.terminal.agent-relay-url}")
                                String terminalRelayBaseUrl,
                                Environment environment,
                                ApplicationEventPublisher eventPublisher) {
-        this(mapper, objectMapper, auditService, clock, environmentReconciler, terminalRelayBaseUrl,
+        this(mapper, objectMapper, auditService, clock, environmentReconciler,
+                modeTransitionReconciler, terminalRelayBaseUrl,
                 isDevelopmentProfile(environment), eventPublisher);
+    }
+
+    public AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper,
+                               AgentAuditService auditService, Clock clock,
+                               EnvironmentOperationReconciler environmentReconciler,
+                               String terminalRelayBaseUrl, Environment environment,
+                               ApplicationEventPublisher eventPublisher) {
+        this(mapper, objectMapper, auditService, clock, environmentReconciler, null,
+                terminalRelayBaseUrl, isDevelopmentProfile(environment), eventPublisher);
     }
 
     AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper,
@@ -89,7 +112,7 @@ public class AgentCommandService {
                          EnvironmentOperationReconciler environmentReconciler,
                          String terminalRelayBaseUrl, boolean insecureTerminalRelayAllowed) {
         this(mapper, objectMapper, auditService, clock, environmentReconciler,
-                terminalRelayBaseUrl, insecureTerminalRelayAllowed, event -> { });
+                null, terminalRelayBaseUrl, insecureTerminalRelayAllowed, event -> { });
     }
 
     AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper,
@@ -97,11 +120,22 @@ public class AgentCommandService {
                         EnvironmentOperationReconciler environmentReconciler,
                         String terminalRelayBaseUrl, boolean insecureTerminalRelayAllowed,
                         ApplicationEventPublisher eventPublisher) {
+        this(mapper, objectMapper, auditService, clock, environmentReconciler, null,
+                terminalRelayBaseUrl, insecureTerminalRelayAllowed, eventPublisher);
+    }
+
+    AgentCommandService(ProcessingAgentCommandMapper mapper, ObjectMapper objectMapper,
+                        AgentAuditService auditService, Clock clock,
+                        EnvironmentOperationReconciler environmentReconciler,
+                        ModeTransitionReconciler modeTransitionReconciler,
+                        String terminalRelayBaseUrl, boolean insecureTerminalRelayAllowed,
+                        ApplicationEventPublisher eventPublisher) {
         this.mapper = mapper;
         this.objectMapper = objectMapper;
         this.auditService = auditService;
         this.clock = clock;
         this.environmentReconciler = environmentReconciler;
+        this.modeTransitionReconciler = modeTransitionReconciler;
         this.terminalRelayBaseUrl = validateTerminalRelayBaseUrl(terminalRelayBaseUrl,
                 insecureTerminalRelayAllowed);
         this.eventPublisher = eventPublisher;
@@ -247,7 +281,11 @@ public class AgentCommandService {
         if (!"CREATE_TRAINING_ENVIRONMENT".equals(commandType)
                 && !"START_TRAINING_ENVIRONMENT".equals(commandType)
                 && !"STOP_TRAINING_ENVIRONMENT".equals(commandType)
-                && !"RESTORE_TRAINING_ENVIRONMENT".equals(commandType)) {
+                && !"RESTORE_TRAINING_ENVIRONMENT".equals(commandType)
+                && !"CREATE_COMPETITION_ENVIRONMENT".equals(commandType)
+                && !"START_COMPETITION_ENVIRONMENT".equals(commandType)
+                && !"STOP_COMPETITION_ENVIRONMENT".equals(commandType)
+                && !"RESTORE_COMPETITION_ENVIRONMENT".equals(commandType)) {
             throw new IllegalArgumentException("Environment command type is invalid");
         }
         if (payloadJson == null
@@ -395,7 +433,10 @@ public class AgentCommandService {
             } else {
                 auditService.recordCommandFailure("COMMAND_RESULT", result.code, null, agentId, commandId);
             }
-            if (environmentReconciler != null) {
+            boolean handledModeStep = modeTransitionReconciler != null
+                    && modeTransitionReconciler.reconcileIfPresent(commandId, result.success,
+                    result.code, result.message, result.json);
+            if (!handledModeStep && environmentReconciler != null) {
                 environmentReconciler.reconcile(commandId, result.success, result.code,
                         result.message, result.json);
             }

@@ -11,6 +11,8 @@ import com.match.agent.persistence.ProcessingAgentCommandMapper;
 import com.match.agent.persistence.ProcessingAgentCommandRecord;
 import com.match.agent.persistence.ProcessingAgentRecord;
 import com.match.agent.web.AgentProtocolException;
+import com.match.environment.service.EnvironmentOperationReconciler;
+import com.match.mode.service.ModeTransitionReconciler;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -28,7 +30,9 @@ import java.util.List;
 import java.util.Iterator;
 import java.util.Set;
 import java.util.HashSet;
+import java.util.Arrays;
 import java.lang.reflect.Method;
+import java.util.stream.Collectors;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -36,10 +40,12 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -412,6 +418,26 @@ public class AgentCommandServiceTest {
         assertEquals("START_TRAINING_ENVIRONMENT", saved.getValue().getCommandType());
     }
 
+    @Test
+    public void superAdminCanDispatchTaskFourCompetitionEnvironmentCommands() {
+        for (String type : Arrays.asList("CREATE_COMPETITION_ENVIRONMENT",
+                "START_COMPETITION_ENVIRONMENT", "STOP_COMPETITION_ENVIRONMENT",
+                "RESTORE_COMPETITION_ENVIRONMENT")) {
+            service.requestEnvironmentCommand(agent, type, "{}", 7, "SUPER_ADMIN",
+                    "environment-1:" + type);
+        }
+
+        ArgumentCaptor<ProcessingAgentCommandRecord> saved =
+                ArgumentCaptor.forClass(ProcessingAgentCommandRecord.class);
+        verify(mapper, times(4)).insert(saved.capture());
+        assertEquals(Arrays.asList("CREATE_COMPETITION_ENVIRONMENT",
+                        "START_COMPETITION_ENVIRONMENT", "STOP_COMPETITION_ENVIRONMENT",
+                        "RESTORE_COMPETITION_ENVIRONMENT"),
+                saved.getAllValues().stream().map(ProcessingAgentCommandRecord::getCommandType)
+                        .collect(Collectors.toList()));
+    }
+
+
     @Test(expected = IllegalArgumentException.class)
     public void normalUserCannotRequestServerShutdown() {
         service.requestShutdown(agent, 21, "USER");
@@ -536,6 +562,30 @@ public class AgentCommandServiceTest {
         verify(audit).recordCommandSuccess("COMMAND_RESULT", null, agent.getAgentId(), running.getCommandId());
         verify(audit, never()).recordCommandFailure(eq("COMMAND_RESULT"), any(String.class),
                 eq(null), eq(agent.getAgentId()), eq(running.getCommandId()));
+    }
+
+    @Test
+    public void modeStepResultIsHandledBeforeAndInsteadOfEnvironmentReconciliation() {
+        EnvironmentOperationReconciler environments = mock(EnvironmentOperationReconciler.class);
+        ModeTransitionReconciler modes = mock(ModeTransitionReconciler.class);
+        service = new AgentCommandService(mapper, new ObjectMapper().findAndRegisterModules(),
+                audit, Clock.fixed(NOW, ZoneOffset.UTC), environments, modes);
+        ProcessingAgentCommandRecord running = leasedCommand("RUNNING");
+        running.setCommandType("STOP_COMPETITION_ENVIRONMENT");
+        when(mapper.selectById(running.getCommandId())).thenReturn(running);
+        when(mapper.markTerminal(eq(running.getCommandId()), eq(agent.getAgentId()),
+                eq(running.getLeaseToken()), eq("SUCCEEDED"), any(LocalDateTime.class),
+                eq("ENVIRONMENT_STOPPED"), eq("stopped"), eq(null))).thenReturn(1);
+        when(modes.reconcileIfPresent(running.getCommandId(), true,
+                "ENVIRONMENT_STOPPED", "stopped", null)).thenReturn(true);
+
+        service.finish(agent, running.getCommandId(),
+                result(true, "ENVIRONMENT_STOPPED", "stopped"));
+
+        verify(modes).reconcileIfPresent(running.getCommandId(), true,
+                "ENVIRONMENT_STOPPED", "stopped", null);
+        verify(environments, never()).reconcile(anyString(),
+                org.mockito.ArgumentMatchers.anyBoolean(), anyString(), anyString(), any());
     }
 
     @Test

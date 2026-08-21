@@ -12,6 +12,8 @@ const state = {
     role: getUserInfo().role || 'USER',
     isAdmin: getUserInfo().admin === true,
     mustChangePassword: getUserInfo().mustChangePassword === true,
+    platformMode: getUserInfo().platformMode === 'COMPETITION' ? 'COMPETITION' : 'TRAINING',
+    modeGeneration: Number(getUserInfo().modeGeneration || 0),
     platformName: DEFAULT_PLATFORM_NAME,
     themeColor: DEFAULT_THEME_COLOR,
     loginBackgroundUrl: '',
@@ -50,6 +52,8 @@ const mutations = {
         state.role = userInfo.role || (userInfo.admin === true ? 'ADMIN' : 'USER')
         state.isAdmin = userInfo.admin === true
         state.mustChangePassword = userInfo.mustChangePassword === true
+        state.platformMode = userInfo.platformMode === 'COMPETITION' ? 'COMPETITION' : 'TRAINING'
+        state.modeGeneration = Number(userInfo.modeGeneration || 0)
     },
     SET_ACTIVE_PAPER (state, paper) {
         state.activePaper = paper || ''
@@ -86,6 +90,8 @@ const mutations = {
         state.role = 'USER'
         state.isAdmin = false
         state.mustChangePassword = false
+        state.platformMode = 'TRAINING'
+        state.modeGeneration = 0
         state.platformName = DEFAULT_PLATFORM_NAME
         state.themeColor = DEFAULT_THEME_COLOR
         state.loginBackgroundUrl = ''

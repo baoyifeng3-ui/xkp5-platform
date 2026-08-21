@@ -10,6 +10,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.apache.ibatis.annotations.Select;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -54,6 +55,11 @@ public class DashboardOverviewServiceTest {
         when(mapper.countFailedOperations()).thenReturn(2);
         when(mapper.countActiveCommands()).thenReturn(7);
         when(mapper.countFailedCommands()).thenReturn(3);
+        when(mapper.countAgentModesInState("NORMAL")).thenReturn(1);
+        when(mapper.countAgentModesInState("ENTERING_COMPETITION")).thenReturn(2);
+        when(mapper.countAgentModesInState("COMPETITION")).thenReturn(3);
+        when(mapper.countAgentModesInState("EXITING_COMPETITION")).thenReturn(4);
+        when(mapper.countAgentModesInState("DEGRADED")).thenReturn(5);
         when(mapper.selectOnlineMetricJson(onlineCutoff)).thenReturn(Arrays.asList());
         when(activity.onlineUserCount()).thenReturn(11);
         when(licenses.currentStatus()).thenReturn(new LicenseStatus(
@@ -75,6 +81,11 @@ public class DashboardOverviewServiceTest {
         assertEquals(2, result.getAlerts().getFailedOperations());
         assertEquals(7, result.getAlerts().getPendingCommands());
         assertEquals(3, result.getAlerts().getFailedCommands());
+        assertEquals(1, result.getAgentModes().getNormal());
+        assertEquals(2, result.getAgentModes().getEntering());
+        assertEquals(3, result.getAgentModes().getCompetition());
+        assertEquals(4, result.getAgentModes().getExiting());
+        assertEquals(5, result.getAgentModes().getDegraded());
         assertEquals(2, result.getAlerts().getOfflineAgents());
         assertEquals(1, result.getAlerts().getDegradedEnvironments());
         assertEquals(4, result.getAlerts().getFailedEnvironments());
@@ -90,6 +101,17 @@ public class DashboardOverviewServiceTest {
 
         assertNotNull(transaction);
         assertEquals(Isolation.REPEATABLE_READ, transaction.isolation());
+    }
+
+    @Test
+    public void agentModeCountsIncludeUninitializedEnabledAgentsAsNormal() throws Exception {
+        String sql = DashboardOverviewMapper.class.getMethod(
+                "countAgentModesInState", String.class).getAnnotation(Select.class).value()[0];
+
+        assertTrue(sql.contains("FROM processing_agent a LEFT JOIN processing_agent_mode m"));
+        assertTrue(sql.contains("a.enabled = 1"));
+        assertTrue(sql.contains("a.removed_at IS NULL"));
+        assertTrue(sql.contains("COALESCE(m.actual_mode, 'NORMAL') = #{state}"));
     }
 
     @Test

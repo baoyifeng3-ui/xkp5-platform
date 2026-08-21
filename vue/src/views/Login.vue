@@ -70,7 +70,7 @@ export default {
                         if (state.mustChangePassword) {
                             this.$router.push({ path: "/change-password" }).catch(() => { });
                         } else {
-                            this.$router.push(roleNavigation.landingRoute(res.role)).catch(() => { });
+                            this.$router.push(roleNavigation.landingRoute(res.role, res.platformMode)).catch(() => { });
                         }
                     } catch (error) {
                         // The shared request interceptor displays the login error.
