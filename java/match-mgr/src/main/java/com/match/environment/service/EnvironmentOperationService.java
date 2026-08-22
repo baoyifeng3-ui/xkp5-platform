@@ -118,6 +118,22 @@ public class EnvironmentOperationService {
         return environmentMapper.selectAllEnvironments();
     }
 
+    @Transactional
+    public void delete(String environmentId, int actorUserId, String actorRole) {
+        TrainingEnvironmentRecord environment = environmentMapper.selectForUpdate(environmentId);
+        if (environment == null) throw new IllegalArgumentException("实训环境不存在");
+        if (!"ADMIN".equals(actorRole) && !"SUPER_ADMIN".equals(actorRole)) {
+            throw new IllegalArgumentException("仅管理员可以删除实训环境");
+        }
+        if (!"STOPPED".equals(environment.getDesiredState()) || !"STOPPED".equals(environment.getActualState())) {
+            throw new IllegalArgumentException("请先停止实训环境再删除");
+        }
+        if (operationMapper.selectActive(environmentId) != null) {
+            throw new IllegalArgumentException("实训环境仍有进行中的操作");
+        }
+        environmentMapper.deleteById(environmentId);
+    }
+
     private TrainingEnvironmentOperationView createWaitingStart(TrainingEnvironmentRecord environment,
                                                                  int actorUserId, String actorRole) {
         String operationId = UUID.randomUUID().toString();
