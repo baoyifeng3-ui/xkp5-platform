@@ -1,7 +1,8 @@
 <template>
   <section class="module-page module-composed-page dashboard-home">
     <header class="module-heading"><div><h1>主页</h1><p>普通管理员的业务总览与快捷入口。</p></div><span v-if="stale" class="stale-state">数据暂未更新</span></header>
-    <div class="overview-grid"><button v-for="action in actions" :key="action.key" type="button" class="overview-action" :disabled="action.key === 'mode' && modeSwitching" @click="handleAction(action)"><i :class="action.icon" /><span>{{ actionLabel(action) }}</span></button></div>
+    <div class="overview-grid"><button v-for="action in actions" :key="action.key" type="button" class="overview-action" :disabled="action.key === 'mode' && (modeLoading || !modeInitialized || modeSwitching)" @click="handleAction(action)"><i :class="action.icon" /><span>{{ actionLabel(action) }}</span></button></div>
+    <div v-if="modeLoadError" class="mode-error" role="alert"><span>平台模式加载失败，模式切换已禁用。</span><el-button size="small" icon="el-icon-refresh" :loading="modeLoading" @click="loadPlatformMode">重新加载</el-button></div>
     <LicenseStatusPanel />
     <div v-if="firstLoadFailed" class="overview-warning">概览服务暂不可用，请稍后重试。</div>
     <div class="metric-strip"><div v-for="metric in metrics" :key="metric.label"><small>{{ metric.label }}</small><strong>{{ metric.value }}</strong><span>{{ metric.note }}</span></div></div>
@@ -24,8 +25,10 @@ const { applyOverviewSuccess, applyOverviewFailure, resourceText } = require('@/
 export default {
   components: { LicenseStatusPanel },
   data: () => ({
-    mode: { mode: 'TRAINING' },
+    mode: {},
     modeLoading: false,
+    modeInitialized: false,
+    modeLoadError: false,
     modeSwitching: false,
     snapshot: null,
     loading: false,
@@ -59,19 +62,30 @@ export default {
     async loadPlatformMode () {
       if (this.modeLoading) return
       this.modeLoading = true
+      this.modeInitialized = false
+      this.modeLoadError = false
       try {
         const response = await getPlatformMode()
         const value = response && response.data
-        this.mode = Object.assign({}, this.mode, value, { mode: value && value.mode === 'COMPETITION' ? 'COMPETITION' : 'TRAINING' })
+        if (!value || !['TRAINING', 'COMPETITION'].includes(value.mode)) throw new Error('Platform mode response is unavailable')
+        this.mode = Object.assign({}, value)
+        this.modeInitialized = true
       } catch (error) {
+        this.modeLoadError = true
         this.$message.error('平台模式加载失败，请稍后重试。')
       } finally {
         this.modeLoading = false
       }
     },
     async togglePlatformMode () {
-      if (this.modeSwitching) return
+      if (!this.modeInitialized || this.modeSwitching) return
       const target = this.mode.mode === 'COMPETITION' ? 'TRAINING' : 'COMPETITION'
+      const phrase = target === 'COMPETITION' ? 'ENTER COMPETITION' : 'EXIT COMPETITION'
+      try {
+        await this.$prompt(`输入 ${phrase} 确认切换。普通用户现有登录会失效。`, target === 'COMPETITION' ? '进入比赛模式' : '退出比赛模式', { confirmButtonText: '确认切换', inputPattern: new RegExp(`^${phrase}$`), inputErrorMessage: '确认文本不匹配' })
+      } catch (error) {
+        return
+      }
       this.modeSwitching = true
       try {
         const response = await changePlatformMode(target)
@@ -89,7 +103,10 @@ export default {
       if (action.route) return this.$router.push(action.route)
     },
     actionLabel (action) {
-      if (action.key === 'mode') return this.mode.mode === 'COMPETITION' ? '退出比赛模式' : '进入比赛模式'
+      if (action.key === 'mode') {
+        if (!this.modeInitialized) return this.modeLoadError ? '平台模式不可用' : '正在加载平台模式'
+        return this.mode.mode === 'COMPETITION' ? '退出比赛模式' : '进入比赛模式'
+      }
       return action.label
     },
     async loadOverview () {
@@ -111,5 +128,5 @@ export default {
 </script>
 
 <style scoped>
-.module-heading{display:flex;align-items:flex-start;justify-content:space-between}.stale-state,.overview-warning{color:var(--ui-text);background:#fff8df;border:1px solid var(--ui-warning);border-radius:var(--ui-radius)}.stale-state{padding:6px 10px;font-size:12px}.overview-warning{margin-bottom:14px;padding:10px 12px}.overview-grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:12px;margin-bottom:18px}.overview-action{height:88px;padding:16px;border:1px solid var(--ui-border);border-radius:var(--ui-radius);background:var(--ui-surface);color:var(--ui-text);text-align:left;cursor:pointer}.overview-action:hover{border-color:var(--ui-primary)}.overview-action i{display:block;margin-bottom:9px;color:var(--ui-primary);font-size:24px}.overview-action span{font-size:15px}.metric-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin-bottom:12px;background:var(--ui-border);border:1px solid var(--ui-border)}.metric-strip>div{padding:18px;background:var(--ui-surface)}.metric-strip small,.metric-strip span{display:block;color:var(--ui-muted)}.metric-strip strong{display:block;margin:8px 0;font-size:26px}.alert-links{display:grid;grid-template-columns:repeat(5,1fr);margin-bottom:18px;border-top:1px solid var(--ui-border);border-bottom:1px solid var(--ui-border)}.alert-links a{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:8px;padding:11px 12px;color:var(--ui-muted);text-decoration:none;border-right:1px solid var(--ui-border)}.alert-links a:last-child{border-right:0}.alert-links a:hover{color:var(--ui-primary-strong);background:#f5f6fb}.alert-links strong{color:var(--ui-text)}.resource-section{padding:18px 0;border-top:1px solid var(--ui-border)}.resource-section>header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:15px}.resource-section h2{margin:0;color:var(--ui-text);font-size:17px}.resource-section header span{color:var(--ui-muted);font-size:12px}.resource-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 24px}.resource-row{display:grid;grid-template-columns:100px minmax(120px,1fr) 86px;align-items:center;gap:12px;min-height:48px}.resource-copy strong,.resource-copy span{display:block}.resource-copy span,.resource-row small{color:var(--ui-muted);font-size:12px}.resource-row small{text-align:right}@media(max-width:1100px){.alert-links{grid-template-columns:repeat(2,1fr)}.alert-links a{border-bottom:1px solid var(--ui-border)}}@media(max-width:900px){.overview-grid,.metric-strip{grid-template-columns:repeat(2,1fr)}.resource-grid{grid-template-columns:1fr}}@media(max-width:520px){.overview-grid,.metric-strip,.alert-links{grid-template-columns:1fr}.resource-section>header{display:block}.resource-section header span{display:block;margin-top:5px}.resource-row{grid-template-columns:76px minmax(80px,1fr) 72px}}
+.module-heading{display:flex;align-items:flex-start;justify-content:space-between}.stale-state,.overview-warning{color:var(--ui-text);background:#fff8df;border:1px solid var(--ui-warning);border-radius:var(--ui-radius)}.stale-state{padding:6px 10px;font-size:12px}.overview-warning{margin-bottom:14px;padding:10px 12px}.overview-grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:12px;margin-bottom:18px}.overview-action{height:88px;padding:16px;border:1px solid var(--ui-border);border-radius:var(--ui-radius);background:var(--ui-surface);color:var(--ui-text);text-align:left;cursor:pointer}.overview-action:hover{border-color:var(--ui-primary)}.overview-action:disabled{color:var(--ui-muted);cursor:not-allowed;opacity:.7}.overview-action i{display:block;margin-bottom:9px;color:var(--ui-primary);font-size:24px}.overview-action span{font-size:15px}.mode-error{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:-6px 0 18px;padding:10px 12px;color:var(--ui-danger);background:#fff7f7;border:1px solid #ead5d5;border-radius:var(--ui-radius)}.metric-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin-bottom:12px;background:var(--ui-border);border:1px solid var(--ui-border)}.metric-strip>div{padding:18px;background:var(--ui-surface)}.metric-strip small,.metric-strip span{display:block;color:var(--ui-muted)}.metric-strip strong{display:block;margin:8px 0;font-size:26px}.alert-links{display:grid;grid-template-columns:repeat(5,1fr);margin-bottom:18px;border-top:1px solid var(--ui-border);border-bottom:1px solid var(--ui-border)}.alert-links a{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:8px;padding:11px 12px;color:var(--ui-muted);text-decoration:none;border-right:1px solid var(--ui-border)}.alert-links a:last-child{border-right:0}.alert-links a:hover{color:var(--ui-primary-strong);background:#f5f6fb}.alert-links strong{color:var(--ui-text)}.resource-section{padding:18px 0;border-top:1px solid var(--ui-border)}.resource-section>header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:15px}.resource-section h2{margin:0;color:var(--ui-text);font-size:17px}.resource-section header span{color:var(--ui-muted);font-size:12px}.resource-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 24px}.resource-row{display:grid;grid-template-columns:100px minmax(120px,1fr) 86px;align-items:center;gap:12px;min-height:48px}.resource-copy strong,.resource-copy span{display:block}.resource-copy span,.resource-row small{color:var(--ui-muted);font-size:12px}.resource-row small{text-align:right}@media(max-width:1100px){.alert-links{grid-template-columns:repeat(2,1fr)}.alert-links a{border-bottom:1px solid var(--ui-border)}}@media(max-width:900px){.overview-grid,.metric-strip{grid-template-columns:repeat(2,1fr)}.resource-grid{grid-template-columns:1fr}}@media(max-width:520px){.overview-grid,.metric-strip,.alert-links{grid-template-columns:1fr}.mode-error{align-items:stretch;flex-direction:column}.resource-section>header{display:block}.resource-section header span{display:block;margin-top:5px}.resource-row{grid-template-columns:76px minmax(80px,1fr) 72px}}
 </style>
