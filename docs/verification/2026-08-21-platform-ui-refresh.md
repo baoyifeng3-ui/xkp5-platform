@@ -80,8 +80,11 @@ latest frontend on `http://127.0.0.1:19142/` with the backend on `19141`:
 - `/management/platform-settings` loaded authoritative settings before enabling
   its form.
 
-The platform-mode endpoint returned an error in this local data state. The home
-page correctly showed `平台模式不可用`, disabled the action, and exposed a retry
+The platform-mode endpoint returned an error in this local data state. The
+running Java container reported Flyway schema version 16, while this branch's
+mode controller/migrations are newer; the error is therefore recorded as a
+backend image/schema mismatch, not as a frontend success. The home page
+correctly showed `平台模式不可用`, disabled the action, and exposed a retry
 control rather than guessing a mode or issuing a mutation.
 
 ## Environment Limitation
