@@ -54,6 +54,12 @@ function landingRoute (role, mode) {
   return mode === 'COMPETITION' ? { path: '/Publicity' } : { path: '/course-platform' }
 }
 
+function legacyAdminRoute (tab) {
+  if (tab === 'training') return { path: '/management/devices', replace: true }
+  if (tab === 'settings') return { path: '/management/platform-settings', replace: true }
+  return null
+}
+
 module.exports = {
   USER,
   ADMIN,
@@ -64,5 +70,6 @@ module.exports = {
   operationsItems,
   previewDestinations,
   routeRoles,
-  landingRoute
+  landingRoute,
+  legacyAdminRoute
 }

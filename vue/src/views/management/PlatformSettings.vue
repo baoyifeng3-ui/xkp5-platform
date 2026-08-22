@@ -4,7 +4,12 @@
       <div><h1>平台设置</h1><p>维护全平台品牌信息、主题色与登录页展示。</p></div>
     </header>
 
-    <el-form ref="platformForm" :model="platformForm" :rules="platformRules" label-position="top" class="settings-form">
+    <div v-if="loadError" class="settings-error" role="alert">
+      <span>平台设置加载失败，保存操作已禁用。</span>
+      <el-button size="small" icon="el-icon-refresh" @click="loadPlatformSettings">重新加载</el-button>
+    </div>
+
+    <el-form v-loading="loading" :disabled="!initialized || loading" ref="platformForm" :model="platformForm" :rules="platformRules" label-position="top" class="settings-form">
       <el-form-item label="平台名称" prop="platformName">
         <el-input v-model="platformForm.platformName" maxlength="30" show-word-limit placeholder="请输入平台名称" @input="platformEditing = true" />
       </el-form-item>
@@ -14,7 +19,7 @@
       <el-form-item label="登录页说明文字"><el-input v-model="platformForm.loginDescription" type="textarea" :rows="3" maxlength="300" show-word-limit @input="platformEditing = true" /></el-form-item>
       <el-form-item label="登录页版权文字"><el-input v-model="platformForm.loginCopyright" maxlength="100" show-word-limit @input="platformEditing = true" /></el-form-item>
       <el-form-item label="登录页面背景图片">
-        <el-upload action="#" accept="image/jpeg,image/png,image/webp" :auto-upload="false" :show-file-list="false" :on-change="selectLoginBackground" :disabled="backgroundUploading">
+        <el-upload action="#" accept="image/jpeg,image/png,image/webp" :auto-upload="false" :show-file-list="false" :on-change="selectLoginBackground" :disabled="backgroundUploading || !initialized || loading">
           <el-button icon="el-icon-picture-outline" :loading="backgroundUploading">选择本地图片</el-button>
         </el-upload>
         <div v-if="platformForm.loginBackgroundUrl" class="background-preview"><img :src="platformForm.loginBackgroundUrl" alt="登录背景预览" /></div>
@@ -22,14 +27,14 @@
       </el-form-item>
       <div class="settings-actions">
         <el-button icon="el-icon-refresh-left" :disabled="platformSaving || platformForm.themeColor === defaultThemeColor" @click="restoreDefaultTheme">恢复默认主题色</el-button>
-        <el-button type="primary" icon="el-icon-check" :loading="platformSaving" @click="savePlatformSettings">保存设置</el-button>
+        <el-button type="primary" icon="el-icon-check" :loading="platformSaving" :disabled="platformSaving || !initialized || loading" @click="savePlatformSettings">保存设置</el-button>
       </div>
     </el-form>
   </section>
 </template>
 
 <script>
-import { updatePlatformSettingsApi, uploadLoginBackgroundApi } from '@/api/Match'
+import { competitionApi, updatePlatformSettingsApi, uploadLoginBackgroundApi } from '@/api/Match'
 
 const DEFAULT_THEME_COLOR = '#162d45'
 
@@ -39,6 +44,9 @@ export default {
     return {
       platformForm: { platformName: '', themeColor: DEFAULT_THEME_COLOR, loginBackgroundUrl: '', loginBrandName: '', loginTitle: '', loginDescription: '', loginCopyright: '' },
       defaultThemeColor: DEFAULT_THEME_COLOR,
+      loading: true,
+      loadError: false,
+      initialized: false,
       platformSaving: false,
       platformEditing: false,
       backgroundUploading: false,
@@ -58,8 +66,25 @@ export default {
   computed: {
     platformName () { return this.$store.state.Match.platformName || '数据杯管理台' }
   },
-  created () { this.syncPlatformForm() },
+  created () { this.loadPlatformSettings() },
   methods: {
+    async loadPlatformSettings () {
+      this.loading = true
+      this.loadError = false
+      this.initialized = false
+      try {
+        const result = await competitionApi()
+        if (result.code !== 200 || !result.data) throw new Error('Platform settings response is unavailable')
+        this.$store.commit('Match/SET_PLATFORM_SETTINGS', result.data)
+        this.syncPlatformForm()
+        this.platformEditing = false
+        this.initialized = true
+      } catch (error) {
+        this.loadError = true
+      } finally {
+        this.loading = false
+      }
+    },
     syncPlatformForm () {
       const state = this.$store.state.Match
       this.platformForm = {
@@ -73,6 +98,7 @@ export default {
       }
     },
     async savePlatformSettings () {
+      if (!this.initialized) return
       const valid = await new Promise(resolve => this.$refs.platformForm.validate(resolve))
       if (!valid) return
       this.platformSaving = true
@@ -133,6 +159,7 @@ export default {
 
 <style scoped>
 .settings-form { max-width: 680px; padding-top: 18px; border-top: 1px solid #dce4e9; }
+.settings-error { display: flex; align-items: center; justify-content: space-between; gap: 16px; max-width: 680px; margin-bottom: 14px; padding: 10px 12px; color: #934444; background: #fff7f7; border: 1px solid #ead5d5; border-radius: 5px; box-sizing: border-box; }
 .settings-form::v-deep .el-form-item { margin-bottom: 22px; }
 .settings-form::v-deep .el-form-item__label { color: #405267; font-size: 13px; font-weight: 600; }
 .background-preview { width: 100%; max-width: 360px; height: 120px; margin-top: 10px; overflow: hidden; background: #f3f5f6; border: 1px solid #e3e8eb; border-radius: 6px; }

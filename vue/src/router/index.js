@@ -123,6 +123,10 @@ router.beforeEach((to, from, next) => {
   if (loggedIn && !mustChangePassword() && to.path === '/change-password') {
     return next(landingRoute())
   }
+  if (to.path === '/Admin') {
+    const legacyRoute = roleNavigation.legacyAdminRoute(to.query.tab)
+    if (legacyRoute) return next(legacyRoute)
+  }
   const requiredRoles = to.matched.reduce((roles, record) => record.meta && record.meta.roles ? record.meta.roles : roles, null)
   const adminPreview = getRole() === 'ADMIN' && to.query.preview === '1' && roleNavigation.previewDestinations.includes(to.path)
   if (!adminPreview && requiredRoles && !requiredRoles.includes(getRole())) {
