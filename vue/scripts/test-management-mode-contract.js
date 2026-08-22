@@ -1,0 +1,20 @@
+const assert = require('assert')
+const fs = require('fs')
+
+const page = fs.readFileSync('src/views/management/ManagementHome.vue', 'utf8')
+const api = fs.readFileSync('src/api/PlatformMode.js', 'utf8')
+
+assert.ok(api.includes('getPlatformMode'))
+assert.ok(api.includes('changePlatformMode'))
+assert.ok(page.includes("import { getPlatformMode, changePlatformMode } from '@/api/PlatformMode'"))
+assert.ok(page.includes('loadPlatformMode'))
+assert.ok(page.includes('togglePlatformMode'))
+assert.ok(page.includes("this.mode.mode === 'COMPETITION' ? '退出比赛模式' : '进入比赛模式'"))
+assert.ok(page.includes("changePlatformMode(target)"))
+assert.ok(page.includes("this.$router.push(action.route)"))
+assert.ok(page.includes('modeSwitching'))
+assert.ok(page.includes('this.$message.error'))
+assert.ok(!page.includes("route: '/Admin?tab=timer'"))
+assert.ok(!page.includes('切换比赛模式'))
+
+console.log('management mode contract tests passed')

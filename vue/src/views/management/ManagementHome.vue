@@ -1,7 +1,7 @@
 <template>
   <section class="module-page dashboard-home">
     <header class="module-heading"><div><h1>主页</h1><p>普通管理员的业务总览与快捷入口。</p></div><span v-if="stale" class="stale-state">数据暂未更新</span></header>
-    <div class="overview-grid"><button v-for="action in actions" :key="action.label" type="button" class="overview-action" @click="$router.push(action.route)"><i :class="action.icon" /><span>{{ action.label }}</span></button></div>
+    <div class="overview-grid"><button v-for="action in actions" :key="action.key" type="button" class="overview-action" :disabled="action.key === 'mode' && modeSwitching" @click="handleAction(action)"><i :class="action.icon" /><span>{{ actionLabel(action) }}</span></button></div>
     <LicenseStatusPanel />
     <div v-if="firstLoadFailed" class="overview-warning">概览服务暂不可用，请稍后重试。</div>
     <div class="metric-strip"><div v-for="metric in metrics" :key="metric.label"><small>{{ metric.label }}</small><strong>{{ metric.value }}</strong><span>{{ metric.note }}</span></div></div>
@@ -18,12 +18,15 @@
 <script>
 import LicenseStatusPanel from '@/components/LicenseStatusPanel.vue'
 import { getDashboardOverview } from '@/api/DashboardOverview'
+import { getPlatformMode, changePlatformMode } from '@/api/PlatformMode'
 const { applyOverviewSuccess, applyOverviewFailure, resourceText } = require('@/services/dashboardOverviewState')
 
 export default {
   components: { LicenseStatusPanel },
   data: () => ({
-    actions: [{ label: '一键上课', icon: 'el-icon-video-play', route: '/management/training' }, { label: '切换比赛模式', icon: 'el-icon-refresh', route: '/Admin?tab=timer' }, { label: '进入课程平台', icon: 'el-icon-reading', route: '/management/courses' }, { label: '进入实训环境', icon: 'el-icon-monitor', route: '/management/training' }],
+    mode: { mode: 'TRAINING' },
+    modeLoading: false,
+    modeSwitching: false,
     snapshot: null,
     loading: false,
     stale: false,
@@ -31,6 +34,9 @@ export default {
     refreshTimer: null
   }),
   computed: {
+    actions () {
+      return [{ key: 'training', label: '一键上课', icon: 'el-icon-video-play', route: '/management/training' }, { key: 'mode', icon: 'el-icon-refresh' }, { key: 'courses', label: '进入课程平台', icon: 'el-icon-reading', route: '/management/courses' }, { key: 'environment', label: '进入实训环境', icon: 'el-icon-monitor', route: '/management/training' }]
+    },
     metrics () {
       const data = this.snapshot || {}
       const agents = data.agents || data.processingAgents || {}
@@ -47,9 +53,45 @@ export default {
       return [{ label: '离线服务器', value: alerts.offlineAgents || 0, route: '/management/devices' }, { label: '异常实训环境', value: (alerts.degradedEnvironments || 0) + (alerts.failedEnvironments || 0), route: '/management/training' }, { label: '待处理环境操作', value: (alerts.pendingOperations || 0) + (alerts.failedOperations || 0), route: '/management/training' }, { label: '待处理服务器命令', value: (alerts.pendingCommands || 0) + (alerts.failedCommands || 0), route: '/management/devices' }, { label: '授权提醒', value: (alerts.licenseUnusable || 0) + (alerts.licenseExpiring || 0), route: '/management/license' }]
     }
   },
-  mounted () { this.loadOverview(); this.refreshTimer = setInterval(this.loadOverview, 15000) },
+  mounted () { this.loadPlatformMode(); this.loadOverview(); this.refreshTimer = setInterval(this.loadOverview, 15000) },
   beforeDestroy () { clearInterval(this.refreshTimer) },
   methods: {
+    async loadPlatformMode () {
+      if (this.modeLoading) return
+      this.modeLoading = true
+      try {
+        const response = await getPlatformMode()
+        const value = response && response.data
+        this.mode = Object.assign({}, this.mode, value, { mode: value && value.mode === 'COMPETITION' ? 'COMPETITION' : 'TRAINING' })
+      } catch (error) {
+        this.$message.error('平台模式加载失败，请稍后重试。')
+      } finally {
+        this.modeLoading = false
+      }
+    },
+    async togglePlatformMode () {
+      if (this.modeSwitching) return
+      const target = this.mode.mode === 'COMPETITION' ? 'TRAINING' : 'COMPETITION'
+      this.modeSwitching = true
+      try {
+        const response = await changePlatformMode(target)
+        const value = response && response.data
+        this.mode = Object.assign({}, this.mode, value, { mode: value && value.mode ? value.mode : target })
+        this.$message.success(target === 'COMPETITION' ? '已进入比赛模式' : '已退出比赛模式')
+      } catch (error) {
+        this.$message.error('平台模式切换失败，请稍后重试。')
+      } finally {
+        this.modeSwitching = false
+      }
+    },
+    handleAction (action) {
+      if (action.key === 'mode') return this.togglePlatformMode()
+      if (action.route) return this.$router.push(action.route)
+    },
+    actionLabel (action) {
+      if (action.key === 'mode') return this.mode.mode === 'COMPETITION' ? '退出比赛模式' : '进入比赛模式'
+      return action.label
+    },
     async loadOverview () {
       if (this.loading) return
       this.loading = true
