@@ -42,6 +42,13 @@ public class CourseLearningService {
     @Transactional
     public void recordProgress(Integer userId, String resourceId, String progressKind,
                                Integer progressValue, Boolean completed) {
+        CourseResourceRecord resource = resourceMapper.selectById(resourceId);
+        if (resource == null || !Boolean.TRUE.equals(resource.getEnabled())) {
+            throw new IllegalArgumentException("课程资源不存在或已停用");
+        }
+        if (!java.util.Arrays.asList("PAGE", "TIME", "SLIDE", "DELIVERY").contains(progressKind)) {
+            throw new IllegalArgumentException("学习进度类型无效");
+        }
         CourseProgressRecord record = new CourseProgressRecord();
         int value = progressValue == null ? 0 : Math.max(0, Math.min(100, progressValue));
         boolean done = Boolean.TRUE.equals(completed) || value >= 100;
