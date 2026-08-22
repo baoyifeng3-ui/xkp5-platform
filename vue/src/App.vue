@@ -1,5 +1,5 @@
 <template>
-  <div id="app">
+  <div id="app" class="platform-app">
     <Index />
   </div>
 </template>
@@ -14,6 +14,22 @@ export default {
 </script>
 
 <style>
+@import url(./assets/style/platform-theme.css);
+
+html,
+body,
+#app,
+.platform-app {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--ui-text);
+  background: var(--ui-workspace);
+  font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+}
+
 ::-webkit-scrollbar {
   width: 5px !important;
   height: 3px !important;

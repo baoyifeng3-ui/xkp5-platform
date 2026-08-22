@@ -1,15 +1,14 @@
 <template>
-    <div class="login-box" :style="loginStyle">
+    <div :class="['login-box', { 'has-background': hasLoginBackground }]" :style="loginStyle">
         <header class="login-brand">
-            <span class="login-brand-mark" />
-            <div><strong>{{ loginBrandName }}</strong><small>Management Platform</small></div>
+            <span class="login-brand-mark" aria-hidden="true">X</span>
+            <div><strong>{{ loginBrandName }}</strong><small>XKP5.0 MANAGEMENT PLATFORM</small></div>
         </header>
         <main class="login-shell">
             <section class="login-intro">
-                <span class="login-kicker">课程 · 实训 · 竞赛一体化管理</span>
                 <h1>{{ loginTitle }}</h1>
                 <p>{{ loginDescription }}</p>
-                <div class="login-state"><i />平台服务就绪</div>
+                <div class="login-status" role="status" aria-live="polite"><i aria-hidden="true" />平台服务就绪</div>
             </section>
             <el-card class="login-card" shadow="never">
                 <div class="login-card-heading"><span>账号登录</span><small>请使用已分配的平台账号</small></div>
@@ -53,6 +52,7 @@ export default {
         loginTitle () { return this.$store.state.Match.loginTitle },
         loginDescription () { return this.$store.state.Match.loginDescription },
         loginCopyright () { return this.$store.state.Match.loginCopyright },
+        hasLoginBackground () { return Boolean(this.$store.state.Match.loginBackgroundUrl) },
         loginStyle () {
             const url = this.$store.state.Match.loginBackgroundUrl
             return url ? { '--login-background-image': `url("${url.replace(/"/g, '\\"')}")` } : {}

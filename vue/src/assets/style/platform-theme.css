@@ -22,3 +22,95 @@
 *::after {
   box-sizing: border-box;
 }
+
+.platform-app .el-button {
+  min-height: 36px;
+  border-radius: 6px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.platform-app .el-button--primary {
+  background: var(--ui-primary);
+  border-color: var(--ui-primary);
+}
+
+.platform-app .el-button--primary:hover,
+.platform-app .el-button--primary:focus {
+  background: var(--ui-primary-strong);
+  border-color: var(--ui-primary-strong);
+}
+
+.platform-app .el-input__inner,
+.platform-app .el-textarea__inner {
+  color: var(--ui-text);
+  border-color: var(--ui-border);
+  border-radius: 6px;
+}
+
+.platform-app .el-input__inner:focus,
+.platform-app .el-textarea__inner:focus {
+  border-color: var(--ui-primary);
+}
+
+.platform-app .el-table {
+  color: var(--ui-text);
+  background: var(--ui-surface);
+}
+
+.platform-app .el-table th.el-table__cell {
+  color: #526079;
+  background: #f7f8fb;
+  font-weight: 600;
+}
+
+.platform-app .el-table td.el-table__cell,
+.platform-app .el-table th.el-table__cell {
+  border-bottom-color: var(--ui-border);
+}
+
+.platform-app .el-table::before { background: var(--ui-border); }
+
+.platform-app .el-tag {
+  height: 28px;
+  border-radius: 5px;
+  line-height: 26px;
+}
+
+.platform-app .el-dialog {
+  border-radius: var(--ui-radius);
+  box-shadow: 0 18px 48px rgba(31, 41, 64, .14);
+}
+
+.platform-app .el-dialog__header {
+  padding: 20px 24px 14px;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.platform-app .el-dialog__body { padding: 22px 24px; }
+.platform-app .el-dialog__footer { padding: 12px 24px 20px; }
+
+.platform-app .el-tabs__item { color: var(--ui-muted); letter-spacing: 0; }
+.platform-app .el-tabs__item.is-active,
+.platform-app .el-tabs__item:hover { color: var(--ui-primary-strong); }
+.platform-app .el-tabs__active-bar { background: var(--ui-primary); }
+
+.platform-app .el-pagination button,
+.platform-app .el-pagination .el-pager li {
+  min-width: 32px;
+  height: 32px;
+  line-height: 32px;
+  border-radius: 5px;
+}
+
+.platform-app .el-pagination .el-pager li.active { color: var(--ui-primary); }
+
+.platform-app .el-empty { padding: 28px 0; }
+.platform-app .el-empty__description p { color: var(--ui-muted); }
+
+.platform-app .el-loading-mask {
+  background: rgba(255, 255, 255, .84);
+  border-radius: inherit;
+}
+
+.platform-app .el-loading-spinner .path { stroke: var(--ui-primary); }

@@ -49,4 +49,31 @@ assert.match(shellCss, /\.shell-sidebar\s*{[^}]*visibility:\s*hidden;[^}]*pointe
 assert.match(shellCss, /\.shell-sidebar\.is-open\s*{[^}]*visibility:\s*visible;[^}]*pointer-events:\s*auto;/s)
 assert.doesNotMatch(shellCss, /linear-gradient|radial-gradient|\.orb|bokeh/i)
 
+const login = read('src/views/Login.vue')
+const loginCss = read('src/assets/style/login.css')
+const app = read('src/App.vue')
+
+assert.match(app, /class="platform-app"/)
+assert.match(app, /platform-theme\.css/)
+assert.match(login, /login-status/)
+assert.match(login, /autocomplete="username"/)
+assert.match(login, /autocomplete="current-password"/)
+assert.match(login, /:style="loginStyle"/)
+assert.match(loginCss, /--ui-primary/)
+assert.match(loginCss, /border-radius:\s*var\(--ui-radius\)/)
+assert.doesNotMatch(login + loginCss, /linear-gradient|radial-gradient|\.orb|bokeh/i)
+
+;[
+  '\\.platform-app \\.el-button',
+  '\\.platform-app \\.el-input__inner',
+  '\\.platform-app \\.el-table',
+  '\\.platform-app \\.el-tag',
+  '\\.platform-app \\.el-dialog',
+  '\\.platform-app \\.el-tabs',
+  '\\.platform-app \\.el-pagination',
+  '\\.platform-app \\.el-empty',
+  '\\.platform-app \\.el-loading-mask'
+].forEach(selector => assert.match(theme, new RegExp(selector)))
+assert.doesNotMatch(theme, /\.xterm(?:\s|,|\{|\.)/)
+
 console.log('platform UI contract passed')
