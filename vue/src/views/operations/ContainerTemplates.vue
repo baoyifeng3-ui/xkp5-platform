@@ -1,7 +1,7 @@
 <template>
-  <section class="module-page">
-    <header class="module-heading action-heading"><div><h1>容器模板</h1><p>维护图像标注与代码编辑容器的版本化配置。</p></div><el-button type="primary" icon="el-icon-plus" @click="openCreate">发布模板</el-button></header>
-    <el-table v-loading="loading" :data="templates" empty-text="暂无容器模板">
+  <section class="module-page module-composed-page">
+    <header class="module-heading module-toolbar action-heading"><div><h1>容器模板</h1><p>维护图像标注与代码编辑容器的版本化配置。</p></div><el-button type="primary" icon="el-icon-plus" @click="openCreate">发布模板</el-button></header>
+    <div class="module-table-wrap"><el-table v-loading="loading" :data="templates" empty-text="暂无容器模板">
       <el-table-column prop="templateName" label="名称" min-width="150" />
       <el-table-column label="组件" width="110"><template slot-scope="scope">{{ scope.row.componentType === 'ANNOTATION' ? '图像标注' : '代码编辑' }}</template></el-table-column>
       <el-table-column prop="imageReference" label="镜像" min-width="190" show-overflow-tooltip />
@@ -9,7 +9,7 @@
       <el-table-column label="GPU 算力" width="100"><template slot-scope="scope">{{ scope.row.gpuEnabled ? `${scope.row.gpuComputePercent}%` : '-' }}</template></el-table-column>
       <el-table-column label="状态" width="90"><template slot-scope="scope"><el-tag size="small" :type="scope.row.enabled ? 'success' : 'info'">{{ scope.row.enabled ? '可用' : '停用' }}</el-tag></template></el-table-column>
       <el-table-column label="操作" width="120" align="right"><template slot-scope="scope"><el-button v-if="scope.row.enabled" type="text" @click="disable(scope.row)">停用版本</el-button></template></el-table-column>
-    </el-table>
+    </el-table></div>
 
     <el-dialog title="发布容器模板" :visible.sync="dialog" width="620px">
       <el-form label-width="110px">

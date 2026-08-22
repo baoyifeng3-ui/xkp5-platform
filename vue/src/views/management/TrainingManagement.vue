@@ -1,7 +1,7 @@
 <template>
-  <section class="module-page">
+  <section class="module-page module-composed-page">
     <header class="module-heading"><h1>实训管理</h1><p>查看用户环境状态，控制启动、停止和容器还原。</p></header>
-    <el-table v-loading="loading" :data="environments" empty-text="暂无实训环境">
+    <div class="module-table-wrap"><el-table v-loading="loading" :data="environments" empty-text="暂无实训环境">
       <el-table-column prop="userId" label="用户" width="90" />
       <el-table-column prop="courseId" label="课程" width="90" />
       <el-table-column prop="agentId" label="处理服务器" min-width="180" show-overflow-tooltip />
@@ -15,7 +15,7 @@
           <el-button size="small" type="warning" :disabled="isPending(scope.row)" @click="restore(scope.row)">还原</el-button>
         </template>
       </el-table-column>
-    </el-table>
+    </el-table></div>
   </section>
 </template>
 

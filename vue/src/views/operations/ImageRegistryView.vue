@@ -1,43 +1,43 @@
 <template>
-  <section class="module-page registry-page">
-    <header class="module-heading action-heading">
+  <section class="module-page module-composed-page registry-page">
+    <header class="module-heading module-toolbar action-heading">
       <div><h1>镜像仓库</h1><p>审批 Docker 归档，按摘要发布图像标注或代码编辑镜像，并逐台推送到处理服务器。</p></div>
       <div class="heading-actions"><el-button icon="el-icon-refresh" :loading="loading" @click="loadAll">刷新</el-button><el-button v-if="canWrite" type="primary" icon="el-icon-upload2" @click="uploadVisible = true">上传镜像</el-button></div>
     </header>
 
-    <div class="toolbar"><el-input v-model.trim="query" prefix-icon="el-icon-search" clearable placeholder="搜索镜像组、版本或摘要" /><el-select v-model="componentFilter" clearable placeholder="全部组件"><el-option label="图像标注" value="ANNOTATION" /><el-option label="代码编辑" value="EDITOR" /></el-select><span class="read-only" v-if="!canWrite"><i class="el-icon-view" /> 普通管理员只读</span></div>
+    <div class="toolbar module-toolbar"><el-input v-model.trim="query" prefix-icon="el-icon-search" clearable placeholder="搜索镜像组、版本或摘要" /><el-select v-model="componentFilter" clearable placeholder="全部组件"><el-option label="图像标注" value="ANNOTATION" /><el-option label="代码编辑" value="EDITOR" /></el-select><span class="read-only" v-if="!canWrite"><i class="el-icon-view" /> 普通管理员只读</span></div>
 
     <el-tabs v-model="activeTab">
       <el-tab-pane label="镜像目录" name="catalog">
         <div v-loading="loading" class="catalog">
           <section v-for="group in filteredGroups" :key="group.groupId" class="group-section">
             <header><div><strong>{{ group.name || group.groupName || group.groupId }}</strong><span>{{ group.groupType === 'CUSTOM' ? '自定义组合' : '标准镜像组' }}</span></div><small>{{ artifactsFor(group.groupId).length }} 个版本</small></header>
-            <el-table :data="artifactsFor(group.groupId)" size="small" empty-text="该组暂无镜像">
+            <div class="module-table-wrap"><el-table :data="artifactsFor(group.groupId)" size="small" empty-text="该组暂无镜像">
               <el-table-column label="组件" width="105"><template slot-scope="scope"><el-tag size="small" effect="plain">{{ componentLabel(scope.row.componentType) }}</el-tag></template></el-table-column>
               <el-table-column prop="version" label="版本" width="115" />
               <el-table-column prop="originalFilename" label="归档" min-width="150" show-overflow-tooltip />
               <el-table-column label="状态" width="120"><template slot-scope="scope"><el-tag size="small" :type="artifactTag(scope.row)">{{ artifactState(scope.row) }}</el-tag></template></el-table-column>
               <el-table-column label="不可变摘要" min-width="250"><template slot-scope="scope"><code v-if="scope.row.registryDigest">{{ scope.row.registryDigest }}</code><span v-else class="muted">导入完成后生成</span></template></el-table-column>
               <el-table-column v-if="canWrite" label="操作" width="180" align="right"><template slot-scope="scope"><template v-if="scope.row.reviewState === 'PENDING_REVIEW'"><el-button type="text" @click="review(scope.row, 'APPROVE')">批准</el-button><el-button type="text" class="danger-text" @click="review(scope.row, 'REJECT')">驳回</el-button></template><el-button v-if="scope.row.importState === 'READY' && scope.row.registryDigest" type="text" @click="publish(scope.row)">发布该组件</el-button></template></el-table-column>
-            </el-table>
+            </el-table></div>
           </section>
           <el-empty v-if="!loading && filteredGroups.length === 0" description="暂无匹配的镜像组" />
         </div>
       </el-tab-pane>
 
       <el-tab-pane label="发布版本" name="releases">
-        <el-table v-loading="loading" :data="filteredReleases" empty-text="暂无已发布版本">
+        <div class="module-table-wrap"><el-table v-loading="loading" :data="filteredReleases" empty-text="暂无已发布版本">
           <el-table-column prop="publishedAt" label="发布时间" width="170" />
           <el-table-column label="组件" width="110"><template slot-scope="scope">{{ componentLabel(scope.row.componentType) }}</template></el-table-column>
           <el-table-column prop="version" label="版本" width="120" />
           <el-table-column prop="registryDigest" label="不可变摘要" min-width="310"><template slot-scope="scope"><code>{{ scope.row.registryDigest }}</code></template></el-table-column>
           <el-table-column prop="state" label="状态" width="95"><template slot-scope="scope"><el-tag size="small" type="success">{{ scope.row.state || 'PUBLISHED' }}</el-tag></template></el-table-column>
           <el-table-column v-if="canWrite" label="操作" width="110" align="right"><template slot-scope="scope"><el-button type="text" icon="el-icon-position" @click="openDeployment(scope.row)">推送</el-button></template></el-table-column>
-        </el-table>
+        </el-table></div>
       </el-tab-pane>
 
       <el-tab-pane label="推送进度" name="deployments">
-        <el-table v-loading="loading" :data="filteredDeployments" empty-text="暂无推送任务">
+        <div class="module-table-wrap"><el-table v-loading="loading" :data="filteredDeployments" empty-text="暂无推送任务">
           <el-table-column prop="requestedAt" label="发起时间" width="170" />
           <el-table-column prop="agentName" label="处理服务器" min-width="145"><template slot-scope="scope">{{ scope.row.agentName || scope.row.agentId }}</template></el-table-column>
           <el-table-column label="组件" width="105"><template slot-scope="scope">{{ componentLabel(scope.row.componentType) }}</template></el-table-column>
@@ -46,7 +46,7 @@
           <el-table-column label="进度" width="120"><template slot-scope="scope"><el-tag size="small" :type="deploymentTag(scope.row.state)">{{ deploymentState(scope.row.state) }}</el-tag></template></el-table-column>
           <el-table-column label="失败原因" min-width="180"><template slot-scope="scope"><span class="failure">{{ scope.row.failureMessage || scope.row.failureCode || '-' }}</span></template></el-table-column>
           <el-table-column v-if="canWrite" label="操作" width="90" align="right"><template slot-scope="scope"><el-button v-if="scope.row.state === 'FAILED' && scope.row.previousDigest" type="text" @click="rollback(scope.row)">回滚</el-button></template></el-table-column>
-        </el-table>
+        </el-table></div>
       </el-tab-pane>
     </el-tabs>
 
@@ -112,7 +112,7 @@ export default {
 .group-section > header { min-height: 58px; padding: 0 16px; border-bottom: 1px solid #e7edf1; }
 .group-section header strong, .group-section header span { display: block; }
 .group-section header span, .group-section header small, .muted { margin-top: 3px; color: #7a8995; font-size: 12px; }
-code { color: #294152; font: 12px/1.5 monospace; overflow-wrap: anywhere; }
+code { color: var(--ui-text); font: 12px/1.5 monospace; overflow-wrap: anywhere; }
 .danger-text, .failure { color: #c75454; }
 @media (max-width: 760px) { .action-heading { align-items: flex-start; flex-direction: column; } .toolbar { align-items: stretch; flex-wrap: wrap; } .toolbar .el-input { width: 100%; } .read-only { margin-left: 0; } }
 </style>

@@ -139,6 +139,20 @@
 .module-page .el-table td.el-table__cell,
 .module-page .el-table th.el-table__cell { padding: 9px 0; }
 
+.module-composed-page {
+  width: min(100%, 1400px);
+  color: var(--ui-text);
+}
+
+.module-composed-page > .module-heading {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.module-composed-page > .module-heading h1 { color: var(--ui-text); }
+.module-composed-page > .module-heading p { color: var(--ui-muted); }
+.module-composed-page .section-block { border-top-color: var(--ui-border); }
+
 @media (max-width: 720px) {
   .module-toolbar { align-items: stretch; }
   .module-toolbar > * { max-width: 100%; }

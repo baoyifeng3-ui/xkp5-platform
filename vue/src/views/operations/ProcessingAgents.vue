@@ -1,8 +1,8 @@
 <template>
-  <section class="module-page">
-    <header class="module-heading action-heading"><div><h1>处理服务器</h1><p>维护 Agent 注册、启停和移除。</p></div><el-button type="primary" icon="el-icon-plus" @click="tokenDialog = true">生成注册码</el-button></header>
+  <section class="module-page module-composed-page">
+    <header class="module-heading module-toolbar action-heading"><div><h1>处理服务器</h1><p>维护 Agent 注册、启停和移除。</p></div><el-button type="primary" icon="el-icon-plus" @click="tokenDialog = true">生成注册码</el-button></header>
     <AgentStatusTable :agents="agents" :loading="loading" @select="selectAgent" />
-    <div v-if="selected" class="operations-bar">
+    <div v-if="selected" class="operations-bar module-toolbar">
       <strong>{{ selected.displayName || selected.hostname }}</strong><span class="grow" />
       <el-tooltip content="发送局域网 Wake-on-LAN 唤醒数据包" placement="top"><el-button icon="el-icon-sunny" :loading="busyAction === 'wake'" :disabled="actionBusy" @click="wakeAgent">开机</el-button></el-tooltip>
       <el-tooltip content="通知在线 Agent 安全关闭处理服务器" placement="top"><el-button icon="el-icon-switch-button" :loading="busyAction === 'shutdown'" :disabled="actionBusy || !selected.online" @click="shutdownAgent">关机</el-button></el-tooltip>
@@ -13,12 +13,12 @@
     </div>
     <section v-if="selected" class="command-history">
       <h2>电源操作记录</h2>
-      <el-table :data="commands" empty-text="暂无操作记录" size="small">
+      <div class="module-table-wrap"><el-table :data="commands" empty-text="暂无操作记录" size="small">
         <el-table-column prop="requestedAt" label="发起时间" min-width="170" />
         <el-table-column label="操作" width="100"><template>关机</template></el-table-column>
         <el-table-column label="状态" width="150"><template slot-scope="scope"><el-tag size="small" :type="commandTag(scope.row.state)">{{ commandState(scope.row) }}</el-tag></template></el-table-column>
         <el-table-column prop="resultMessage" label="结果" min-width="240" show-overflow-tooltip />
-      </el-table>
+      </el-table></div>
     </section>
     <el-dialog title="生成一次性注册码" :visible.sync="tokenDialog" width="460px" @closed="clearToken">
       <el-input v-model="label" placeholder="用途，例如：A 机房" maxlength="80" />
@@ -71,7 +71,7 @@ export default {
 .operations-bar { min-height: 58px; padding: 0 16px; border: 1px solid #dfe5ec; border-top: 0; }
 .grow { flex: 1; }
 .command-history { margin-top: 24px; }
-.command-history h2 { margin: 0 0 12px; color: #17324d; font-size: 16px; }
+.command-history h2 { margin: 0 0 12px; color: var(--ui-text); font-size: 16px; }
 .issued-token { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
-.issued-token code { flex: 1; overflow-wrap: anywhere; padding: 12px; background: #f3f6f9; color: #17324d; }
+.issued-token code { flex: 1; overflow-wrap: anywhere; padding: 12px; background: var(--ui-workspace); color: var(--ui-text); }
 </style>

@@ -1,8 +1,8 @@
 <template>
-  <section class="module-page competition-environments-page">
-    <header class="module-heading action-heading"><div><h1>比赛容器</h1><p>按处理服务器维护四个固定比赛槽位及其双容器。</p></div><el-button icon="el-icon-refresh" :loading="loading" @click="load">刷新</el-button></header>
-    <div class="agent-selector"><span>处理服务器</span><el-select v-model="selectedAgentId" filterable placeholder="选择服务器"><el-option v-for="agent in agents" :key="agent.agentId" :label="agent.displayName || agent.hostname || agent.agentId" :value="agent.agentId" /></el-select></div>
-    <el-table v-loading="loading" :data="slotRows" row-key="slotNumber" empty-text="请先选择处理服务器">
+  <section class="module-page module-composed-page competition-environments-page">
+    <header class="module-heading module-toolbar action-heading"><div><h1>比赛容器</h1><p>按处理服务器维护四个固定比赛槽位及其双容器。</p></div><el-button icon="el-icon-refresh" :loading="loading" @click="load">刷新</el-button></header>
+    <div class="agent-selector module-toolbar"><span>处理服务器</span><el-select v-model="selectedAgentId" filterable placeholder="选择服务器"><el-option v-for="agent in agents" :key="agent.agentId" :label="agent.displayName || agent.hostname || agent.agentId" :value="agent.agentId" /></el-select></div>
+    <div class="module-table-wrap"><el-table v-loading="loading" :data="slotRows" row-key="slotNumber" empty-text="请先选择处理服务器">
       <el-table-column prop="slotNumber" label="槽位" width="70" />
       <el-table-column label="绑定" width="90"><template slot-scope="scope">{{ scope.row.userId || '未绑定' }}</template></el-table-column>
       <el-table-column label="容器与状态" min-width="250"><template slot-scope="scope"><div class="cell-stack"><span>{{ scope.row.annotationContainerName || '图像标注：未创建' }} <el-tag size="mini" :type="stateType(scope.row.annotationContainerState)">{{ scope.row.annotationContainerState || '-' }}</el-tag></span><span>{{ scope.row.editorContainerName || '代码编辑：未创建' }} <el-tag size="mini" :type="stateType(scope.row.editorContainerState)">{{ scope.row.editorContainerState || '-' }}</el-tag></span></div></template></el-table-column>
@@ -11,9 +11,9 @@
       <el-table-column label="就绪状态" min-width="170"><template slot-scope="scope"><div class="cell-stack"><el-tag size="small" :type="stateType(scope.row.readiness)">{{ scope.row.readiness || '未创建' }}</el-tag><span class="reason">{{ scope.row.failureSummary || scope.row.readinessCode || '-' }}</span></div></template></el-table-column>
       <el-table-column prop="workspaceRelativePath" label="工作目录" min-width="180" show-overflow-tooltip />
       <el-table-column label="操作" width="180" align="right"><template slot-scope="scope"><el-button v-if="!scope.row.environmentId" size="small" type="primary" @click="openCreate(scope.row)">创建</el-button><el-button v-else size="small" type="warning" :loading="busyId === scope.row.environmentId" @click="restore(scope.row)">恢复</el-button></template></el-table-column>
-    </el-table>
+    </el-table></div>
 
-    <section class="transition-recovery"><div><h2>迁移恢复</h2><p>输入失败的迁移编号，仅超级管理员可以重新派发。</p></div><el-input v-model.trim="transitionId" placeholder="迁移编号"><el-button slot="append" icon="el-icon-refresh-right" :loading="retrying" @click="retry">重试</el-button></el-input></section>
+    <section class="transition-recovery module-toolbar"><div><h2>迁移恢复</h2><p>输入失败的迁移编号，仅超级管理员可以重新派发。</p></div><el-input v-model.trim="transitionId" placeholder="迁移编号"><el-button slot="append" icon="el-icon-refresh-right" :loading="retrying" @click="retry">重试</el-button></el-input></section>
 
     <el-dialog title="创建比赛容器" :visible.sync="createDialog" width="560px">
       <el-form label-width="120px">

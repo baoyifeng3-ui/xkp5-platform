@@ -1,8 +1,8 @@
 <template>
-  <section class="module-page">
+  <section class="module-page module-composed-page">
     <header class="module-heading"><h1>实训环境</h1><p>选择课程环境并启动图像标注与代码编辑工作区。</p></header>
     <ParticipantPreviewNotice v-if="previewOnly" />
-    <el-table v-loading="loading" :data="environments" empty-text="暂无已分配环境">
+    <div class="module-table-wrap"><el-table v-loading="loading" :data="environments" empty-text="暂无已分配环境">
       <el-table-column label="课程" min-width="100">
         <template slot-scope="scope">{{ scope.row.courseLabel || scope.row.courseId }}</template>
       </el-table-column>
@@ -12,7 +12,7 @@
       <el-table-column label="操作" width="140" align="right">
         <template slot-scope="scope"><el-button type="primary" size="small" :loading="busyId === scope.row.environmentId" :disabled="previewOnly || isPending(scope.row)" @click="start(scope.row)">一键上课</el-button></template>
       </el-table-column>
-    </el-table>
+    </el-table></div>
   </section>
 </template>
 

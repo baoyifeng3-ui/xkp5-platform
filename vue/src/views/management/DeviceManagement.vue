@@ -1,11 +1,11 @@
 <template>
-  <section class="module-page">
+  <section class="module-page module-composed-page">
     <header class="module-heading"><h1>设备管理</h1><p>查看处理服务器在线状态与资源占用。</p></header>
     <AgentStatusTable :agents="agents" :loading="loading" @select="selectAgent" />
     <section v-if="selected" class="agent-detail">
       <header>
         <div><h2>{{ selected.displayName || selected.hostname }}</h2><span>{{ selected.primaryIp }} · {{ selected.agentVersion }}</span></div>
-        <div class="power-actions">
+        <div class="power-actions module-toolbar">
           <el-tooltip content="发送局域网 Wake-on-LAN 唤醒数据包" placement="top"><el-button icon="el-icon-sunny" :loading="busyAction === 'wake'" :disabled="actionBusy" @click="wakeAgent">开机</el-button></el-tooltip>
           <el-tooltip content="通知在线 Agent 安全关闭处理服务器" placement="top"><el-button type="danger" plain icon="el-icon-switch-button" :loading="busyAction === 'shutdown'" :disabled="actionBusy || !selected.online" @click="shutdownAgent">关机</el-button></el-tooltip>
           <el-button icon="el-icon-refresh" :disabled="actionBusy" @click="loadSelected">刷新</el-button>
@@ -15,12 +15,12 @@
       <AgentHistoryChart :points="history" />
       <section class="command-history">
         <h3>电源操作记录</h3>
-        <el-table :data="commands" empty-text="暂无操作记录" size="small">
+        <div class="module-table-wrap"><el-table :data="commands" empty-text="暂无操作记录" size="small">
           <el-table-column prop="requestedAt" label="发起时间" min-width="170" />
           <el-table-column label="操作" width="100"><template>关机</template></el-table-column>
           <el-table-column label="状态" width="150"><template slot-scope="scope"><el-tag size="small" :type="commandTag(scope.row.state)">{{ commandState(scope.row) }}</el-tag></template></el-table-column>
           <el-table-column prop="resultMessage" label="结果" min-width="240" show-overflow-tooltip />
-        </el-table>
+        </el-table></div>
       </section>
     </section>
   </section>
@@ -77,9 +77,9 @@ export default {
 <style scoped>
 .agent-detail { margin-top: 24px; }
 .agent-detail > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-.agent-detail h2 { margin: 0 0 4px; color: #17324d; font-size: 18px; }
+.agent-detail h2 { margin: 0 0 4px; color: var(--ui-text); font-size: 18px; }
 .agent-detail header span { color: #718096; font-size: 13px; }
 .power-actions { display: flex; gap: 8px; }
 .command-history { margin-top: 24px; }
-.command-history h3 { margin: 0 0 12px; color: #17324d; font-size: 16px; }
+.command-history h3 { margin: 0 0 12px; color: var(--ui-text); font-size: 16px; }
 </style>

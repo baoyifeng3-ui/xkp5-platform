@@ -1,13 +1,13 @@
 <template>
-  <section class="module-page">
-    <header class="module-heading account-heading"><div><h1>管理员账号</h1><p>创建和维护日常使用的普通管理员账号。</p></div><el-button type="primary" icon="el-icon-plus" @click="openCreate">新建管理员</el-button></header>
+  <section class="module-page module-composed-page">
+    <header class="module-heading module-toolbar account-heading"><div><h1>管理员账号</h1><p>创建和维护日常使用的普通管理员账号。</p></div><el-button type="primary" icon="el-icon-plus" @click="openCreate">新建管理员</el-button></header>
     <div class="account-summary"><span><small>普通管理员</small><strong>{{ administrators.length }}</strong></span><span><small>已启用</small><strong>{{ enabledCount }}</strong></span><span><small>需修改初始密码</small><strong>{{ passwordChangeCount }}</strong></span></div>
-    <el-table v-loading="loading" :data="administrators" empty-text="暂无普通管理员账号" class="account-table">
+    <div class="module-table-wrap"><el-table v-loading="loading" :data="administrators" empty-text="暂无普通管理员账号" class="account-table">
       <el-table-column prop="userName" label="账号" min-width="220"><template slot-scope="scope"><div class="account-name"><span>{{ initial(scope.row.userName) }}</span><div><strong>{{ scope.row.userName }}</strong><small>普通管理员</small></div></div></template></el-table-column>
       <el-table-column label="首次改密" width="150"><template slot-scope="scope"><el-tag :type="scope.row.mustChangePassword ? 'warning' : 'success'" size="small">{{ scope.row.mustChangePassword ? '待修改' : '已完成' }}</el-tag></template></el-table-column>
       <el-table-column label="状态" width="180"><template slot-scope="scope"><div class="status-control"><el-switch :value="scope.row.enabled" :disabled="updatingId !== null" @change="toggle(scope.row, $event)" /><span>{{ scope.row.enabled ? '已启用' : '已停用' }}</span></div></template></el-table-column>
       <el-table-column label="操作" width="160" align="right"><template slot-scope="scope"><el-button type="text" icon="el-icon-key" @click="openReset(scope.row)">重置密码</el-button></template></el-table-column>
-    </el-table>
+    </el-table></div>
 
     <el-dialog title="新建普通管理员" :visible.sync="createVisible" width="460px" :close-on-click-modal="false" @closed="clearCreate"><el-form ref="createForm" :model="createForm" :rules="rules" label-position="top"><el-form-item label="账号" prop="userName"><el-input v-model="createForm.userName" maxlength="50" autocomplete="off" /></el-form-item><el-form-item label="初始密码" prop="password"><el-input v-model="createForm.password" type="password" show-password autocomplete="new-password" /></el-form-item></el-form><span slot="footer"><el-button @click="createVisible=false">取消</el-button><el-button type="primary" :loading="saving" @click="createAccount">创建</el-button></span></el-dialog>
 

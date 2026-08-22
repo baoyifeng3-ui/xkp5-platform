@@ -1,6 +1,6 @@
 <template>
-  <section class="module-page competition-mode-page">
-    <header class="module-heading action-heading">
+  <section class="module-page module-composed-page competition-mode-page">
+    <header class="module-heading module-toolbar action-heading">
       <div><h1>比赛模式</h1><p>切换普通用户界面，并管理用户与比赛环境槽位的绑定。</p></div>
       <el-button icon="el-icon-refresh" :loading="loading" @click="load">刷新</el-button>
     </header>
@@ -14,7 +14,7 @@
 
     <section class="section-block">
       <div class="section-heading"><div><h2>槽位与用户绑定</h2><p>只有已创建并验证的容器槽位可以绑定；未绑定用户仍可答题，但没有实操入口。</p></div></div>
-      <el-table v-loading="loading" :data="slots" row-key="slotId" empty-text="暂无可见处理服务器">
+      <div class="module-table-wrap"><el-table v-loading="loading" :data="slots" row-key="slotId" empty-text="暂无可见处理服务器">
         <el-table-column prop="agentId" label="处理服务器" min-width="180" show-overflow-tooltip />
         <el-table-column prop="slotNumber" label="槽位" width="72" />
         <el-table-column label="容器" min-width="210"><template slot-scope="scope"><div class="cell-stack"><span>{{ scope.row.annotationContainerName || '未创建图像标注容器' }}</span><span>{{ scope.row.editorContainerName || '未创建代码编辑容器' }}</span></div></template></el-table-column>
@@ -24,19 +24,19 @@
           <el-button v-if="scope.row.userId" size="small" type="danger" plain :loading="busySlot === scope.row.slotId" @click="unbind(scope.row)">解绑</el-button>
           <el-button v-else size="small" type="primary" :disabled="!scope.row.environmentId || scope.row.readiness !== 'READY'" @click="openBind(scope.row)">绑定用户</el-button>
         </template></el-table-column>
-      </el-table>
+      </el-table></div>
     </section>
 
     <section class="section-block">
       <div class="section-heading"><div><h2>模式迁移</h2><p>查看每台处理服务器的停止、启动和恢复进度。</p></div></div>
-      <el-table :data="transitions" row-key="transitionId" empty-text="暂无模式迁移记录">
+      <div class="module-table-wrap"><el-table :data="transitions" row-key="transitionId" empty-text="暂无模式迁移记录">
         <el-table-column prop="requestedAt" label="发起时间" min-width="165" />
         <el-table-column prop="agentId" label="处理服务器" min-width="170" show-overflow-tooltip />
         <el-table-column label="方向" width="150"><template slot-scope="scope">{{ modeText(scope.row.sourceMode) }} → {{ modeText(scope.row.targetMode) }}</template></el-table-column>
         <el-table-column label="进度" width="150"><template slot-scope="scope"><el-progress :percentage="progress(scope.row)" :status="scope.row.state === 'FAILED' ? 'exception' : undefined" /></template></el-table-column>
         <el-table-column label="状态" width="120"><template slot-scope="scope"><el-tag size="small" :type="transitionType(scope.row.state)">{{ transitionText(scope.row.state) }}</el-tag></template></el-table-column>
         <el-table-column label="操作" width="90" align="right"><template slot-scope="scope"><el-button type="text" @click="openTransition(scope.row)">详情</el-button></template></el-table-column>
-      </el-table>
+      </el-table></div>
     </section>
 
     <el-dialog title="绑定比赛槽位" :visible.sync="bindDialog" width="440px">
@@ -47,7 +47,7 @@
     <el-drawer title="迁移详情" :visible.sync="transitionDrawer" size="48%">
       <div v-if="activeTransition" class="drawer-content">
         <el-descriptions :column="2" border><el-descriptions-item label="处理服务器">{{ activeTransition.agentId }}</el-descriptions-item><el-descriptions-item label="状态">{{ transitionText(activeTransition.state) }}</el-descriptions-item><el-descriptions-item label="阶段进度">{{ completedSteps(activeTransition) }}/{{ (activeTransition.steps || []).length }}</el-descriptions-item><el-descriptions-item label="失败原因">{{ activeTransition.failureSummary || '-' }}</el-descriptions-item></el-descriptions>
-        <el-table :data="activeTransition.steps || []" size="small"><el-table-column prop="phaseNumber" label="阶段" width="70" /><el-table-column prop="environmentKind" label="环境" width="100" /><el-table-column prop="actionType" label="动作" width="110" /><el-table-column prop="state" label="状态" width="100" /><el-table-column prop="resultMessage" label="结果" min-width="180" /></el-table>
+        <div class="module-table-wrap"><el-table :data="activeTransition.steps || []" size="small"><el-table-column prop="phaseNumber" label="阶段" width="70" /><el-table-column prop="environmentKind" label="环境" width="100" /><el-table-column prop="actionType" label="动作" width="110" /><el-table-column prop="state" label="状态" width="100" /><el-table-column prop="resultMessage" label="结果" min-width="180" /></el-table></div>
       </div>
     </el-drawer>
   </section>
@@ -83,7 +83,7 @@ export default {
 .action-heading, .mode-band, .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .mode-band { padding: 18px 0; border-top: 1px solid #d9e2e8; border-bottom: 1px solid #d9e2e8; }
 .mode-band small, .mode-band strong, .mode-band span { display: block; }
-.mode-band strong { margin: 5px 0; color: #17324d; font-size: 22px; }
+.mode-band strong { margin: 5px 0; color: var(--ui-text); font-size: 22px; }
 .mode-band span, .section-heading p { color: #73828e; }
 .section-block { margin-top: 28px; }
 .section-heading h2 { margin: 0; font-size: 18px; }

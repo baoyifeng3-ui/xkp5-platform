@@ -122,6 +122,47 @@ managementPages.forEach(file => {
   assert.doesNotMatch(source, /<el-card[\s\S]*<el-card/, `${file} must not nest cards`)
 })
 
+const workspacePages = composedPages.filter(file => /\/(management|operations|user)\//.test(file))
+workspacePages.forEach(file => {
+  const source = read(file)
+  assert.match(source, /module-composed-page/, `${file} must opt into the refreshed workspace composition`)
+  assert.doesNotMatch(source, /#(?:17324d|294152|318063|216c54|9a7517|1e587e|25745b|356d95)\b/i, `${file} must use shared theme tokens instead of the legacy page palette`)
+})
+
+const tablePages = [
+  'src/views/management/CompetitionMode.vue',
+  'src/views/management/TrainingManagement.vue',
+  'src/views/management/DeviceManagement.vue',
+  'src/views/operations/AdministratorManagement.vue',
+  'src/views/operations/CompetitionEnvironments.vue',
+  'src/views/operations/ContainerTemplates.vue',
+  'src/views/operations/ImageRegistryView.vue',
+  'src/views/operations/LicenseDiagnostics.vue',
+  'src/views/operations/ProcessingAgents.vue',
+  'src/views/user/TrainingEnvironment.vue'
+]
+tablePages.forEach(file => {
+  const source = read(file)
+  const tableCount = (source.match(/<el-table(?:\s|>)/g) || []).length
+  const wrapperCount = (source.match(/module-table-wrap/g) || []).length
+  assert.strictEqual(wrapperCount, tableCount, `${file} must wrap every table for stable horizontal scrolling`)
+})
+
+const toolbarPages = [
+  'src/views/management/CompetitionMode.vue',
+  'src/views/management/DeviceManagement.vue',
+  'src/views/operations/AdministratorManagement.vue',
+  'src/views/operations/CompetitionEnvironments.vue',
+  'src/views/operations/ContainerTemplates.vue',
+  'src/views/operations/ImageRegistryView.vue',
+  'src/views/operations/LicenseDiagnostics.vue',
+  'src/views/operations/ProcessingAgents.vue'
+]
+toolbarPages.forEach(file => assert.match(read(file), /module-toolbar/, `${file} must use a compact action toolbar`))
+
+const competitionHomeCss = read('src/assets/style/home.css')
+assert.doesNotMatch(competitionHomeCss, /\.h-box\s*\{[^}]*background:\s*#fff[^}]*border:[^}]*box-shadow:/s)
+
 const competitionHub = read('src/views/management/CompetitionManagement.vue')
 const { competitionItems } = require('../src/navigation/roleNavigation')
 assert.deepStrictEqual(competitionItems.map(item => item.label), [
