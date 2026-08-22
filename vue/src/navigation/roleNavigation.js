@@ -40,7 +40,10 @@ const operationsItems = [
   { key: 'license', label: '授权诊断', icon: 'el-icon-key', route: '/operations/license' }
 ]
 
-const previewDestinations = ['/Publicity', '/Home', '/Question', '/Detect']
+const previewDestinations = [
+  '/course-platform', '/resource-center', '/training-environment',
+  '/Publicity', '/Home', '/Question', '/Detect', '/competition-practical'
+]
 
 const routeRoles = {
   '/operations': SUPER_ADMIN,

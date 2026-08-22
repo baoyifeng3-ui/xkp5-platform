@@ -1,18 +1,59 @@
 <template>
-  <section class="module-page preview-page">
-    <header class="module-heading"><h1>比赛预览</h1><p>以普通参赛用户视角只读查看现有比赛页面。</p></header>
-    <div class="preview-toolbar"><el-radio-group v-model="activePath" size="small"><el-radio-button v-for="item in destinations" :key="item.path" :label="item.path">{{ item.label }}</el-radio-button></el-radio-group><el-button icon="el-icon-refresh" circle title="刷新预览" @click="reload" /></div>
-    <div class="preview-frame"><iframe :key="frameKey" :src="frameUrl" :title="`比赛预览-${activeLabel}`" /></div>
+  <section v-loading="loading" class="module-page preview-page">
+    <header class="module-heading">
+      <h1>参赛端预览</h1>
+      <p>按平台当前模式显示普通用户登录后的界面。</p>
+    </header>
+    <div v-if="loadError" class="preview-error" role="alert">
+      <i class="el-icon-warning-outline" />
+      <strong>普通用户界面加载失败</strong>
+      <span>无法获取平台当前模式，请稍后重试。</span>
+      <el-button type="primary" size="small" @click="loadPlatformMode">重新加载</el-button>
+    </div>
+    <div v-else-if="homePath" class="preview-frame">
+      <iframe :src="frameUrl" :title="frameTitle" />
+    </div>
   </section>
 </template>
 <script>
+import { getPlatformMode } from '@/api/PlatformMode'
+const { previewHome } = require('@/services/participantPreview')
+
 export default {
-  data: () => ({ activePath: '/Publicity', frameKey: 0, destinations: [{ label: '首页', path: '/Publicity' }, { label: '赛程赛规', path: '/Home' }, { label: '当前赛卷', path: '/Question' }, { label: '成果验证', path: '/Detect' }] }),
+  name: 'CompetitionPreview',
+  data: () => ({ loading: false, loadError: false, mode: '', homePath: '' }),
   computed: {
-    frameUrl () { return `${window.location.origin}${window.location.pathname}#${this.activePath}?preview=1` },
-    activeLabel () { const item = this.destinations.find(item => item.path === this.activePath); return item ? item.label : '比赛页面' }
+    frameUrl () { return `${window.location.origin}${window.location.pathname}#${this.homePath}?preview=1` },
+    frameTitle () { return this.mode === 'COMPETITION' ? '比赛模式普通用户界面预览' : '实训模式普通用户界面预览' }
   },
-  methods: { reload () { this.frameKey += 1 } }
+  created () { this.loadPlatformMode() },
+  methods: {
+    async loadPlatformMode () {
+      if (this.loading) return
+      this.loading = true
+      this.loadError = false
+      this.homePath = ''
+      try {
+        const response = await getPlatformMode()
+        const value = response && response.data
+        this.mode = value && value.mode === 'COMPETITION' ? 'COMPETITION' : 'TRAINING'
+        this.homePath = previewHome(this.mode)
+      } catch (error) {
+        this.loadError = true
+      } finally {
+        this.loading = false
+      }
+    }
+  }
 }
 </script>
-<style scoped>.preview-toolbar{display:flex;justify-content:space-between;gap:16px;margin-bottom:12px}.preview-frame{height:calc(100vh - 220px);min-height:560px;border:1px solid #d9e2e8;background:#fff}.preview-frame iframe{width:100%;height:100%;border:0}@media(max-width:650px){.preview-toolbar{align-items:flex-start}.preview-toolbar .el-radio-group{display:grid;grid-template-columns:repeat(2,1fr)}.preview-frame{min-height:500px}}</style>
+<style scoped>
+.preview-page{min-height:calc(100vh - 116px)}
+.preview-frame{height:calc(100vh - 220px);min-height:560px;border:1px solid #d9e2e8;background:#fff}
+.preview-frame iframe{width:100%;height:100%;border:0}
+.preview-error{display:flex;min-height:320px;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:#73828e;text-align:center}
+.preview-error i{color:#d89b32;font-size:34px}
+.preview-error strong{color:#294152;font-size:17px}
+.preview-error span{margin-bottom:4px}
+@media(max-width:650px){.preview-page{min-height:calc(100vh - 92px)}.preview-frame{height:calc(100vh - 180px);min-height:500px}}
+</style>

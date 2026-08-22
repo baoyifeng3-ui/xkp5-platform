@@ -36,7 +36,10 @@ assert.strictEqual(navigation.legacyAdminRoute('timer'), null)
 assert.strictEqual(navigation.routeRoles['/operations'], 'SUPER_ADMIN')
 assert.strictEqual(navigation.routeRoles['/management'], 'ADMIN')
 assert.strictEqual(navigation.routeRoles['/course-platform'], 'USER')
-assert.deepStrictEqual(navigation.previewDestinations, ['/Publicity', '/Home', '/Question', '/Detect'])
+assert.deepStrictEqual(navigation.previewDestinations, [
+  '/course-platform', '/resource-center', '/training-environment',
+  '/Publicity', '/Home', '/Question', '/Detect', '/competition-practical'
+])
 assert.deepStrictEqual(navigation.operationsItems.map(item => item.label), ['运维主页', '处理服务器', '容器模板', '镜像仓库', '比赛容器', '管理员账号', '授权诊断'])
 navigation.competitionItems.forEach(item => assert.ok(item.route, `${item.label} must define a route`))
 
