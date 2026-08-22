@@ -67,7 +67,7 @@
 <script>
 import { getClearTime } from '@/api/Match'
 import { mapState } from 'vuex'
-import { clearSession, setCompetitionAccessPhase } from '@/utils/auth'
+import { clearSession, getRole, setCompetitionAccessPhase } from '@/utils/auth'
 import { startUserActivity, stopUserActivity } from '@/services/userActivity'
 const { isPreviewRoute } = require('@/services/participantPreview')
 
@@ -91,7 +91,7 @@ export default {
       return this.isAdmin && !this.previewOnly
     },
     previewOnly () {
-      return isPreviewRoute(this.$route)
+      return isPreviewRoute(this.$route, getRole())
     },
     preStartLocked () {
       return !this.isAdmin && this.countdownSnapshot && this.countdownSnapshot.accessPhase === 'PRE_START'

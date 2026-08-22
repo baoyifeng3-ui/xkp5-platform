@@ -25,6 +25,7 @@ import { mapState } from "vuex";
 import DetectB from "@/views/DetectB.vue";
 import DetectA from "@/views/DetectA.vue";
 import ParticipantPreviewNotice from '@/components/ParticipantPreviewNotice.vue'
+import { getRole } from '@/utils/auth'
 const { isPreviewRoute } = require('@/services/participantPreview')
 export default {
   components: {
@@ -41,7 +42,7 @@ export default {
   computed: {
     ...mapState("Match", ["activePaper"]),
     previewOnly () {
-      return isPreviewRoute(this.$route);
+      return isPreviewRoute(this.$route, getRole());
     },
   },
   async created () {

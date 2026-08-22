@@ -129,7 +129,7 @@ router.beforeEach((to, from, next) => {
     if (legacyRoute) return next(legacyRoute)
   }
   const requiredRoles = to.matched.reduce((roles, record) => record.meta && record.meta.roles ? record.meta.roles : roles, null)
-  const adminPreview = getRole() === 'ADMIN' && isPreviewRoute(to) && roleNavigation.previewDestinations.includes(to.path)
+  const adminPreview = getRole() === 'ADMIN' && isPreviewRoute(to, getRole()) && roleNavigation.previewDestinations.includes(to.path)
   if (!adminPreview && requiredRoles && !requiredRoles.includes(getRole())) {
     return next(landingRoute())
   }

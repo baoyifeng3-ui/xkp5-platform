@@ -9,3 +9,4 @@ export const stopAdminTrainingEnvironment = id => request.post(`${ADMIN_BASE}/${
 export const restoreAdminTrainingEnvironment = id => request.post(`${ADMIN_BASE}/${id}/restore`)
 export const listUserTrainingEnvironments = () => request.get(USER_BASE)
 export const startUserTrainingEnvironment = id => request.post(`${USER_BASE}/${id}/start`)
+export const adminParticipantPreviewTrainingEnvironmentsApi = () => request.get('/admin/participant-preview/training-environments')

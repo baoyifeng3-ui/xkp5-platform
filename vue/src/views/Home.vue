@@ -380,6 +380,7 @@
 <script>
 import { competitionApi } from '@/api/Match'
 import { competitionContentTabs } from '@/utils/competitionDefaults'
+import { getRole } from '@/utils/auth'
 const { isPreviewRoute } = require('@/services/participantPreview')
 
 export default {
@@ -392,7 +393,7 @@ export default {
     },
     computed: {
         previewOnly () {
-            return isPreviewRoute(this.$route);
+            return isPreviewRoute(this.$route, getRole());
         },
         currentCustomContent () {
             const key = this.tab === 'scoringRule' ? 'scoringRule' : this.tab;

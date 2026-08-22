@@ -14,6 +14,10 @@
     <div v-if="loading && !environment" class="practical-state">
       <i class="el-icon-loading" /><strong>正在查询比赛环境</strong>
     </div>
+    <div v-else-if="previewOnly" class="practical-state">
+      <i class="el-icon-monitor" /><strong>比赛实操环境预览</strong>
+      <span>预览模式不连接实际比赛环境，参赛用户绑定可用槽位后可进入图像标注和代码编辑。</span>
+    </div>
     <div v-else-if="!environment || environment.readiness === 'UNBOUND'" class="practical-state">
       <i class="el-icon-info" /><strong>未分配比赛环境</strong>
       <span>您仍可继续浏览试卷并作答，但暂时无法进入实操环境。</span>
@@ -24,7 +28,7 @@
     </div>
     <div v-else-if="environment.readiness === 'DEGRADED'" class="practical-state is-error">
       <i class="el-icon-warning-outline" /><strong>比赛环境暂不可用</strong>
-      <span>{{ environment.readinessCode || '环境状态异常，请联系管理员' }}</span>
+      <span>环境状态异常，请联系管理员</span>
     </div>
     <div v-else-if="environment.readiness === 'RUNNING'" class="practical-ready">
       <div class="ready-copy"><span class="ready-dot" /><div><strong>比赛环境已就绪</strong><small v-if="!previewOnly">槽位 {{ environment.slotNumber || '-' }}</small></div></div>
@@ -41,14 +45,16 @@
 
 <script>
 import request from '@/utils/request'
+import { adminParticipantPreviewCompetitionEnvironmentApi } from '@/api/Match'
 import ParticipantPreviewNotice from '@/components/ParticipantPreviewNotice.vue'
+import { getRole } from '@/utils/auth'
 const { isPreviewRoute } = require('@/services/participantPreview')
 
 export default {
   components: { ParticipantPreviewNotice },
   data: () => ({ loading: false, environment: null }),
   computed: {
-    previewOnly () { return isPreviewRoute(this.$route) }
+    previewOnly () { return isPreviewRoute(this.$route, getRole()) }
   },
   mounted () { this.load() },
   methods: {
@@ -56,13 +62,14 @@ export default {
       if (this.loading) return
       this.loading = true
       try {
-        const result = await request({ url: 'user/competition-environment', method: 'get' })
+        const result = this.previewOnly
+          ? await adminParticipantPreviewCompetitionEnvironmentApi()
+          : await request({ url: 'user/competition-environment', method: 'get' })
         if (result.code === 200) this.environment = result.data || { readiness: 'UNBOUND' }
       } catch (error) {
-        this.environment = {
-          readiness: 'DEGRADED',
-          readinessCode: 'COMPETITION_ENVIRONMENT_UNAVAILABLE'
-        }
+        this.environment = this.previewOnly
+          ? { readiness: 'DEGRADED' }
+          : { readiness: 'DEGRADED', readinessCode: 'COMPETITION_ENVIRONMENT_UNAVAILABLE' }
       } finally {
         this.loading = false
       }

@@ -1,6 +1,7 @@
 const USER = 'USER'
 const ADMIN = 'ADMIN'
 const SUPER_ADMIN = 'SUPER_ADMIN'
+const { previewDestinations } = require('../services/participantPreview')
 
 const userItems = [
   { key: 'course', label: '课程平台', icon: 'el-icon-reading', route: '/course-platform' },
@@ -38,11 +39,6 @@ const operationsItems = [
   { key: 'competition-environments', label: '比赛容器', icon: 'el-icon-trophy', route: '/operations/competition-environments' },
   { key: 'administrators', label: '管理员账号', icon: 'el-icon-user', route: '/operations/administrators' },
   { key: 'license', label: '授权诊断', icon: 'el-icon-key', route: '/operations/license' }
-]
-
-const previewDestinations = [
-  '/course-platform', '/resource-center', '/training-environment',
-  '/Publicity', '/Home', '/Question', '/Detect', '/competition-practical'
 ]
 
 const routeRoles = {

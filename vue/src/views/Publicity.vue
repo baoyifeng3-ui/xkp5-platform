@@ -79,6 +79,7 @@
 <script>
 import {getNoticelist, scoreTopApi, getTeamInformation} from "@/api/Match";
 import mixins from "@/mixins";
+import { getRole } from '@/utils/auth'
 const { isPreviewRoute } = require('@/services/participantPreview')
 export default {
   data() {
@@ -108,7 +109,7 @@ export default {
   mixins: [mixins],
   computed: {
     previewOnly () {
-      return isPreviewRoute(this.$route);
+      return isPreviewRoute(this.$route, getRole());
     },
   },
   mounted() {

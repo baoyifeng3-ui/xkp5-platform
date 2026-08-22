@@ -231,6 +231,14 @@ export function getSubject (params) {
     })
 }
 
+export function adminParticipantPreviewSubjectsApi (params) {
+    return request({ url: 'admin/participant-preview/subjects', method: 'get', params })
+}
+
+export function adminParticipantPreviewCompetitionEnvironmentApi () {
+    return request({ url: 'admin/participant-preview/competition-environment', method: 'get' })
+}
+
 export function getTeamInformation (params) {
     return request({
         url: "teams",

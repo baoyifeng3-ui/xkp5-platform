@@ -9,14 +9,14 @@
 </template>
 <script>
 const { userItems } = require('@/navigation/roleNavigation')
-import { clearSession, getUserName } from '@/utils/auth'
+import { clearSession, getRole, getUserName } from '@/utils/auth'
 import { logoutUser, startUserActivity, stopUserActivity } from '@/services/userActivity'
 const { isPreviewRoute } = require('@/services/participantPreview')
 
 export default {
   data: () => ({ items: userItems }),
   computed: {
-    previewOnly () { return isPreviewRoute(this.$route) },
+    previewOnly () { return isPreviewRoute(this.$route, getRole()) },
     userName () { return this.previewOnly ? '参赛端预览' : (getUserName() || '用户') }
   },
   mounted () { if (!this.previewOnly) startUserActivity() },

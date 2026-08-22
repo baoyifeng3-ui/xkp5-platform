@@ -26,7 +26,7 @@
           <h2>{{ module.title }}</h2>
         </div>
 
-        <article v-for="item in module.subjects" :id="previewOnly ? undefined : `subject-${item.subject.subjectId}`" :key="item.subject.subjectId" class="question-item">
+        <article v-for="item in module.subjects" :id="previewOnly ? undefined : `subject-${item.subject.subjectId}`" :key="item.previewKey || item.subject.subjectId" class="question-item">
           <div class="question-meta">
             <span class="question-number">{{ item.number }}</span>
             <el-tag size="small" :type="subjectTypeTag(item.subject.subjectType)">
@@ -122,8 +122,8 @@
 </template>
 
 <script>
-import { getPlan } from '@/utils/auth'
-import { getSubject, saveSubjectAnswerApi, competitionApi, paperSubmissionStatusApi, submitPaperApi } from '@/api/Match'
+import { getPlan, getRole } from '@/utils/auth'
+import { adminParticipantPreviewSubjectsApi, getSubject, saveSubjectAnswerApi, competitionApi, paperSubmissionStatusApi, submitPaperApi } from '@/api/Match'
 import { createDefaultCompetitionHelpItems } from '@/utils/competitionDefaults'
 import dthj from '@/components/dthj'
 import ParticipantPreviewNotice from '@/components/ParticipantPreviewNotice.vue'
@@ -154,7 +154,7 @@ export default {
       return Boolean(this.submissionState.locked)
     },
     previewOnly () {
-      return isPreviewRoute(this.$route)
+      return isPreviewRoute(this.$route, getRole())
     },
     unansweredCount () {
       return this.allItems().filter(item => {
@@ -188,13 +188,16 @@ export default {
       this.loading = true
       this.errorText = ''
       try {
-        const result = await getSubject({ testPaperType: this.plan })
+        const result = this.previewOnly
+          ? await adminParticipantPreviewSubjectsApi({ testPaperType: this.plan })
+          : await getSubject({ testPaperType: this.plan })
         if (result.code !== 200) {
           this.questionList = []
           this.errorText = result.msg || '试卷读取失败'
           return
         }
-        this.questionList = this.groupSubjects(result.data || [])
+        const records = result.data || []
+        this.questionList = this.groupSubjects(this.previewOnly ? records.map(this.sanitizePreviewRecord) : records)
       } catch (error) {
         this.errorText = '试卷读取失败，请稍后重试'
       } finally {
@@ -222,6 +225,19 @@ export default {
         modules[moduleIndex[key]].subjects.push(this.prepareRecord(record, index + 1))
       })
       return modules
+    },
+    sanitizePreviewRecord (record, index) {
+      const source = (record && record.subject) || {}
+      const subject = {
+        modular: source.modular,
+        modularName: source.modularName,
+        subjectType: source.subjectType,
+        subjectName: source.subjectName,
+        options: Array.isArray(source.options) ? source.options.slice() : [],
+        screenshotRequirement: source.screenshotRequirement,
+        point: source.point
+      }
+      return { previewKey: `preview-subject-${index + 1}`, subject, answerSheet: null }
     },
     prepareRecord (record, number) {
       const answerText = !this.previewOnly && record.answerSheet ? record.answerSheet.answerText : ''
