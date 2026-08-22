@@ -30,7 +30,7 @@ export default {
   },
   created () { this.load() },
   methods: {
-    async load () { this.loading = true; try { const request = this.previewOnly ? adminParticipantPreviewTrainingEnvironmentsApi : listUserTrainingEnvironments; const result = await request(); this.environments = result.data || [] } finally { this.loading = false } },
+    async load () { this.loading = true; try { const request = this.previewOnly ? adminParticipantPreviewTrainingEnvironmentsApi : listUserTrainingEnvironments; const result = await request(); const all = result.data || []; const courseId = this.$route.query && this.$route.query.courseId; this.environments = courseId ? all.filter(item => String(item.courseId) === String(courseId)) : all; if (courseId && !this.environments.length) this.$message.info('当前课程尚未分配实训环境') } finally { this.loading = false } },
     async start (row) { if (this.previewOnly) return; this.busyId = row.environmentId; try { const result = await startUserTrainingEnvironment(row.environmentId); this.$message.info(result.data && result.data.state === 'SUCCEEDED' ? '环境已运行' : '启动请求已提交，请等待处理服务器确认'); await this.load() } finally { this.busyId = '' } },
     isPending (row) { return ['CREATING', 'STARTING', 'STOPPING', 'RESTORING', 'WAITING_DEPENDENCY'].includes(row.actualState) },
     stateText (state) { return ({ RUNNING: '运行中', STOPPED: '已停止', DEGRADED: '部分异常', ERROR: '异常', STARTING: '启动中', STOPPING: '停止中', RESTORING: '还原中', WAITING_DEPENDENCY: '等待切换' })[state] || state || '未知' },
