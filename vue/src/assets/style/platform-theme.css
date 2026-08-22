@@ -114,3 +114,32 @@
 }
 
 .platform-app .el-loading-spinner .path { stroke: var(--ui-primary); }
+
+.module-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-height: 44px;
+  margin-bottom: 14px;
+}
+
+.module-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+}
+
+.module-table-wrap .el-table { min-width: 720px; }
+.module-page > .el-table { border: 1px solid var(--ui-border); }
+.module-page .el-table .cell { line-height: 1.45; }
+.module-page .el-table td.el-table__cell,
+.module-page .el-table th.el-table__cell { padding: 9px 0; }
+
+@media (max-width: 720px) {
+  .module-toolbar { align-items: stretch; }
+  .module-toolbar > * { max-width: 100%; }
+}

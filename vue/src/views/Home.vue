@@ -1,5 +1,8 @@
 <template>
-    <div :class="['h-box', { 'is-preview': previewOnly }]">
+    <div :class="['h-box', 'module-page', { 'is-preview': previewOnly }]">
+        <header class="module-heading participant-heading">
+            <div><h1>赛程赛规</h1><p>查看竞赛内容、比赛方式、流程与评分规则。</p></div>
+        </header>
         <nav class="competition-tabs" aria-label="赛规赛程栏目">
             <button v-for="item in competitionTabs" :key="item.key" :class="{ active: tab === item.key }" type="button" @click="tab = item.key">{{ item.label }}</button>
         </nav>
@@ -431,4 +434,7 @@ export default {
     white-space: pre-wrap;
     word-break: break-word;
 }
+.participant-heading { padding: 20px 24px 0; }
+.participant-heading h1 { font-size: 24px; }
+@media (max-width: 760px) { .participant-heading { padding: 16px 16px 0; } }
 </style>

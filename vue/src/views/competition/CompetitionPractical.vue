@@ -1,6 +1,6 @@
 <template>
-  <section class="competition-practical">
-    <header class="practical-heading">
+  <section class="competition-practical module-page">
+    <header class="practical-heading module-heading">
       <div>
         <h1>比赛实操</h1>
         <p>当前账号的图像标注与代码编辑环境</p>

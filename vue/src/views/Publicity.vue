@@ -1,5 +1,8 @@
 <template>
-  <div :class="['p-box', { 'is-preview': previewOnly }]">
+  <div :class="['p-box', 'module-page', { 'is-preview': previewOnly }]">
+    <header class="module-heading publicity-heading">
+      <div><h1>比赛主页</h1><p>查看比赛公告、注意事项、答题进度与排名。</p></div>
+    </header>
     <div class="p-left">
       <div class="p-top">
         <section class="p-top-section p-announcement">
@@ -232,4 +235,6 @@ export default {
 <style scoped>
 @import url(../assets/style/publicity.css);
 .notice-content { white-space: pre-wrap; }
+.publicity-heading { grid-column: 1 / -1; margin: 0; }
+.publicity-heading h1 { font-size: 24px; }
 </style>

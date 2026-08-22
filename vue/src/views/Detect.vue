@@ -1,6 +1,6 @@
 <template>
-  <div class="detect-page">
-    <header class="detect-heading">
+  <div class="detect-page module-page">
+    <header class="detect-heading module-heading">
       <div><span>成果验证</span><h1>模型检测与评分</h1></div>
       <el-tag size="small" type="info">{{ activePaper ? activePaper + ' 卷' : '未选择赛卷' }}</el-tag>
     </header>

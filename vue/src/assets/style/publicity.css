@@ -149,6 +149,10 @@
     box-sizing: border-box;
 }
 
+.p-box {
+    grid-template-rows: auto minmax(0, 1fr);
+}
+
 .p-box .p-left,
 .p-box .p-right {
     width: auto;

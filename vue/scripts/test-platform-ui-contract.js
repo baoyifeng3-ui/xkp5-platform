@@ -83,4 +83,56 @@ assert.strictEqual((login.match(/<el-button/g) || []).length, 2)
 ].forEach(selector => assert.match(theme, new RegExp(selector)))
 assert.doesNotMatch(theme, /\.xterm(?:\s|,|\{|\.)/)
 
+const composedPages = [
+  'src/views/management/ManagementHome.vue',
+  'src/views/management/CompetitionManagement.vue',
+  'src/views/management/CompetitionMode.vue',
+  'src/views/management/CourseManagement.vue',
+  'src/views/management/ResourceManagement.vue',
+  'src/views/management/TrainingManagement.vue',
+  'src/views/management/UserManagement.vue',
+  'src/views/management/DeviceManagement.vue',
+  'src/views/operations/AdministratorManagement.vue',
+  'src/views/operations/CompetitionEnvironments.vue',
+  'src/views/operations/ContainerTemplates.vue',
+  'src/views/operations/ImageRegistryView.vue',
+  'src/views/operations/LicenseDiagnostics.vue',
+  'src/views/operations/OperationsHome.vue',
+  'src/views/operations/ProcessingAgents.vue',
+  'src/views/user/CoursePlatform.vue',
+  'src/views/user/ResourceCenter.vue',
+  'src/views/user/TrainingEnvironment.vue',
+  'src/views/Home.vue',
+  'src/views/Publicity.vue',
+  'src/components/Question.vue',
+  'src/views/Detect.vue',
+  'src/views/competition/CompetitionPractical.vue'
+]
+
+composedPages.forEach(file => {
+  const source = read(file)
+  assert.match(source, /module-page/, `${file} must use the shared page composition`)
+  assert.match(source, /module-heading/, `${file} must use the shared page heading`)
+  assert.doesNotMatch(source, /h[1-6][^{]*\{[^{}]*font-size\s*:\s*(?:3[3-9]|[4-9]\d|\d{3,})px/, `${file} must keep panel headings compact`)
+})
+
+const managementPages = composedPages.filter(file => file.includes('/management/'))
+managementPages.forEach(file => {
+  const source = read(file)
+  assert.doesNotMatch(source, /<el-card[\s\S]*<el-card/, `${file} must not nest cards`)
+})
+
+const competitionHub = read('src/views/management/CompetitionManagement.vue')
+const { competitionItems } = require('../src/navigation/roleNavigation')
+assert.deepStrictEqual(competitionItems.map(item => item.label), [
+  '模式与环境', '参赛端预览', '比赛控制', '赛程赛规', '试卷题目', '试卷评分', '比赛账号'
+])
+assert.strictEqual(competitionItems.length, 7)
+assert.ok(!competitionHub.includes('比赛设备'))
+assert.ok(!competitionHub.includes('平台设置'))
+
+assert.match(theme, /\.module-toolbar/)
+assert.match(theme, /\.module-table-wrap/)
+assert.match(theme, /overflow-x:\s*auto/)
+
 console.log('platform UI contract passed')

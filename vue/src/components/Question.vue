@@ -1,7 +1,7 @@
 <template>
-  <div class="q-box">
+  <div class="q-box module-page">
     <main v-loading="loading" class="question-content">
-      <header class="paper-heading">
+      <header class="paper-heading module-heading">
         <div>
           <span class="paper-kicker">当前赛卷</span>
           <h1>{{ plan }} 卷答题区</h1>
