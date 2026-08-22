@@ -1,11 +1,12 @@
 <template>
   <div class="platform-shell">
     <button
+      ref="drawerTrigger"
       type="button"
       class="shell-drawer-trigger"
       aria-label="打开导航"
       :aria-expanded="drawerOpen ? 'true' : 'false'"
-      @click="drawerOpen = true"
+      @click="openDrawer"
     >
       <i class="el-icon-menu" aria-hidden="true" />
     </button>
@@ -15,17 +16,21 @@
       type="button"
       class="shell-drawer-backdrop"
       aria-label="关闭导航"
-      @click="drawerOpen = false"
+      @click="closeDrawer"
     />
 
-    <aside :class="['shell-sidebar', 'shell-drawer', { 'is-open': drawerOpen }]">
+    <aside
+      :class="['shell-sidebar', 'shell-drawer', { 'is-open': drawerOpen }]"
+      :aria-hidden="drawerHidden ? 'true' : 'false'"
+      :inert="drawerHidden ? '' : null"
+    >
       <div class="shell-brand">
         <span class="shell-brand-mark" aria-hidden="true">X</span>
         <div class="shell-brand-copy">
           <strong>XKP5.0平台</strong>
           <small>{{ brandCaption }}</small>
         </div>
-        <button type="button" class="shell-drawer-close" aria-label="关闭导航" @click="drawerOpen = false">
+        <button type="button" class="shell-drawer-close" aria-label="关闭导航" @click="closeDrawer">
           <i class="el-icon-close" aria-hidden="true" />
         </button>
       </div>
@@ -66,19 +71,18 @@
               placeholder="搜索功能"
               @keydown.esc="searchQuery = ''"
             >
-            <div v-if="searchQuery" class="shell-search-results" role="listbox">
+            <section v-if="searchQuery" class="shell-search-results" aria-label="导航搜索建议">
               <button
                 v-for="item in searchResults"
                 :key="item.key"
                 type="button"
-                role="option"
                 @click="navigate(item)"
               >
                 <i :class="item.icon || 'el-icon-menu'" aria-hidden="true" />
                 <span>{{ item.label }}</span>
               </button>
               <span v-if="searchResults.length === 0" class="shell-search-empty">未找到功能</span>
-            </div>
+            </section>
           </div>
 
           <div class="shell-account">
@@ -114,13 +118,16 @@ export default {
     activeRoute: { type: String, default: '' }
   },
   data () {
-    return { drawerOpen: false, searchQuery: '' }
+    return { drawerOpen: false, mobileViewport: false, drawerMedia: null, searchQuery: '' }
   },
   computed: {
     searchResults () {
       const query = this.searchQuery.toLowerCase()
       if (!query) return []
       return this.items.filter(item => item.label.toLowerCase().includes(query)).slice(0, 6)
+    },
+    drawerHidden () {
+      return this.mobileViewport && !this.drawerOpen
     },
     userInitial () {
       return String(this.userName || '用户').trim().slice(0, 1).toUpperCase()
@@ -132,15 +139,54 @@ export default {
       this.searchQuery = ''
     }
   },
+  mounted () {
+    this.drawerMedia = window.matchMedia('(max-width: 720px)')
+    this.updateMobileViewport(this.drawerMedia)
+    if (this.drawerMedia.addEventListener) this.drawerMedia.addEventListener('change', this.updateMobileViewport)
+    else this.drawerMedia.addListener(this.updateMobileViewport)
+    window.addEventListener('keydown', this.handleEscape)
+  },
+  beforeDestroy () {
+    window.removeEventListener('keydown', this.handleEscape)
+    if (!this.drawerMedia) return
+    if (this.drawerMedia.removeEventListener) this.drawerMedia.removeEventListener('change', this.updateMobileViewport)
+    else this.drawerMedia.removeListener(this.updateMobileViewport)
+  },
   methods: {
+    openDrawer () {
+      this.drawerOpen = true
+    },
+    closeDrawer (restoreFocus = true) {
+      this.drawerOpen = false
+      if (restoreFocus && this.mobileViewport) {
+        this.$nextTick(() => {
+          if (this.$refs.drawerTrigger) this.$refs.drawerTrigger.focus()
+        })
+      }
+    },
+    updateMobileViewport (event) {
+      this.mobileViewport = Boolean(event.matches)
+      if (!this.mobileViewport) this.drawerOpen = false
+    },
+    handleEscape (event) {
+      if (event.key === 'Escape' && this.drawerOpen) {
+        event.preventDefault()
+        this.closeDrawer()
+      }
+    },
     selectItem (index) {
       const item = this.items.find(candidate => (candidate.activeKey || candidate.route || candidate.key) === index)
-      if (item) this.navigate(item)
+      if (item) this.navigate(item, true)
     },
-    navigate (item) {
+    navigate (item, restoreDrawerFocus = false) {
       this.drawerOpen = false
       this.searchQuery = ''
       this.$emit('navigate', item)
+      if (restoreDrawerFocus && this.mobileViewport) {
+        this.$nextTick(() => {
+          if (this.$refs.drawerTrigger) this.$refs.drawerTrigger.focus()
+        })
+      }
     }
   }
 }
