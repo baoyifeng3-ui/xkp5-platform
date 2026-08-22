@@ -89,4 +89,3 @@ Desktop and the management backend are available.
 - Shared responsive shell received specification and accessibility/quality review.
 - Login and global controls received responsive visual review.
 - Workspace page composition received three review rounds and final approval.
-
