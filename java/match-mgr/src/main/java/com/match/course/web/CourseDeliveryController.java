@@ -36,4 +36,11 @@ public class CourseDeliveryController {
         return Response.makeOKRsp(service.deliver(resourceId, environmentId, userId, actor.getUserId(),
                 roleGuard.roleOf(actor).name());
     }
+
+    @PostMapping("/{resourceId}/deliver-to-all")
+    public ResponseResult<Object> deliverToAll(@PathVariable String resourceId) {
+        User actor = roleGuard.requireAnyAdmin();
+        return Response.makeOKRsp(service.deliverToAllUsers(resourceId, actor.getUserId(),
+                roleGuard.roleOf(actor).name()));
+    }
 }

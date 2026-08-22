@@ -13,9 +13,13 @@ import com.match.environment.persistence.TrainingEnvironmentMapper;
 import com.match.environment.persistence.TrainingEnvironmentRecord;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.context.event.EventListener;
+import com.match.agent.model.AgentCommandFinishedEvent;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
+import java.util.ArrayList;
+import java.util.List;
 
 @Service
 public class CourseDeliveryService {
@@ -76,5 +80,33 @@ public class CourseDeliveryService {
         } catch (Exception error) {
             delivery.setState("FAILED"); delivery.setFailureCode("DISPATCH_FAILED"); delivery.setFailureMessage(error.getMessage()); delivery.setUpdatedAt(LocalDateTime.now()); deliveryMapper.updateById(delivery); throw error instanceof IllegalArgumentException ? (IllegalArgumentException) error : new IllegalStateException("资源下发失败", error);
         }
+    }
+
+    @Transactional
+    public List<CourseDeliveryRecord> deliverToAllUsers(String resourceId, Integer actorUserId, String actorRole) {
+        CourseResourceRecord resource = resourceMapper.selectById(resourceId);
+        if (resource == null) throw new IllegalArgumentException("课程资源不存在");
+        List<CourseDeliveryRecord> result = new ArrayList<>();
+        for (TrainingEnvironmentRecord environment : environmentMapper.selectAllEnvironments()) {
+            if (environment.getUserId() != null && resource.getCourseId() != null
+                    && resource.getCourseId().equals(String.valueOf(environment.getCourseId()))) {
+                result.add(deliver(resourceId, environment.getEnvironmentId(), environment.getUserId(), actorUserId, actorRole));
+            }
+        }
+        return result;
+    }
+
+    @EventListener
+    @Transactional
+    public void onCommandFinished(AgentCommandFinishedEvent event) {
+        if (!"DELIVER_COURSE_RESOURCE".equals(event.getCommandType())) return;
+        CourseDeliveryRecord delivery = deliveryMapper.selectByCommandId(event.getCommandId());
+        if (delivery == null || "SUCCEEDED".equals(delivery.getState()) || "FAILED".equals(delivery.getState())) return;
+        delivery.setState(event.isSuccess() ? "SUCCEEDED" : "FAILED");
+        delivery.setFailureCode(event.isSuccess() ? null : event.getResultCode());
+        delivery.setFailureMessage(event.isSuccess() ? null : event.getResultMessage());
+        delivery.setCompletedAt(LocalDateTime.now());
+        delivery.setUpdatedAt(LocalDateTime.now());
+        deliveryMapper.updateById(delivery);
     }
 }

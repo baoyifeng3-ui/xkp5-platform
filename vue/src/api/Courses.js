@@ -6,3 +6,6 @@ export const setCourseEnabled = (id, enabled) => request.post(`/admin/courses/${
 export const addCourseResource = (id, payload) => request.post(`/admin/courses/${id}/resources`, payload)
 export const listUserCourses = () => request.get('/user/courses')
 export const recordCourseProgress = payload => request.post('/user/courses/progress', payload)
+export const deliverCourseResource = (resourceId, environmentId) => request.post(`/course-resources/${resourceId}/deliver`, null, { params: { environmentId } })
+export const deliverCourseResourceForUser = (resourceId, environmentId, userId) => request.post(`/course-resources/${resourceId}/deliver-for-user`, null, { params: { environmentId, userId } })
+export const deliverCourseResourceToAll = resourceId => request.post(`/course-resources/${resourceId}/deliver-to-all`)
