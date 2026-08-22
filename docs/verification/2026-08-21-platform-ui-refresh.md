@@ -102,6 +102,14 @@ Flyway validated all 27 migrations, Tomcat started normally, `admin/admin`
 login returned HTTP 200, and `/admin/platform-mode` returned HTTP 200 with the
 authoritative `TRAINING` state.
 
+A complete isolated stack was also started from the current branch using a
+temporary TLS certificate and a separate Docker network. The current Vue image
+served successfully, proxied to the matching Java image, and browser login with
+`admin/admin` reached `/management`; the home action rendered `进入比赛模式`
+from the authoritative `TRAINING` response. The temporary containers, network,
+and certificate directory were removed afterward; the existing competition
+stack was not replaced.
+
 ## Environment Limitation
 
 Docker Desktop was not running during final browser verification. Ports 19140,
