@@ -39,6 +39,15 @@ try {
 $modeData = ($mode.Content | ConvertFrom-Json).data
 if ($modeData.mode -notin @('TRAINING', 'COMPETITION')) { throw "Unexpected platform mode: $($modeData.mode)" }
 
+foreach ($path in @('/admin/image-groups?limit=1', '/admin/image-artifacts?limit=1', '/admin/image-releases?limit=1', '/admin/image-releases/deployments?limit=1', '/competition')) {
+    try {
+        $readOnly = Invoke-WebRequest -Uri "$BackendUrl$path" -WebSession $adminSession -UseBasicParsing
+        if ($readOnly.StatusCode -ne 200) { throw "status $($readOnly.StatusCode)" }
+    } catch {
+        throw "Read-only smoke endpoint failed: $path ($($_.Exception.Message))"
+    }
+}
+
 if ($UserName -and $UserPassword) {
     $userSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
     $userLogin = Invoke-JsonRequest "$BackendUrl/user/login" @{ UserName = $UserName; Password = $UserPassword } $userSession
@@ -47,4 +56,4 @@ if ($UserName -and $UserPassword) {
     Write-Output "Participant login passed: $($userData.userName) mode=$($userData.platformMode)"
 }
 
-Write-Output "Smoke test passed: backend=$BackendUrl frontend=$FrontendUrl mode=$($modeData.mode) adminRole=$($adminData.role)"
+Write-Output "Smoke test passed: backend=$BackendUrl frontend=$FrontendUrl mode=$($modeData.mode) adminRole=$($adminData.role) registryReadOnly=passed"
