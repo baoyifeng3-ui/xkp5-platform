@@ -11,6 +11,7 @@ import com.match.mode.persistence.ModeTransitionStepRecord;
 import com.match.mode.persistence.ProcessingAgentModeMapper;
 import com.match.mode.persistence.ProcessingAgentModeRecord;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
@@ -29,6 +30,7 @@ public class ModeTransitionReconciler {
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
+    @Autowired
     public ModeTransitionReconciler(ModeTransitionStepMapper stepMapper,
                                     ModeTransitionMapper transitionMapper,
                                     ProcessingAgentModeMapper agentModeMapper,

@@ -11,6 +11,7 @@ import com.match.registry.persistence.ImageUploadMapper;
 import com.match.registry.persistence.ImageUploadRecord;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -85,6 +86,7 @@ public class ImageUploadService {
         this.clock = clock;
     }
 
+    @Autowired
     public ImageUploadService(ImageUploadMapper uploadMapper, ImageUploadChunkMapper chunkMapper,
                               ImageArtifactMapper artifactMapper,
                               @Value("${xkp.registry.staging-dir:${java.io.tmpdir}/xkp-registry-staging}") String staging,

@@ -5,6 +5,7 @@ import com.match.registry.persistence.ImageArtifactRecord;
 import com.match.registry.persistence.ImageReleaseMapper;
 import com.match.registry.persistence.ImageReleaseRecord;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
@@ -20,6 +21,7 @@ public class ImageReleaseService {
     private final ImageReleaseMapper releases;
     private final Clock clock;
 
+    @Autowired
     public ImageReleaseService(ImageArtifactMapper artifacts, ImageReleaseMapper releases) {
         this(artifacts, releases, Clock.systemUTC());
     }

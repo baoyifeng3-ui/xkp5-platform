@@ -42,12 +42,12 @@ CREATE TABLE image_artifact (
     KEY idx_image_artifact_import_lease (review_state, import_state, import_lease_expires_at),
     CONSTRAINT chk_image_artifact_size CHECK (size_bytes >= 0),
     CONSTRAINT chk_image_artifact_sha256 CHECK (
-        BINARY sha256 = BINARY LOWER(sha256) AND BINARY sha256 REGEXP '^[0-9a-f]{64}$'
+        sha256 COLLATE utf8mb4_bin = LOWER(sha256) COLLATE utf8mb4_bin AND sha256 COLLATE utf8mb4_bin REGEXP '^[0-9a-f]{64}$'
     ),
     CONSTRAINT chk_image_artifact_registry_digest CHECK (
         registry_digest IS NULL OR (
-            BINARY registry_digest = BINARY LOWER(registry_digest)
-            AND BINARY registry_digest REGEXP '^sha256:[0-9a-f]{64}$'
+            registry_digest COLLATE utf8mb4_bin = LOWER(registry_digest) COLLATE utf8mb4_bin
+            AND registry_digest COLLATE utf8mb4_bin REGEXP '^sha256:[0-9a-f]{64}$'
         )
     )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -75,14 +75,14 @@ CREATE TABLE image_upload (
     CONSTRAINT chk_image_upload_received_bytes CHECK (received_bytes >= 0),
     CONSTRAINT chk_image_upload_expected_sha256 CHECK (
         expected_sha256 IS NULL OR (
-            BINARY expected_sha256 = BINARY LOWER(expected_sha256)
-            AND BINARY expected_sha256 REGEXP '^[0-9a-f]{64}$'
+            expected_sha256 COLLATE utf8mb4_bin = LOWER(expected_sha256) COLLATE utf8mb4_bin
+            AND expected_sha256 COLLATE utf8mb4_bin REGEXP '^[0-9a-f]{64}$'
         )
     ),
     CONSTRAINT chk_image_upload_final_sha256 CHECK (
         final_sha256 IS NULL OR (
-            BINARY final_sha256 = BINARY LOWER(final_sha256)
-            AND BINARY final_sha256 REGEXP '^[0-9a-f]{64}$'
+            final_sha256 COLLATE utf8mb4_bin = LOWER(final_sha256) COLLATE utf8mb4_bin
+            AND final_sha256 COLLATE utf8mb4_bin REGEXP '^[0-9a-f]{64}$'
         )
     )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -99,8 +99,8 @@ CREATE TABLE image_upload_chunk (
     CONSTRAINT chk_image_upload_chunk_index CHECK (chunk_index >= 0),
     CONSTRAINT chk_image_upload_chunk_bytes CHECK (stored_bytes >= 0),
     CONSTRAINT chk_image_upload_chunk_sha256 CHECK (
-        BINARY chunk_sha256 = BINARY LOWER(chunk_sha256)
-        AND BINARY chunk_sha256 REGEXP '^[0-9a-f]{64}$'
+        chunk_sha256 COLLATE utf8mb4_bin = LOWER(chunk_sha256) COLLATE utf8mb4_bin
+        AND chunk_sha256 COLLATE utf8mb4_bin REGEXP '^[0-9a-f]{64}$'
     )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -119,8 +119,8 @@ CREATE TABLE image_release (
     UNIQUE KEY uk_image_release_component_version (group_id, component_type, version),
     KEY idx_image_release_digest (registry_digest),
     CONSTRAINT chk_image_release_digest CHECK (
-        BINARY registry_digest = BINARY LOWER(registry_digest)
-        AND BINARY registry_digest REGEXP '^sha256:[0-9a-f]{64}$'
+        registry_digest COLLATE utf8mb4_bin = LOWER(registry_digest) COLLATE utf8mb4_bin
+        AND registry_digest COLLATE utf8mb4_bin REGEXP '^sha256:[0-9a-f]{64}$'
     )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -144,13 +144,13 @@ CREATE TABLE image_deployment (
     UNIQUE KEY uk_image_deployment_active (active_deployment_key),
     KEY idx_image_deployment_agent_component (agent_id, component_type, requested_at),
     CONSTRAINT chk_image_deployment_target_digest CHECK (
-        BINARY target_digest = BINARY LOWER(target_digest)
-        AND BINARY target_digest REGEXP '^sha256:[0-9a-f]{64}$'
+        target_digest COLLATE utf8mb4_bin = LOWER(target_digest) COLLATE utf8mb4_bin
+        AND target_digest COLLATE utf8mb4_bin REGEXP '^sha256:[0-9a-f]{64}$'
     ),
     CONSTRAINT chk_image_deployment_previous_digest CHECK (
         previous_digest IS NULL OR (
-            BINARY previous_digest = BINARY LOWER(previous_digest)
-            AND BINARY previous_digest REGEXP '^sha256:[0-9a-f]{64}$'
+            previous_digest COLLATE utf8mb4_bin = LOWER(previous_digest) COLLATE utf8mb4_bin
+            AND previous_digest COLLATE utf8mb4_bin REGEXP '^sha256:[0-9a-f]{64}$'
         )
     )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
