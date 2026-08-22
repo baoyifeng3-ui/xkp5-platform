@@ -65,6 +65,10 @@ assert.doesNotMatch(login + loginCss, /linear-gradient|radial-gradient|\.orb|bok
 assert.match(login, /login-context/)
 assert.doesNotMatch(login, /login-intro/)
 assert.doesNotMatch(loginCss, /\.login-shell\s*\{[^}]*grid-template-columns/s)
+assert.match(loginCss, /@media \(max-width:\s*760px\) and \(max-height:\s*650px\)/)
+assert.match(loginCss, /@media \(max-width:\s*760px\) and \(max-height:\s*650px\)[\s\S]*?\.login-context p,\s*\.login-status\s*\{\s*display:\s*none;/)
+assert.doesNotMatch(loginCss, /\.(?:login-form|button-list)\s*\{[^}]*display:\s*none;/s)
+assert.strictEqual((login.match(/<el-button/g) || []).length, 2)
 
 ;[
   '\\.platform-app \\.el-button',

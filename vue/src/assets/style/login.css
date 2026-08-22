@@ -168,3 +168,23 @@
     .login-shell { min-height: auto; padding-top: 18px; }
     .login-c { position: relative; bottom: auto; padding: 14px 0; }
 }
+
+@media (max-width: 760px) and (max-height: 650px) {
+    .login-brand { height: 54px; }
+    .login-brand-mark { width: 34px; height: 34px; flex-basis: 34px; font-size: 17px; }
+    .login-shell {
+        min-height: calc(100vh - 72px);
+        padding: 8px 0 34px;
+    }
+    .login-card .el-card__body { padding: 16px !important; }
+    .login-context { padding-bottom: 10px; margin-bottom: 12px; }
+    .login-context h1 { margin-bottom: 0; font-size: 20px; }
+    .login-context p,
+    .login-status { display: none; }
+    .login-card-heading { margin-bottom: 12px; }
+    .login-card-heading small { display: none; }
+    .login-form .el-form-item { margin-bottom: 12px !important; }
+    .button-list { margin-top: 14px; }
+    .button-list .el-button { height: 38px; }
+    .login-c { bottom: 4px; }
+}
