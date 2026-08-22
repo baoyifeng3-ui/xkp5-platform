@@ -87,6 +87,16 @@ backend image/schema mismatch, not as a frontend success. The home page
 correctly showed `平台模式不可用`, disabled the action, and exposed a retry
 control rather than guessing a mode or issuing a mutation.
 
+The mismatch was then resolved without replacing the user's existing
+`competition` stack: a temporary Java container built from this branch was
+attached to the existing MySQL/Compose network. Spring Boot startup initially
+exposed constructor-autowiring failures and a MySQL 8 `REGEXP BINARY` migration
+failure; both were fixed. After removing only the failed Flyway 26 history row
+and the partial `image_group` table in the test database, the branch container
+validated 27 migrations, started successfully, accepted `admin` login, and
+returned HTTP 200 from `/admin/platform-mode` with `TRAINING`. The existing
+competition containers were left running unchanged.
+
 ## Environment Limitation
 
 Docker Desktop was not running during final browser verification. Ports 19140,
