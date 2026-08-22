@@ -79,7 +79,7 @@ export default {
       }
     },
     async upfile() {
-      if (this.loading || this.disabled) return;
+      if (this.previewMode || this.loading || this.disabled) return;
       this.loading = true;
       const val = this.subject;
       let obj = {
@@ -122,6 +122,7 @@ export default {
     },
     //删除已上传图片
     handleRemove(file, fileList) {
+      if (this.previewMode) return;
       //file是当前删除的图片，fileList是已上传图片列表
       this.imageList = fileList;
       this.fileList = fileList;
@@ -134,6 +135,7 @@ export default {
     },
     // 上传成功时的钩子
     uploadSuccess(file, fileList) {
+      if (this.previewMode) return;
       if (!file.raw) return;
       var fileType = file.raw.type;
       var isJpg = false;
@@ -163,6 +165,7 @@ export default {
     }
   },
   mounted() {
+    if (this.previewMode) return;
     const val = this.subject;
     if (val?.answerSheet?.answerImg) {
       let imgsArr = val.answerSheet.answerImg.split(",");

@@ -9,6 +9,7 @@
         <el-button icon="el-icon-refresh" circle :loading="loading" aria-label="刷新环境状态" @click="load" />
       </el-tooltip>
     </header>
+    <ParticipantPreviewNotice v-if="previewOnly" class="practical-preview-notice" />
 
     <div v-if="loading && !environment" class="practical-state">
       <i class="el-icon-loading" /><strong>正在查询比赛环境</strong>
@@ -26,10 +27,10 @@
       <span>{{ environment.readinessCode || '环境状态异常，请联系管理员' }}</span>
     </div>
     <div v-else-if="environment.readiness === 'RUNNING'" class="practical-ready">
-      <div class="ready-copy"><span class="ready-dot" /><div><strong>比赛环境已就绪</strong><small>槽位 {{ environment.slotNumber || '-' }}</small></div></div>
+      <div class="ready-copy"><span class="ready-dot" /><div><strong>比赛环境已就绪</strong><small v-if="!previewOnly">槽位 {{ environment.slotNumber || '-' }}</small></div></div>
       <div class="ready-actions">
-        <el-button type="primary" icon="el-icon-picture-outline" :disabled="!safeUrl(environment.annotationUrl)" @click="open(environment.annotationUrl)">打开图像标注</el-button>
-        <el-button icon="el-icon-edit-outline" :disabled="!safeUrl(environment.editorUrl)" @click="open(environment.editorUrl)">打开代码编辑器</el-button>
+        <el-button type="primary" icon="el-icon-picture-outline" :disabled="previewOnly || !safeUrl(environment.annotationUrl)" @click="open(environment.annotationUrl)">打开图像标注</el-button>
+        <el-button icon="el-icon-edit-outline" :disabled="previewOnly || !safeUrl(environment.editorUrl)" @click="open(environment.editorUrl)">打开代码编辑器</el-button>
       </div>
     </div>
     <div v-else class="practical-state is-error">
@@ -40,9 +41,15 @@
 
 <script>
 import request from '@/utils/request'
+import ParticipantPreviewNotice from '@/components/ParticipantPreviewNotice.vue'
+const { isPreviewRoute } = require('@/services/participantPreview')
 
 export default {
+  components: { ParticipantPreviewNotice },
   data: () => ({ loading: false, environment: null }),
+  computed: {
+    previewOnly () { return isPreviewRoute(this.$route) }
+  },
   mounted () { this.load() },
   methods: {
     async load () {
@@ -70,6 +77,7 @@ export default {
       }
     },
     open (value) {
+      if (this.previewOnly) return
       const target = this.safeUrl(value)
       if (this.environment && this.environment.readiness === 'RUNNING' && target) {
         window.open(target, '_blank', 'noopener,noreferrer')
@@ -82,6 +90,7 @@ export default {
 <style scoped>
 .competition-practical { min-height: calc(100vh - 116px); padding: 28px; color: #24384a; background: #f4f7f9; box-sizing: border-box; }
 .practical-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; max-width: 980px; margin: 0 auto 20px; }
+.practical-preview-notice { max-width: 980px; margin-right: auto; margin-left: auto; box-sizing: border-box; }
 .practical-heading h1 { margin: 0; font-size: 24px; letter-spacing: 0; }
 .practical-heading p { margin: 7px 0 0; color: #72808d; font-size: 13px; }
 .practical-state, .practical-ready { max-width: 980px; min-height: 190px; margin: 0 auto; padding: 34px 8px; border-top: 1px solid #dce4ea; border-bottom: 1px solid #dce4ea; box-sizing: border-box; }

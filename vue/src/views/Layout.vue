@@ -26,7 +26,7 @@
             <el-menu-item index="verification" title="成果验证" @click="doRouter(4)">
               <i class="el-icon-circle-check" /><span class="menu-label">成果验证</span>
             </el-menu-item>
-            <el-menu-item v-if="!isAdmin" index="practical" title="比赛实操" @click="doRouter(5)">
+            <el-menu-item v-if="!isAdmin || previewOnly" index="practical" title="比赛实操" @click="doRouter(5)">
               <i class="el-icon-monitor" /><span class="menu-label">比赛实操</span>
             </el-menu-item>
             <el-menu-item v-if="showAdminNavigation" index="admin-timer" class="menu-admin-start" title="比赛控制" @click="openAdmin('timer')">
@@ -69,6 +69,7 @@ import { getClearTime } from '@/api/Match'
 import { mapState } from 'vuex'
 import { clearSession, setCompetitionAccessPhase } from '@/utils/auth'
 import { startUserActivity, stopUserActivity } from '@/services/userActivity'
+const { isPreviewRoute } = require('@/services/participantPreview')
 
 export default {
   data () {
@@ -87,7 +88,10 @@ export default {
       return this.$route.path === '/Admin'
     },
     showAdminNavigation () {
-      return this.isAdmin && this.$route.query.preview !== '1'
+      return this.isAdmin && !this.previewOnly
+    },
+    previewOnly () {
+      return isPreviewRoute(this.$route)
     },
     preStartLocked () {
       return !this.isAdmin && this.countdownSnapshot && this.countdownSnapshot.accessPhase === 'PRE_START'
@@ -112,7 +116,7 @@ export default {
     }
   },
   async mounted () {
-    startUserActivity()
+    if (!this.previewOnly) startUserActivity()
     this.syncTimer = setInterval(this.syncState, 10000)
     this.tickTimer = setInterval(this.updateCountdownText, 1000)
     await this.syncState()
@@ -190,7 +194,7 @@ export default {
       try {
         const result = await this.$store.dispatch('Match/syncActivePaper')
         if (!result.synced) return
-        if (result.activePaper) this.$router.push({ name: 'Question' }).catch(() => {})
+        if (result.activePaper) this.$router.push(this.participantLocation('/Question')).catch(() => {})
         else this.$message.warning('管理员尚未选择赛卷')
       } catch (error) {
         // The request interceptor already explains why the current paper could not be synced.
@@ -198,9 +202,9 @@ export default {
     },
     async doRouter (type) {
       if (type === 1) {
-        this.$router.push({ path: '/Publicity' }).catch(() => {})
+        this.$router.push(this.participantLocation('/Publicity')).catch(() => {})
       } else if (type === 2) {
-        this.$router.push({ path: '/Home' }).catch(() => {})
+        this.$router.push(this.participantLocation('/Home')).catch(() => {})
       } else if (type === 3) {
         await this.openActivePaper()
       } else if (type === 4) {
@@ -210,11 +214,14 @@ export default {
         } catch (error) {
           // Keep the last known paper when the status endpoint is temporarily unavailable.
         }
-        this.$router.push({ path: '/Detect' }).catch(() => {})
+        this.$router.push(this.participantLocation('/Detect')).catch(() => {})
       } else if (type === 5) {
         if (!this.ensureCompetitionAccess()) return
-        this.$router.push({ path: '/competition-practical' }).catch(() => {})
+        this.$router.push(this.participantLocation('/competition-practical')).catch(() => {})
       }
+    },
+    participantLocation (path) {
+      return { path, query: this.previewOnly ? { preview: '1' } : undefined }
     },
     ensureCompetitionAccess () {
       if (!this.preStartLocked) return true

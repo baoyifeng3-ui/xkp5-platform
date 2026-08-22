@@ -9,8 +9,9 @@
         <el-tag type="info">{{ totalSubjects }} 道题</el-tag>
       </header>
 
-      <el-alert v-if="submissionState.status === 'RETURNED'" :title="`试卷已退回：${submissionState.returnReason || '请修改后重新提交'}`" type="warning" :closable="false" show-icon class="submission-alert" />
-      <el-alert v-else-if="submissionLocked" :title="submissionState.status === 'GRADED' ? `判分已完成，总分 ${submissionState.totalScore || 0} 分` : '试卷已提交，等待管理员判分'" :type="submissionState.status === 'GRADED' ? 'success' : 'info'" :closable="false" show-icon class="submission-alert" />
+      <ParticipantPreviewNotice v-if="previewOnly" />
+      <el-alert v-if="!previewOnly && submissionState.status === 'RETURNED'" :title="`试卷已退回：${submissionState.returnReason || '请修改后重新提交'}`" type="warning" :closable="false" show-icon class="submission-alert" />
+      <el-alert v-else-if="!previewOnly && submissionLocked" :title="submissionState.status === 'GRADED' ? `判分已完成，总分 ${submissionState.totalScore || 0} 分` : '试卷已提交，等待管理员判分'" :type="submissionState.status === 'GRADED' ? 'success' : 'info'" :closable="false" show-icon class="submission-alert" />
 
       <el-alert v-if="errorText" :title="errorText" type="warning" :closable="false" show-icon />
 
@@ -25,17 +26,17 @@
           <h2>{{ module.title }}</h2>
         </div>
 
-        <article v-for="item in module.subjects" :id="`subject-${item.subject.subjectId}`" :key="item.subject.subjectId" class="question-item">
+        <article v-for="item in module.subjects" :id="previewOnly ? undefined : `subject-${item.subject.subjectId}`" :key="item.subject.subjectId" class="question-item">
           <div class="question-meta">
             <span class="question-number">{{ item.number }}</span>
             <el-tag size="small" :type="subjectTypeTag(item.subject.subjectType)">
               {{ subjectTypeLabel(item.subject.subjectType) }}
             </el-tag>
-            <span v-if="Number(item.subject.score || 0)" class="question-score">{{ item.subject.score }} 分</span>
+            <span v-if="!previewOnly && Number(item.subject.score || 0)" class="question-score">{{ item.subject.score }} 分</span>
           </div>
           <h3>{{ item.subject.subjectName }}</h3>
 
-          <ul v-if="answeringParts(item.subject.answering).length" class="answering-notes">
+          <ul v-if="!previewOnly && answeringParts(item.subject.answering).length" class="answering-notes">
             <li v-for="(note, noteIndex) in answeringParts(item.subject.answering)" :key="noteIndex">{{ note }}</li>
           </ul>
 
@@ -44,25 +45,25 @@
           </div>
 
           <div v-if="item.subject.point" class="question-environment">
-            <el-button type="text" icon="el-icon-monitor" :disabled="isAdminPreview" @click="onAnswerEnvironment(item)">
+            <el-button type="text" icon="el-icon-monitor" :disabled="previewOnly" @click="onAnswerEnvironment(item)">
               {{ environmentButtonLabel(item.subject.point) }}
             </el-button>
           </div>
 
           <div v-if="item.subject.subjectType === 'single_choice'" class="answer-control">
-            <el-radio-group v-model="item.value" :disabled="submissionLocked || isAdminPreview">
+            <el-radio-group v-model="item.value" :disabled="submissionLocked || previewOnly">
               <el-radio v-for="option in item.subject.options" :key="option" :label="option">{{ option }}</el-radio>
             </el-radio-group>
           </div>
 
           <div v-else-if="item.subject.subjectType === 'multiple_choice'" class="answer-control">
-            <el-checkbox-group v-model="item.value" :disabled="submissionLocked || isAdminPreview">
+            <el-checkbox-group v-model="item.value" :disabled="submissionLocked || previewOnly">
               <el-checkbox v-for="option in item.subject.options" :key="option" :label="option">{{ option }}</el-checkbox>
             </el-checkbox-group>
           </div>
 
           <div v-else-if="item.subject.subjectType === 'true_false'" class="answer-control">
-            <el-radio-group v-model="item.value" :disabled="submissionLocked || isAdminPreview">
+            <el-radio-group v-model="item.value" :disabled="submissionLocked || previewOnly">
               <el-radio label="正确">正确</el-radio>
               <el-radio label="错误">错误</el-radio>
             </el-radio-group>
@@ -77,14 +78,14 @@
             maxlength="5000"
             show-word-limit
             placeholder="请输入答案"
-            :disabled="submissionLocked || isAdminPreview"
+            :disabled="submissionLocked || previewOnly"
           />
 
           <div v-else-if="item.subject.subjectType === 'practical'" class="practical-control">
-            <dthj ref="practicalAnswers" ref-in-for :subject="item" :disabled="submissionLocked || isAdminPreview" :preview-mode="isAdminPreview" />
+            <dthj ref="practicalAnswers" ref-in-for :subject="item" :disabled="submissionLocked || previewOnly" :preview-mode="previewOnly" />
           </div>
 
-          <div v-if="item.subject.subjectType !== 'practical' && !submissionLocked && !isAdminPreview" class="question-actions">
+          <div v-if="item.subject.subjectType !== 'practical' && !submissionLocked && !previewOnly" class="question-actions">
             <el-button type="primary" size="small" icon="el-icon-check" :loading="item.saving" @click="saveAnswer(item)">
               保存答案
             </el-button>
@@ -92,7 +93,7 @@
         </article>
       </section>
 
-      <div v-if="totalSubjects && !isAdminPreview" class="submit-zone">
+      <div v-if="totalSubjects && !previewOnly" class="submit-zone">
         <el-button v-if="!submissionLocked" type="primary" icon="el-icon-upload2" :loading="submitting" @click="submitPaper">提交试卷</el-button>
         <span v-else class="submitted-state"><i :class="submissionState.status === 'GRADED' ? 'el-icon-circle-check' : 'el-icon-time'" />{{ submissionState.status === 'GRADED' ? '判分已完成' : '已提交，等待判分' }}</span>
       </div>
@@ -125,9 +126,11 @@ import { getPlan } from '@/utils/auth'
 import { getSubject, saveSubjectAnswerApi, competitionApi, paperSubmissionStatusApi, submitPaperApi } from '@/api/Match'
 import { createDefaultCompetitionHelpItems } from '@/utils/competitionDefaults'
 import dthj from '@/components/dthj'
+import ParticipantPreviewNotice from '@/components/ParticipantPreviewNotice.vue'
+const { isPreviewRoute } = require('@/services/participantPreview')
 
 export default {
-  components: { dthj },
+  components: { dthj, ParticipantPreviewNotice },
   data () {
     return {
       loading: false,
@@ -150,8 +153,8 @@ export default {
     submissionLocked () {
       return Boolean(this.submissionState.locked)
     },
-    isAdminPreview () {
-      return Boolean(this.$store.state.Match.isAdmin)
+    previewOnly () {
+      return isPreviewRoute(this.$route)
     },
     unansweredCount () {
       return this.allItems().filter(item => {
@@ -169,7 +172,7 @@ export default {
     }
     this.renderDrawer()
     this.loadCompetitionHelp()
-    if (this.isAdminPreview) this.loadSubjects()
+    if (this.previewOnly) this.loadSubjects()
     else Promise.all([this.loadSubjects(), this.loadSubmissionStatus()])
   },
   methods: {
@@ -221,7 +224,7 @@ export default {
       return modules
     },
     prepareRecord (record, number) {
-      const answerText = record.answerSheet ? record.answerSheet.answerText : ''
+      const answerText = !this.previewOnly && record.answerSheet ? record.answerSheet.answerText : ''
       let value = answerText || ''
       if (record.subject.subjectType === 'multiple_choice') {
         try {
@@ -260,6 +263,7 @@ export default {
       }[point] || '进入答题环境'
     },
     async saveAnswer (item) {
+      if (this.previewOnly) return
       const formData = new FormData()
       formData.append('subjectId', item.subject.subjectId)
       formData.append('answerText', item.subject.subjectType === 'multiple_choice' ? JSON.stringify(item.value) : (item.value || ''))
@@ -277,6 +281,7 @@ export default {
       }
     },
     onAnswerEnvironment (item) {
+      if (this.previewOnly) return
       const urlByPoint = {
         code: item.subject.vscodeUrl,
         cvat: item.subject.cvatUrl,
@@ -293,6 +298,7 @@ export default {
       this.isShowTips = !this.isShowTips
     },
     async submitPaper () {
+      if (this.previewOnly) return
       const dirty = this.allItems().find(item => item.subject.subjectType !== 'practical' && this.valueKey(item.value) !== this.valueKey(item.savedValue))
       const dirtyPractical = (this.$refs.practicalAnswers || []).find(component => component.hasUnsavedChanges && component.hasUnsavedChanges())
       if (dirty || dirtyPractical) {

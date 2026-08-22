@@ -1,5 +1,5 @@
 <template>
-  <div class="p-box">
+  <div :class="['p-box', { 'is-preview': previewOnly }]">
     <div class="p-left">
       <div class="p-top">
         <section class="p-top-section p-announcement">
@@ -79,6 +79,7 @@
 <script>
 import {getNoticelist, scoreTopApi, getTeamInformation} from "@/api/Match";
 import mixins from "@/mixins";
+const { isPreviewRoute } = require('@/services/participantPreview')
 export default {
   data() {
     return {
@@ -105,6 +106,11 @@ export default {
     };
   },
   mixins: [mixins],
+  computed: {
+    previewOnly () {
+      return isPreviewRoute(this.$route);
+    },
+  },
   mounted() {
     this.getCompetitionRanking();
     this.getRankData();

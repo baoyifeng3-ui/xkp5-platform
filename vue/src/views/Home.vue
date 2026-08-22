@@ -1,5 +1,5 @@
 <template>
-    <div class="h-box">
+    <div :class="['h-box', { 'is-preview': previewOnly }]">
         <nav class="competition-tabs" aria-label="赛规赛程栏目">
             <button v-for="item in competitionTabs" :key="item.key" :class="{ active: tab === item.key }" type="button" @click="tab = item.key">{{ item.label }}</button>
         </nav>
@@ -380,6 +380,7 @@
 <script>
 import { competitionApi } from '@/api/Match'
 import { competitionContentTabs } from '@/utils/competitionDefaults'
+const { isPreviewRoute } = require('@/services/participantPreview')
 
 export default {
     data () {
@@ -390,6 +391,9 @@ export default {
         };
     },
     computed: {
+        previewOnly () {
+            return isPreviewRoute(this.$route);
+        },
         currentCustomContent () {
             const key = this.tab === 'scoringRule' ? 'scoringRule' : this.tab;
             const section = this.competitionContent[key];

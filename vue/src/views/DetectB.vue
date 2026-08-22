@@ -11,7 +11,7 @@
             </el-carousel-item>
         </el-carousel>
         <div class="d-testing">
-            <el-button type="primary" :disabled="!t100Url" @click="doCheckUtils" v-loading.fullscreen.lock="fullscreenLoading"
+            <el-button type="primary" :disabled="previewOnly || !t100Url" @click="doCheckUtils" v-loading.fullscreen.lock="fullscreenLoading"
                 element-loading-text="拼命加载中" element-loading-spinner="el-icon-loading"
                 element-loading-background="rgba(0, 0, 0, 0.8)">检测</el-button>
         </div>
@@ -27,6 +27,9 @@ const PAPER_TYPE = "B";
 const PAPER_PATH = "b";
 
 export default {
+    props: {
+        previewOnly: { type: Boolean, default: false },
+    },
     data () {
         return {
             data: {},
@@ -74,6 +77,7 @@ export default {
             this.$message.error((error && error.message) || "推理服务请求失败");
         },
         async doTesting () {
+            if (this.previewOnly) return;
             this.fullscreenLoading = true;
             this.resetDetection();
             try {
@@ -114,9 +118,11 @@ export default {
             }
         },
         tryUrl () {
+            if (this.previewOnly) return Promise.resolve();
             return this.$store.dispatch("Match/trainUrl");
         },
         async doCheckUtils () {
+            if (this.previewOnly) return;
             try {
                 const paperStatus = await this.$store.dispatch("Match/syncActivePaper");
                 if (!paperStatus || !paperStatus.synced) {
@@ -142,7 +148,7 @@ export default {
         },
     },
     mounted () {
-        this.tryUrl();
+        if (!this.previewOnly) this.tryUrl();
     },
 };
 </script>
