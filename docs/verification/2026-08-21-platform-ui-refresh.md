@@ -59,8 +59,10 @@ Visual inspection confirmed:
 - required form controls remain visible on the shortest tested viewport.
 
 The browser console contained no frontend warning or error after layout
-verification. The public settings request could not reach the stopped backend,
-and the page correctly retained the default theme and usable login form.
+verification. The public settings request could not reach the stopped backend.
+The final implementation reports this as `平台服务暂不可用，可稍后重试` while
+retaining the default theme and usable login form; it no longer reports the
+service as ready.
 
 ## Environment Limitation
 
