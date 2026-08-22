@@ -64,6 +64,26 @@ The final implementation reports this as `平台服务暂不可用，可稍后�
 retaining the default theme and usable login form; it no longer reports the
 service as ready.
 
+## Live Docker Verification
+
+Docker Desktop was later restored and the current stack was checked against the
+latest frontend on `http://127.0.0.1:19142/` with the backend on `19141`:
+
+- `admin123` reached `/operations`; the operations menu showed only super-admin
+  destinations and the platform shell rendered the configured platform name.
+- `admin` reached `/management`; the first-level menu was exactly 主页、竞赛管理、
+  课程管理、资源管理、实训管理、用户管理、设备管理、平台设置、镜像仓库.
+- `test1` reached `/course-platform`; only 课程平台、资源中心、实训环境 were
+  rendered.
+- `/management/competition` rendered the seven competition sections and no device
+  or platform-settings section.
+- `/management/platform-settings` loaded authoritative settings before enabling
+  its form.
+
+The platform-mode endpoint returned an error in this local data state. The home
+page correctly showed `平台模式不可用`, disabled the action, and exposed a retry
+control rather than guessing a mode or issuing a mutation.
+
 ## Environment Limitation
 
 Docker Desktop was not running during final browser verification. Ports 19140,
