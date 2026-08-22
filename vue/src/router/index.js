@@ -30,6 +30,7 @@ import CompetitionPreview from '@/views/management/CompetitionPreview.vue'
 import CoursePlatform from '@/views/user/CoursePlatform.vue'
 import ResourceCenter from '@/views/user/ResourceCenter.vue'
 import TrainingEnvironment from '@/views/user/TrainingEnvironment.vue'
+import TrainingValidation from '@/views/user/TrainingValidation.vue'
 import OperationsHome from '@/views/operations/OperationsHome.vue'
 import AdministratorManagement from '@/views/operations/AdministratorManagement.vue'
 import LicenseDiagnostics from '@/views/operations/LicenseDiagnostics.vue'
@@ -85,6 +86,7 @@ const routes = [
       { path: '', name: 'CoursePlatform', component: CoursePlatform },
       { path: '/resource-center', name: 'ResourceCenter', component: ResourceCenter },
       { path: '/training-environment', name: 'TrainingEnvironment', component: TrainingEnvironment }
+      ,{ path: '/training-validation', name: 'TrainingValidation', component: TrainingValidation }
     ]
   },
   {
