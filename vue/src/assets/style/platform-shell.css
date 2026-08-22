@@ -1,34 +1,81 @@
-.platform-shell { min-height: 100vh; background: #f4f7fa; color: #1f2f3d; }
-.platform-shell .shell-aside { background: #132b40; color: #fff; min-height: 100vh; }
-.shell-brand { height: 72px; padding: 0 22px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,.12); }
-.shell-brand-mark { width: 30px; height: 30px; display: grid; place-items: center; background: #38a77a; border-radius: 6px; font-weight: 700; }
-.shell-brand strong { display: block; font-size: 17px; }
-.shell-brand small { display: block; margin-top: 3px; color: #9fb2c3; }
-.shell-menu { border-right: 0 !important; background: transparent !important; }
-.shell-menu .el-menu-item, .shell-menu .el-submenu__title { color: #c7d3dc !important; }
-.shell-menu .el-menu-item:hover, .shell-menu .el-submenu__title:hover { background: #1d3b54 !important; }
-.shell-menu .el-menu-item.is-active { color: #fff !important; background: #256b58 !important; }
-.shell-menu .el-menu-item i, .shell-menu .el-submenu__title i { color: inherit !important; }
-.shell-header { height: 72px !important; display: flex; align-items: center; justify-content: space-between; padding: 0 28px !important; background: #fff; border-bottom: 1px solid #dde5eb; }
-.shell-header-copy strong { display: block; font-size: 18px; }
-.shell-header-copy small { display: block; margin-top: 4px; color: #7a8995; }
-.shell-account { display: flex; align-items: center; gap: 14px; color: #52616d; }
-.shell-main { padding: 26px !important; min-width: 0; }
+.platform-shell { display: grid; grid-template-columns: var(--ui-sidebar-width) minmax(0, 1fr); min-height: 100vh; color: var(--ui-text); background: var(--ui-workspace); }
+.shell-sidebar { position: sticky; z-index: 30; top: 0; width: var(--ui-sidebar-width); height: 100vh; overflow: hidden auto; background: var(--ui-surface); border-right: 1px solid var(--ui-border); }
+.shell-brand { display: flex; align-items: center; gap: 11px; height: var(--ui-header-height); padding: 0 18px; border-bottom: 1px solid var(--ui-border); }
+.shell-brand-mark, .shell-avatar { display: inline-grid; place-items: center; flex: 0 0 34px; width: 34px; height: 34px; color: #fff; background: var(--ui-primary); border-radius: 50%; font-weight: 700; }
+.shell-brand-copy, .shell-heading { min-width: 0; }
+.shell-brand-copy strong, .shell-heading strong { display: block; overflow: hidden; color: var(--ui-text); font-size: 16px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.shell-brand-copy small, .shell-heading small { display: block; margin-top: 3px; overflow: hidden; color: var(--ui-muted); font-size: 11px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.shell-menu { padding: 14px 12px; background: transparent !important; border-right: 0 !important; }
+.shell-menu .el-tooltip { display: block; }
+.shell-menu .el-menu-item { display: flex; align-items: center; gap: 11px; height: 46px; margin-bottom: 4px; padding: 0 12px !important; color: #667085 !important; line-height: 46px; border-radius: var(--ui-radius); }
+.shell-menu .el-menu-item:hover { color: var(--ui-text) !important; background: #f5f6fb !important; }
+.shell-menu .el-menu-item.is-active { color: var(--ui-primary-strong) !important; background: #eef0ff !important; font-weight: 600; }
+.shell-menu-icon { display: inline-grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px; border-radius: 50%; }
+.shell-menu-icon i { width: auto !important; margin: 0 !important; color: inherit !important; font-size: 15px !important; }
+.shell-menu-icon--0 { color: #586cf0; background: #e9ecff; }
+.shell-menu-icon--1 { color: #d95865; background: #ffeaec; }
+.shell-menu-icon--2 { color: #159d7b; background: #e2f7f1; }
+.shell-menu-icon--3 { color: #278bbd; background: #e3f4fc; }
+.shell-workspace { display: grid; grid-template-rows: var(--ui-header-height) minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 100vh; }
+.shell-header { position: sticky; z-index: 20; top: 0; display: flex; align-items: center; justify-content: space-between; gap: 20px; height: var(--ui-header-height); padding: 0 24px; background: rgba(255, 255, 255, .96); border-bottom: 1px solid var(--ui-border); }
+.shell-heading { flex: 1 1 auto; }
+.shell-header-tools, .shell-account { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.shell-search { position: relative; width: min(260px, 24vw); }
+.shell-search > i { position: absolute; z-index: 1; top: 50%; left: 13px; color: #98a1b2; transform: translateY(-50%); }
+.shell-search input { width: 100%; height: 38px; padding: 0 36px; color: var(--ui-text); background: #f7f8fb; border: 1px solid transparent; border-radius: 19px; outline: none; }
+.shell-search input:focus { background: #fff; border-color: var(--ui-primary); box-shadow: 0 0 0 3px rgba(111, 127, 247, .12); }
+.shell-search-results { position: absolute; top: 44px; right: 0; left: 0; overflow: hidden; padding: 6px; background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); box-shadow: var(--ui-shadow); }
+.shell-search-results button { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 38px; padding: 7px 10px; color: var(--ui-text); text-align: left; background: transparent; border: 0; border-radius: 6px; cursor: pointer; }
+.shell-search-results button:hover, .shell-search-results button:focus-visible { background: #f2f3fa; outline: none; }
+.shell-search-empty { display: block; padding: 12px; color: var(--ui-muted); text-align: center; }
+.shell-account { flex: 0 0 auto; color: #596579; }
+.shell-avatar { flex-basis: 32px; width: 32px; height: 32px; background: #1f2940; font-size: 13px; }
+.shell-user-name { max-width: 120px; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.shell-icon-button, .shell-drawer-trigger, .shell-drawer-close { display: inline-grid; place-items: center; width: 40px; height: 40px; padding: 0; color: #657086; background: transparent; border: 0; border-radius: 50%; cursor: pointer; }
+.shell-icon-button:hover, .shell-icon-button:focus-visible, .shell-drawer-trigger:hover, .shell-drawer-trigger:focus-visible, .shell-drawer-close:hover, .shell-drawer-close:focus-visible { color: var(--ui-primary-strong); background: #eef0ff; outline: none; }
+.shell-main { min-width: 0; padding: 24px; overflow: auto; }
+.shell-main > * { min-width: 0; }
+.shell-main .el-table { max-width: 100%; }
+.shell-drawer-trigger, .shell-drawer-close, .shell-drawer-backdrop { display: none; }
 .module-page { max-width: 1280px; margin: 0 auto; }
-.module-heading { margin-bottom: 24px; }
-.module-heading h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: 0; }
-.module-heading p { margin: 0; color: #687986; line-height: 1.7; }
-.module-empty { min-height: 280px; display: grid; place-items: center; background: #fff; border: 1px solid #dfe7ed; border-radius: 6px; }
-.module-empty-inner { max-width: 480px; text-align: center; color: #778792; }
-.module-empty-inner i { display: block; margin-bottom: 16px; font-size: 42px; color: #5e8c7d; }
-.module-empty-inner strong { display: block; margin-bottom: 8px; color: #253a49; font-size: 18px; }
+.module-heading { margin-bottom: 22px; }
+.module-heading h1 { margin: 0 0 7px; color: var(--ui-text); font-size: 26px; letter-spacing: 0; }
+.module-heading p { margin: 0; color: var(--ui-muted); line-height: 1.65; }
+.module-empty { min-height: 280px; display: grid; place-items: center; background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); }
+.module-empty-inner { max-width: 480px; color: var(--ui-muted); text-align: center; }
+.module-empty-inner i { display: block; margin-bottom: 16px; color: var(--ui-primary); font-size: 42px; }
+.module-empty-inner strong { display: block; margin-bottom: 8px; color: var(--ui-text); font-size: 18px; }
 .module-empty-inner p { margin: 0; line-height: 1.7; }
-@media (max-width: 720px) {
-  .platform-shell > .el-container > .shell-aside { width: 82px !important; }
-  .shell-brand { padding: 0; justify-content: center; }
-  .shell-brand-copy, .shell-menu .menu-text, .shell-menu .el-submenu__icon-arrow { display: none; }
-  .shell-menu .el-menu-item, .shell-menu .el-submenu__title { padding: 0 28px !important; }
-  .shell-header { padding: 0 16px !important; }
-  .shell-header-copy small { display: none; }
-  .shell-main { padding: 16px !important; }
+
+@media (max-width: 1040px) and (min-width: 721px) {
+  .platform-shell { grid-template-columns: var(--ui-sidebar-compact-width) minmax(0, 1fr); }
+  .shell-sidebar { width: var(--ui-sidebar-compact-width); }
+  .shell-brand { justify-content: center; padding: 0; }
+  .shell-brand-copy, .shell-menu .menu-text { display: none; }
+  .shell-menu { padding: 14px 10px; }
+  .shell-menu .el-menu-item { justify-content: center; padding: 0 !important; }
+  .shell-search { width: min(220px, 26vw); }
 }
+
+@media (max-width: 720px) {
+  .platform-shell { display: block; }
+  .shell-workspace { grid-template-rows: var(--ui-header-height) minmax(0, 1fr); }
+  .shell-sidebar { position: fixed; left: 0; width: min(86vw, 300px); box-shadow: var(--ui-shadow); transform: translateX(-105%); transition: transform .2s ease; }
+  .shell-sidebar.is-open { transform: translateX(0); }
+  .shell-drawer-trigger { position: fixed; z-index: 22; top: 14px; left: 12px; display: inline-grid; }
+  .shell-drawer-close { display: inline-grid; margin-left: auto; }
+  .shell-drawer-backdrop { position: fixed; z-index: 29; inset: 0; display: block; width: 100%; height: 100%; padding: 0; background: rgba(31, 41, 64, .28); border: 0; }
+  .shell-header { padding: 0 12px 0 62px; }
+  .shell-heading small, .shell-user-name { display: none; }
+  .shell-search { width: 40px; }
+  .shell-search > i { left: 13px; }
+  .shell-search input { width: 40px; padding: 0; color: transparent; cursor: pointer; }
+  .shell-search input:focus { position: fixed; z-index: 24; top: 14px; right: 64px; left: 62px; width: auto; padding: 0 38px; color: var(--ui-text); cursor: text; }
+  .shell-search:focus-within > i { position: fixed; z-index: 25; top: 34px; left: 75px; }
+  .shell-search-results { position: fixed; z-index: 25; top: 58px; right: 64px; left: 62px; }
+  .shell-avatar { display: none; }
+  .shell-main { padding: 16px 12px; }
+  .module-heading h1 { font-size: 23px; }
+}
+
+@media (prefers-reduced-motion: reduce) { .shell-sidebar { transition: none; } }

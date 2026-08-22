@@ -1,0 +1,24 @@
+:root {
+  --ui-primary: #6f7ff7;
+  --ui-primary-strong: #5368ed;
+  --ui-workspace: #f3f5f9;
+  --ui-surface: #ffffff;
+  --ui-text: #1f2940;
+  --ui-muted: #7d879c;
+  --ui-border: #e6e9f1;
+  --ui-success: #31c7a1;
+  --ui-warning: #f4b84a;
+  --ui-danger: #f46f78;
+  --ui-info: #4eb8ee;
+  --ui-radius: 8px;
+  --ui-shadow: 0 12px 30px rgba(46, 58, 98, .08);
+  --ui-sidebar-width: 220px;
+  --ui-sidebar-compact-width: 76px;
+  --ui-header-height: 68px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}

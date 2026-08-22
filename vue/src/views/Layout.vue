@@ -1,60 +1,21 @@
 <template>
   <div :class="['console-layout', { 'admin-layout': isAdminRoute }]">
-    <el-container>
-      <el-header class="header">
-        <div class="lay-brand" :aria-label="platformName">
-          <span class="lay-brand-mark" />
-          <div>
-            <strong :title="platformName">{{ platformName }}</strong>
-            <small>Competition Console</small>
-          </div>
-        </div>
-        <div class="lay-time">比赛计时：{{ clearTimeText }}</div>
-      </el-header>
-      <el-container class="container2">
-        <el-aside class="console-sidebar" width="220px">
-          <el-menu :default-active="sideNav" class="console-menu">
-            <el-menu-item index="home" title="首页" @click="doRouter(1)">
-              <i class="el-icon-house" /><span class="menu-label">首页</span>
-            </el-menu-item>
-            <el-menu-item index="schedule" title="赛规赛程" @click="doRouter(2)">
-              <i class="el-icon-date" /><span class="menu-label">赛规赛程</span>
-            </el-menu-item>
-            <el-menu-item index="paper" title="当前赛卷" @click="doRouter(3)">
-              <i class="el-icon-document" /><span class="menu-label">当前赛卷</span>
-            </el-menu-item>
-            <el-menu-item index="verification" title="成果验证" @click="doRouter(4)">
-              <i class="el-icon-circle-check" /><span class="menu-label">成果验证</span>
-            </el-menu-item>
-            <el-menu-item v-if="!isAdmin || previewOnly" index="practical" title="比赛实操" @click="doRouter(5)">
-              <i class="el-icon-monitor" /><span class="menu-label">比赛实操</span>
-            </el-menu-item>
-            <el-menu-item v-if="showAdminNavigation" index="admin-timer" class="menu-admin-start" title="比赛控制" @click="openAdmin('timer')">
-              <i class="el-icon-odometer" /><span class="menu-label">比赛控制</span>
-            </el-menu-item>
-            <el-menu-item v-if="showAdminNavigation" index="admin-rules" title="赛规赛程编辑" @click="openAdmin('rules')">
-              <i class="el-icon-edit-outline" /><span class="menu-label">赛规赛程编辑</span>
-            </el-menu-item>
-            <el-menu-item v-if="showAdminNavigation" index="admin-subjects" title="试卷题目" @click="openAdmin('subjects')">
-              <i class="el-icon-reading" /><span class="menu-label">试卷题目</span>
-            </el-menu-item>
-            <el-menu-item v-if="showAdminNavigation" index="admin-grading" title="试卷判分" @click="openAdmin('grading')">
-              <i class="el-icon-finished" /><span class="menu-label">试卷判分</span>
-            </el-menu-item>
-            <el-menu-item v-if="showAdminNavigation" index="admin-users" title="比赛账号" @click="openAdmin('users')">
-              <i class="el-icon-user" /><span class="menu-label">比赛账号</span>
-            </el-menu-item>
-            <el-menu-item v-if="showAdminNavigation" index="admin-training" title="训练环境" @click="openAdmin('training')">
-              <i class="el-icon-monitor" /><span class="menu-label">训练环境</span>
-            </el-menu-item>
-            <el-menu-item v-if="showAdminNavigation" index="admin-settings" title="平台设置" @click="openAdmin('settings')">
-              <i class="el-icon-setting" /><span class="menu-label">平台设置</span>
-            </el-menu-item>
-          </el-menu>
-        </el-aside>
-        <el-main><router-view /></el-main>
-      </el-container>
-    </el-container>
+    <PlatformShell
+      :items="shellItems"
+      :active-route="sideNav"
+      :brand-caption="showAdminNavigation ? '竞赛管理' : '参赛工作台'"
+      :workspace-title="showAdminNavigation ? '竞赛管理' : platformName"
+      :workspace-caption="showAdminNavigation ? '赛程、赛卷与比赛账号管理' : '比赛答题与实操环境'"
+      :user-name="userName"
+      @navigate="handleShellNavigation"
+      @logout="logout"
+    >
+      <template #status>
+        <span class="competition-clock"><i class="el-icon-time" aria-hidden="true" />比赛计时：{{ clearTimeText }}</span>
+      </template>
+      <template v-if="previewOnly" #account-actions><span /></template>
+      <router-view />
+    </PlatformShell>
     <aside v-if="preStartLocked" class="prestart-dialog" role="status" aria-live="polite" aria-label="距离比赛开始时间">
       <div class="prestart-heading"><span class="prestart-icon"><i class="el-icon-time" /></span><small>距离比赛开始还有</small></div>
       <strong>{{ preStartTimeText }}</strong>
@@ -67,11 +28,13 @@
 <script>
 import { getClearTime } from '@/api/Match'
 import { mapState } from 'vuex'
-import { clearSession, getRole, setCompetitionAccessPhase } from '@/utils/auth'
-import { startUserActivity, stopUserActivity } from '@/services/userActivity'
+import PlatformShell from '@/components/PlatformShell.vue'
+import { clearSession, getRole, getUserName, setCompetitionAccessPhase } from '@/utils/auth'
+import { logoutUser, startUserActivity, stopUserActivity } from '@/services/userActivity'
 const { isPreviewRoute } = require('@/services/participantPreview')
 
 export default {
+  components: { PlatformShell },
   data () {
     return {
       clearTimeText: '比赛时间未设置',
@@ -92,6 +55,30 @@ export default {
     },
     previewOnly () {
       return isPreviewRoute(this.$route, getRole())
+    },
+    userName () {
+      return this.previewOnly ? '参赛端预览' : (getUserName() || (this.isAdmin ? '管理员' : '参赛用户'))
+    },
+    shellItems () {
+      const participantItems = [
+        { key: 'home', activeKey: 'home', label: '首页', icon: 'el-icon-house', destination: 1 },
+        { key: 'schedule', activeKey: 'schedule', label: '赛规赛程', icon: 'el-icon-date', destination: 2 },
+        { key: 'paper', activeKey: 'paper', label: '当前赛卷', icon: 'el-icon-document', destination: 3 },
+        { key: 'verification', activeKey: 'verification', label: '成果验证', icon: 'el-icon-circle-check', destination: 4 }
+      ]
+      if (!this.isAdmin || this.previewOnly) {
+        participantItems.push({ key: 'practical', activeKey: 'practical', label: '比赛实操', icon: 'el-icon-monitor', destination: 5 })
+      }
+      if (!this.showAdminNavigation) return participantItems
+      return participantItems.concat([
+        { key: 'admin-timer', activeKey: 'admin-timer', label: '比赛控制', icon: 'el-icon-odometer', adminTab: 'timer' },
+        { key: 'admin-rules', activeKey: 'admin-rules', label: '赛规赛程编辑', icon: 'el-icon-edit-outline', adminTab: 'rules' },
+        { key: 'admin-subjects', activeKey: 'admin-subjects', label: '试卷题目', icon: 'el-icon-reading', adminTab: 'subjects' },
+        { key: 'admin-grading', activeKey: 'admin-grading', label: '试卷判分', icon: 'el-icon-finished', adminTab: 'grading' },
+        { key: 'admin-users', activeKey: 'admin-users', label: '比赛账号', icon: 'el-icon-user', adminTab: 'users' },
+        { key: 'admin-training', activeKey: 'admin-training', label: '训练环境', icon: 'el-icon-monitor', adminTab: 'training' },
+        { key: 'admin-settings', activeKey: 'admin-settings', label: '平台设置', icon: 'el-icon-setting', adminTab: 'settings' }
+      ])
     },
     preStartLocked () {
       return !this.isAdmin && this.countdownSnapshot && this.countdownSnapshot.accessPhase === 'PRE_START'
@@ -128,6 +115,10 @@ export default {
     clearInterval(this.tickTimer)
   },
   methods: {
+    handleShellNavigation (item) {
+      if (item.adminTab) this.openAdmin(item.adminTab)
+      else this.doRouter(item.destination)
+    },
     async syncCountdown () {
       try {
         const result = await getClearTime()
@@ -232,12 +223,16 @@ export default {
       if (!this.isAdmin) return
       const query = tab ? { tab } : {}
       this.$router.push({ path: '/Admin', query }).catch(() => {})
+    },
+    async logout () {
+      if (this.previewOnly) return
+      try { await logoutUser() } finally { clearSession(); this.$router.replace('/login') }
     }
   }
 }
 </script>
 
-<style scoped>
+<style>
 @import url(../assets/style/layout.css);
 
 .prestart-dialog { position: fixed; z-index: 1200; top: 82px; right: 28px; width: 260px; overflow: hidden; color: #34495e; background: #fff; border: 1px solid #d4dfe6; border-top: 4px solid var(--platform-theme-color, #162d45); border-radius: 7px; box-shadow: 0 16px 36px rgba(22, 42, 60, .18); box-sizing: border-box; pointer-events: none; }

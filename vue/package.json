@@ -13,7 +13,8 @@
     "test:terminal": "node scripts/test-root-terminal-contract.js",
     "test:competition-mode": "node scripts/test-competition-mode-contract.js",
     "test:management-mode": "node scripts/test-management-mode-contract.js",
-    "test:preview": "node scripts/test-participant-preview-contract.js"
+    "test:preview": "node scripts/test-participant-preview-contract.js",
+    "test:platform-ui": "node scripts/test-platform-ui-contract.js"
   },
   "engines": {
     "node": ">=16 <23"
