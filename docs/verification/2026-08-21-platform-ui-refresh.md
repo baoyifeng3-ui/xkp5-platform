@@ -87,6 +87,12 @@ backend image/schema mismatch, not as a frontend success. The home page
 correctly showed `平台模式不可用`, disabled the action, and exposed a retry
 control rather than guessing a mode or issuing a mutation.
 
+The reusable `deploy/dev/smoke-test.ps1` was then run against a temporary
+current-branch Java container on port `19251` and the existing frontend on
+`19140`. It passed administrator login, participant login, role checks,
+participant `TRAINING` mode, frontend HTTP 200, and the authenticated platform
+mode GET without mutating the mode.
+
 The mismatch was then resolved without replacing the user's existing
 `competition` stack: a temporary Java container built from this branch was
 attached to the existing MySQL/Compose network. Spring Boot startup initially
