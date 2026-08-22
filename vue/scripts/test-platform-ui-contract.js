@@ -163,6 +163,29 @@ toolbarPages.forEach(file => assert.match(read(file), /module-toolbar/, `${file}
 const competitionHomeCss = read('src/assets/style/home.css')
 assert.doesNotMatch(competitionHomeCss, /\.h-box\s*\{[^}]*background:\s*#fff[^}]*border:[^}]*box-shadow:/s)
 
+const contextPages = [
+  'src/views/management/CourseManagement.vue',
+  'src/views/management/ResourceManagement.vue',
+  'src/views/management/UserManagement.vue',
+  'src/views/operations/OperationsHome.vue',
+  'src/views/user/CoursePlatform.vue',
+  'src/views/user/ResourceCenter.vue'
+]
+contextPages.forEach(file => {
+  const source = read(file)
+  assert.match(source, /<section class="module-context-band"/, `${file} must render a real full-width context band`)
+  assert.match(source, /<strong>[^<]+<\/strong>/, `${file} context band must expose a concise current state`)
+})
+assert.match(read('src/views/operations/OperationsHome.vue'), /module-toolbar/)
+assert.match(read('src/views/operations/OperationsHome.vue'), /to="\/operations\/administrators"/)
+assert.match(read('src/views/operations/OperationsHome.vue'), /to="\/operations\/processing-agents"/)
+
+const agentTable = read('src/components/agents/AgentStatusTable.vue')
+assert.match(agentTable, /class="agent-table module-table-wrap"/)
+
+const participantCss = competitionHomeCss + read('src/assets/style/publicity.css')
+assert.doesNotMatch(participantCss, /#(?:010d3b|012292|091722|1e65b9|083e81|173d5b|102b47|9a7517|d5a92f|162d45)\b/i)
+
 const competitionHub = read('src/views/management/CompetitionManagement.vue')
 const { competitionItems } = require('../src/navigation/roleNavigation')
 assert.deepStrictEqual(competitionItems.map(item => item.label), [

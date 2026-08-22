@@ -1,5 +1,5 @@
 <template>
-  <div class="agent-table" v-loading="loading">
+  <div class="agent-table module-table-wrap" v-loading="loading">
     <el-table :data="agents" height="420" highlight-current-row @row-click="$emit('select', $event)">
       <el-table-column prop="displayName" label="服务器" min-width="150">
         <template slot-scope="scope"><strong>{{ scope.row.displayName || scope.row.hostname || scope.row.agentId }}</strong></template>
@@ -24,7 +24,7 @@ export default {
 }
 </script>
 <style scoped>
-.agent-table { min-height: 420px; border: 1px solid #dfe5ec; }
+.agent-table { min-height: 420px; }
 .agent-empty { height: 300px; display: flex; align-items: center; justify-content: center; gap: 10px; color: #8290a3; }
 .agent-empty i { font-size: 24px; }
 </style>

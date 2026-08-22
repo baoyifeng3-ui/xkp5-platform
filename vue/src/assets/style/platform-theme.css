@@ -153,7 +153,28 @@
 .module-composed-page > .module-heading p { color: var(--ui-muted); }
 .module-composed-page .section-block { border-top-color: var(--ui-border); }
 
+.module-context-band {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  width: 100%;
+  min-height: 72px;
+  margin-bottom: 18px;
+  padding: 14px 0;
+  border-top: 1px solid var(--ui-border);
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.module-context-band small,
+.module-context-band strong,
+.module-context-band span { display: block; }
+.module-context-band small { margin-bottom: 5px; color: var(--ui-muted); }
+.module-context-band strong { color: var(--ui-text); font-size: 18px; }
+.module-context-band > span { color: var(--ui-muted); font-size: 13px; }
+
 @media (max-width: 720px) {
   .module-toolbar { align-items: stretch; }
   .module-toolbar > * { max-width: 100%; }
+  .module-context-band { align-items: flex-start; flex-direction: column; gap: 10px; }
 }

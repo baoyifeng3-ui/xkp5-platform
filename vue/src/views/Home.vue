@@ -428,7 +428,7 @@ export default {
 
 .custom-competition-content {
     padding: 28px 8px;
-    color: #34495e;
+    color: var(--ui-text);
     font-size: 15px;
     line-height: 1.9;
     white-space: pre-wrap;

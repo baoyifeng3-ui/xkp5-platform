@@ -91,11 +91,11 @@ export default {
       questionLength: 40,
       // 进度条颜色
       customColors: [
-        {color: "#f56c6c", percentage: 20},
-        {color: "#e6a23c", percentage: 40},
-        {color: "#5cb87a", percentage: 60},
-        {color: "#1989fa", percentage: 80},
-        {color: "#6f7ad3", percentage: 100},
+        {color: "var(--ui-danger)", percentage: 20},
+        {color: "var(--ui-warning)", percentage: 40},
+        {color: "var(--ui-success)", percentage: 60},
+        {color: "var(--ui-info)", percentage: 80},
+        {color: "var(--ui-primary)", percentage: 100},
       ],
       tableData4: [],
       tableData3: [],
