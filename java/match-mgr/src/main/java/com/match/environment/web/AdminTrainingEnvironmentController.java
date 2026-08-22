@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @RestController
 @RequestMapping("/admin/training-environments")
@@ -21,6 +22,12 @@ public class AdminTrainingEnvironmentController {
     private final EnvironmentOperationService operationService;
     private final TrainingEnvironmentService environmentService;
 
+    public AdminTrainingEnvironmentController(RoleGuard roleGuard,
+                                              EnvironmentOperationService operationService) {
+        this(roleGuard, operationService, null);
+    }
+
+    @Autowired
     public AdminTrainingEnvironmentController(RoleGuard roleGuard,
                                               EnvironmentOperationService operationService,
                                               TrainingEnvironmentService environmentService) {
