@@ -1,6 +1,6 @@
 # XKP5.0 Platform UI Refresh Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Refresh the entire XKP5.0 web interface with the approved reference-inspired visual system while preserving role isolation, making competition and platform settings first-level administrator destinations, and providing an authentic read-only participant preview.
 
@@ -37,7 +37,7 @@
 - Create: `vue/src/views/management/CompetitionManagement.vue`
 - Create: `vue/src/views/management/PlatformSettings.vue`
 
-- [ ] **Step 1: Write the failing first-level navigation contract**
+- [x] **Step 1: Write the failing first-level navigation contract**
 
 Replace the management/competition assertions in `vue/scripts/test-role-navigation.js` with:
 
@@ -57,13 +57,13 @@ assert.strictEqual(
 )
 ```
 
-- [ ] **Step 2: Run the contract and verify RED**
+- [x] **Step 2: Run the contract and verify RED**
 
 Run: `cd vue && node scripts/test-role-navigation.js`
 
 Expected: FAIL because competition is still a submenu and devices/settings are still competition children.
 
-- [ ] **Step 3: Implement the canonical first-level menu**
+- [x] **Step 3: Implement the canonical first-level menu**
 
 Define these entries in `roleNavigation.js`:
 
@@ -93,13 +93,13 @@ const managementItems = [
 
 Add `/management/competition` and `/management/platform-settings` children in `router/index.js`. `CompetitionManagement.vue` renders `competitionItems` as compact internal section links. `PlatformSettings.vue` hosts the existing settings panel without rendering competition admin navigation; extract the settings panel from `Admin.vue` only if direct reuse cannot keep it isolated.
 
-- [ ] **Step 4: Run navigation contracts and build**
+- [x] **Step 4: Run navigation contracts and build**
 
 Run: `cd vue && node scripts/test-role-navigation.js && npm run build`
 
 Expected: contract prints `role navigation tests passed`; build exits 0 with only existing Browserslist/bundle warnings.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add vue/scripts/test-role-navigation.js vue/src/navigation/roleNavigation.js vue/src/router/index.js vue/src/views/management/CompetitionManagement.vue vue/src/views/management/PlatformSettings.vue
@@ -114,7 +114,7 @@ git commit -m "feat: promote competition and platform settings navigation"
 - Modify: `vue/src/views/management/ManagementHome.vue`
 - Reuse: `vue/src/api/PlatformMode.js`
 
-- [ ] **Step 1: Write the failing mode-action contract**
+- [x] **Step 1: Write the failing mode-action contract**
 
 ```js
 const assert = require('assert')
@@ -133,13 +133,13 @@ console.log('management mode contract passed')
 
 Add `"test:management-mode": "node scripts/test-management-mode-contract.js"` to `package.json`.
 
-- [ ] **Step 2: Run the contract and verify RED**
+- [x] **Step 2: Run the contract and verify RED**
 
 Run: `cd vue && npm run test:management-mode`
 
 Expected: FAIL because the home action still routes to `/Admin?tab=timer`.
 
-- [ ] **Step 3: Implement the mode state and command**
+- [x] **Step 3: Implement the mode state and command**
 
 In `ManagementHome.vue`, import `getPlatformMode` and `changePlatformMode`, add `platformMode`, `modeLoading`, and `modeSwitching`, and replace the route-only action with a dedicated button:
 
@@ -180,13 +180,13 @@ async confirmModeSwitch () {
 
 Do not call `$router.push` or `$router.replace` after the command.
 
-- [ ] **Step 4: Run focused and existing mode contracts**
+- [x] **Step 4: Run focused and existing mode contracts**
 
 Run: `cd vue && npm run test:management-mode && npm run test:competition-mode && npm run test:navigation`
 
 Expected: all three scripts exit 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add vue/package.json vue/scripts/test-management-mode-contract.js vue/src/views/management/ManagementHome.vue
@@ -203,7 +203,7 @@ git commit -m "feat: switch platform mode from management home"
 - Modify: `vue/src/router/index.js`
 - Modify: `vue/src/views/management/CompetitionPreview.vue`
 
-- [ ] **Step 1: Write the failing preview policy contract**
+- [x] **Step 1: Write the failing preview policy contract**
 
 ```js
 const assert = require('assert')
@@ -225,13 +225,13 @@ console.log('participant preview contract passed')
 
 Add `"test:preview": "node scripts/test-participant-preview-contract.js"`.
 
-- [ ] **Step 2: Run the contract and verify RED**
+- [x] **Step 2: Run the contract and verify RED**
 
 Run: `cd vue && npm run test:preview`
 
 Expected: FAIL because the helper does not exist and preview still has four destination controls.
 
-- [ ] **Step 3: Implement mode-resolved preview**
+- [x] **Step 3: Implement mode-resolved preview**
 
 Create the CommonJS-compatible helper:
 
@@ -266,13 +266,13 @@ const previewDestinations = [
 
 Keep the router exception exact: only role `ADMIN`, query `preview=1`, and a listed participant destination bypasses role/mode metadata.
 
-- [ ] **Step 4: Run preview and navigation contracts**
+- [x] **Step 4: Run preview and navigation contracts**
 
 Run: `cd vue && npm run test:preview && npm run test:navigation && npm run build`
 
 Expected: scripts and build exit 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add vue/package.json vue/scripts/test-participant-preview-contract.js vue/src/services/participantPreview.js vue/src/navigation/roleNavigation.js vue/src/router/index.js vue/src/views/management/CompetitionPreview.vue
@@ -291,7 +291,7 @@ git commit -m "feat: preview the current participant experience"
 - Modify: `vue/src/views/Home.vue`
 - Modify: `vue/src/views/Publicity.vue`
 
-- [ ] **Step 1: Extend the failing source contract for every mutation surface**
+- [x] **Step 1: Extend the failing source contract for every mutation surface**
 
 Add explicit file assertions rather than a blanket CSS-only check:
 
@@ -309,13 +309,13 @@ mutationViews.forEach(file => {
 })
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Run: `cd vue && npm run test:preview`
 
 Expected: FAIL naming each mutation-capable view that lacks the centralized guard.
 
-- [ ] **Step 3: Disable mutations in component logic, not only visually**
+- [x] **Step 3: Disable mutations in component logic, not only visually**
 
 For each listed view, add:
 
@@ -344,7 +344,7 @@ Buttons use `:disabled="previewOnly || existingDisabled"`. Hide answers, score r
 
 The component text is exactly `当前为只读预览，操作不会提交。` and contains no instructional feature list.
 
-- [ ] **Step 4: Run preview, paper, and full source contracts**
+- [x] **Step 4: Run preview, paper, and full source contracts**
 
 Run:
 
@@ -357,7 +357,7 @@ Get-ChildItem scripts/test-*.js | ForEach-Object { node $_.FullName; if ($LASTEX
 
 Expected: every script exits 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add vue/scripts/test-participant-preview-contract.js vue/src/components/ParticipantPreviewNotice.vue vue/src/views/user/TrainingEnvironment.vue vue/src/views/competition/CompetitionPractical.vue vue/src/views/Detect.vue vue/src/components/Question.vue
@@ -379,7 +379,7 @@ git commit -m "feat: make participant preview read only"
 - Modify: `vue/src/assets/style/platform-shell.css`
 - Modify: `vue/src/assets/style/layout.css`
 
-- [ ] **Step 1: Write the failing shared-shell contract**
+- [x] **Step 1: Write the failing shared-shell contract**
 
 ```js
 const assert = require('assert')
@@ -402,13 +402,13 @@ console.log('platform UI contract passed')
 
 Add `"test:platform-ui": "node scripts/test-platform-ui-contract.js"`.
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Run: `cd vue && npm run test:platform-ui`
 
 Expected: FAIL because the shared component and token file do not exist.
 
-- [ ] **Step 3: Add shared tokens and component API**
+- [x] **Step 3: Add shared tokens and component API**
 
 Define these core tokens in `platform-theme.css`:
 
@@ -434,17 +434,17 @@ Define these core tokens in `platform-theme.css`:
 
 For competition `Layout.vue`, pass only participant competition items when `showAdminNavigation` is false; keep countdown synchronization and pre-start behavior inside `Layout.vue`, but move visual navigation/header markup into `PlatformShell` slots.
 
-- [ ] **Step 4: Implement responsive rules**
+- [x] **Step 4: Implement responsive rules**
 
 In `platform-shell.css`, keep a 220px desktop sidebar, a 76px compact tablet sidebar, and a mobile drawer below 720px. Do not scale fonts with viewport width. Use stable 40px icon buttons, `minmax(0, 1fr)` grid tracks, horizontal table overflow, and no nested section cards.
 
-- [ ] **Step 5: Run contracts and production build**
+- [x] **Step 5: Run contracts and production build**
 
 Run: `cd vue && npm run test:platform-ui && npm run test:navigation && npm run build`
 
 Expected: all commands exit 0; existing bundle-size warning may remain.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add vue/package.json vue/scripts/test-platform-ui-contract.js vue/src/components/PlatformShell.vue vue/src/layouts vue/src/views/Layout.vue vue/src/assets/style/platform-theme.css vue/src/assets/style/platform-shell.css vue/src/assets/style/layout.css
@@ -460,7 +460,7 @@ git commit -m "feat: unify role shells with responsive platform chrome"
 - Modify: `vue/src/App.vue` or `vue/src/main.js` (whichever is the current global stylesheet entry)
 - Modify: `vue/src/assets/style/platform-theme.css`
 
-- [ ] **Step 1: Extend the failing contract**
+- [x] **Step 1: Extend the failing contract**
 
 ```js
 const login = fs.readFileSync('src/views/Login.vue', 'utf8')
@@ -471,25 +471,25 @@ assert.match(login, /autocomplete="current-password"/)
 assert.doesNotMatch(login, /gradient|orb|bokeh/i)
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Run: `cd vue && npm run test:platform-ui`
 
 Expected: FAIL because login does not import the shared token layer or expose the approved compact status treatment.
 
-- [ ] **Step 3: Apply the approved login composition**
+- [x] **Step 3: Apply the approved login composition**
 
 Keep the actual login form in the first viewport. Use the configured bitmap background only when present, with a legible solid overlay; otherwise use the light workspace color. Place brand/name as a strong first signal, use a white login surface with 8px radius, retain inline Element validation, and use blue-violet for the primary action. Do not add marketing feature cards, decorative SVGs, gradients, or oversized headings.
 
 Apply global Element UI overrides under `.platform-app`/`.platform-shell` only: buttons, inputs, tables, tags, dialogs, tabs, pagination, empty/loading states. Do not override third-party xterm internals.
 
-- [ ] **Step 4: Run login/navigation contracts and build**
+- [x] **Step 4: Run login/navigation contracts and build**
 
 Run: `cd vue && npm run test:platform-ui && npm run test:navigation && npm run build`
 
 Expected: all commands exit 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add vue/scripts/test-platform-ui-contract.js vue/src/views/Login.vue vue/src/assets/style/login.css vue/src/assets/style/platform-theme.css vue/src/App.vue vue/src/main.js
@@ -524,7 +524,7 @@ git commit -m "feat: apply shared visual system to login and controls"
 - Modify: `vue/src/views/competition/CompetitionPractical.vue`
 - Modify: `vue/scripts/test-platform-ui-contract.js`
 
-- [ ] **Step 1: Add page-composition source assertions**
+- [x] **Step 1: Add page-composition source assertions**
 
 Assert every named top-level view contains `module-page` and `module-heading`, no page heading uses an inline font size above 32px, and no management page contains `.card .card`/nested `el-card` structures. Assert Competition Management contains the seven required internal labels and excludes `比赛设备` and `平台设置`.
 
@@ -536,13 +536,13 @@ assert.ok(!competitionHub.includes('比赛设备'))
 assert.ok(!competitionHub.includes('平台设置'))
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Run: `cd vue && npm run test:platform-ui`
 
 Expected: FAIL listing legacy pages that have not adopted the shared structure.
 
-- [ ] **Step 3: Convert pages without changing domain behavior**
+- [x] **Step 3: Convert pages without changing domain behavior**
 
 For administrators, use unframed page sections, compact action toolbars, dense tables, clear empty/loading/error states, and dialogs only for focused actions. Keep cards only for repeated summary items. Device state is linked to `/management/devices`; do not recreate device selection in competition.
 
@@ -550,7 +550,7 @@ For participants, lower the information density but keep training and competitio
 
 Do not alter API requests, response mapping, permissions, timers, xterm lifecycle, or domain state transitions during this styling task.
 
-- [ ] **Step 4: Run all frontend contracts**
+- [x] **Step 4: Run all frontend contracts**
 
 Run:
 
@@ -564,13 +564,13 @@ Get-ChildItem scripts/test-*.js | Sort-Object Name | ForEach-Object {
 
 Expected: all contract scripts exit 0.
 
-- [ ] **Step 5: Run production build**
+- [x] **Step 5: Run production build**
 
 Run: `cd vue && npm run build`
 
 Expected: exit 0; only pre-existing Browserslist/bundle-size warnings permitted.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add vue/src/views vue/src/components/Question.vue vue/scripts/test-platform-ui-contract.js
@@ -583,13 +583,13 @@ git commit -m "feat: refresh administrator and participant workspaces"
 - Modify: `docs/superpowers/specs/2026-08-21-platform-ui-refresh-design.md` only if verified implementation behavior requires clarification
 - Create: `docs/verification/2026-08-21-platform-ui-refresh.md`
 
-- [ ] **Step 1: Start the production-like frontend**
+- [x] **Step 1: Start the production-like frontend**
 
 Run: `cd vue && npm run serve -- --host 0.0.0.0 --port 19142`
 
 Expected: dev server reports `http://localhost:19142/` without compile errors. If the port is occupied, use the next free port and record it.
 
-- [ ] **Step 2: Verify role and mode workflows in browser**
+- [x] **Step 2: Verify role and mode workflows in browser**
 
 Using the configured local accounts, verify:
 
@@ -602,15 +602,15 @@ USER/TRAINING: login -> /course-platform -> no competition navigation
 USER/COMPETITION: login -> /Publicity -> no training navigation -> paper remains available when unbound -> practical actions disabled
 ```
 
-- [ ] **Step 3: Capture and inspect desktop screenshots**
+- [x] **Step 3: Capture and inspect desktop screenshots**
 
 Capture login, management home, competition management, operations, training participant home, competition participant home, and preview at `1440x900`. Verify no text overlap, horizontal clipping, nested cards, admin leakage, gradients/orbs, or one-note color dominance.
 
-- [ ] **Step 4: Capture and inspect mobile screenshots**
+- [x] **Step 4: Capture and inspect mobile screenshots**
 
 Capture the same critical shells at `390x844`. Verify the navigation drawer opens/closes, labels fit, tables scroll, fixed controls remain stable, preview iframe is usable, and content does not overlap.
 
-- [ ] **Step 5: Run final automated verification**
+- [x] **Step 5: Run final automated verification**
 
 ```powershell
 cd vue
@@ -625,7 +625,7 @@ git status --short
 
 Expected: every contract passes, build exits 0, `git diff --check` has no output, and status contains only the intended verification document before commit.
 
-- [ ] **Step 6: Record evidence and commit**
+- [x] **Step 6: Record evidence and commit**
 
 Write `docs/verification/2026-08-21-platform-ui-refresh.md` with tested URLs, viewports, role/mode results, command totals, warnings, and screenshot paths. Do not include account passwords or secrets.
 
@@ -636,14 +636,14 @@ git commit -m "test: verify platform UI refresh"
 
 ## Self-Review Checklist
 
-- [ ] Ordinary administrator navigation is exactly first-level, and Competition Management contains no device or platform-settings section.
-- [ ] Platform Settings is first-level and its copy/behavior is platform-wide.
-- [ ] Home mode switch calls the existing backend command, remains on the current admin page, and toggles its label.
-- [ ] Login continues to route USER by authoritative session mode, and generation invalidation remains unchanged.
-- [ ] Preview opens the current-mode participant home with the real participant shell and no destination/refresh toolbar.
-- [ ] Preview hides administrator-only data, answers, scoring, identifiers, and configuration, and blocks every mutation before API invocation.
-- [ ] Training and competition participant navigation remain mutually exclusive.
-- [ ] Unbound competition users can answer papers but cannot start annotation/editor practical operations.
-- [ ] Shared visual tokens apply to login, management, operations, training, competition, and preview.
-- [ ] Desktop/tablet/mobile layouts have stable controls, no overlap, and no nested page cards.
-- [ ] Every implementation step names its concrete file, command, expected result, and defined helper/function signature.
+- [x] Ordinary administrator navigation is exactly first-level, and Competition Management contains no device or platform-settings section.
+- [x] Platform Settings is first-level and its copy/behavior is platform-wide.
+- [x] Home mode switch calls the existing backend command, remains on the current admin page, and toggles its label.
+- [x] Login continues to route USER by authoritative session mode, and generation invalidation remains unchanged.
+- [x] Preview opens the current-mode participant home with the real participant shell and no destination/refresh toolbar.
+- [x] Preview hides administrator-only data, answers, scoring, identifiers, and configuration, and blocks every mutation before API invocation.
+- [x] Training and competition participant navigation remain mutually exclusive.
+- [x] Unbound competition users can answer papers but cannot start annotation/editor practical operations.
+- [x] Shared visual tokens apply to login, management, operations, training, competition, and preview.
+- [x] Desktop/tablet/mobile layouts have stable controls, no overlap, and no nested page cards.
+- [x] Every implementation step names its concrete file, command, expected result, and defined helper/function signature.
