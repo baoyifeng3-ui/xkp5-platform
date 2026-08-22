@@ -5,12 +5,12 @@
             <div><strong>{{ loginBrandName }}</strong><small>XKP5.0 MANAGEMENT PLATFORM</small></div>
         </header>
         <main class="login-shell">
-            <section class="login-intro">
-                <h1>{{ loginTitle }}</h1>
-                <p>{{ loginDescription }}</p>
-                <div class="login-status" role="status" aria-live="polite"><i aria-hidden="true" />平台服务就绪</div>
-            </section>
             <el-card class="login-card" shadow="never">
+                <div class="login-context">
+                    <h1>{{ loginTitle }}</h1>
+                    <p>{{ loginDescription }}</p>
+                    <div class="login-status" role="status" aria-live="polite"><i aria-hidden="true" />平台服务就绪</div>
+                </div>
                 <div class="login-card-heading"><span>账号登录</span><small>请使用已分配的平台账号</small></div>
                 <el-form :model="ruleForm" :rules="rules" ref="ruleForm" label-position="top" class="login-form">
                     <el-form-item label="账号" prop="UserName">

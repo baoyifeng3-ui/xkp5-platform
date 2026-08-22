@@ -62,6 +62,9 @@ assert.match(login, /:style="loginStyle"/)
 assert.match(loginCss, /--ui-primary/)
 assert.match(loginCss, /border-radius:\s*var\(--ui-radius\)/)
 assert.doesNotMatch(login + loginCss, /linear-gradient|radial-gradient|\.orb|bokeh/i)
+assert.match(login, /login-context/)
+assert.doesNotMatch(login, /login-intro/)
+assert.doesNotMatch(loginCss, /\.login-shell\s*\{[^}]*grid-template-columns/s)
 
 ;[
   '\\.platform-app \\.el-button',
