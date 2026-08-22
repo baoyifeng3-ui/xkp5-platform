@@ -9,7 +9,7 @@
                 <div class="login-context">
                     <h1>{{ loginTitle }}</h1>
                     <p>{{ loginDescription }}</p>
-                    <div class="login-status" role="status" aria-live="polite"><i aria-hidden="true" />平台服务就绪</div>
+                    <div :class="['login-status', `is-${serviceStatus}`]" role="status" aria-live="polite"><i aria-hidden="true" />{{ serviceStatusText }}</div>
                 </div>
                 <div class="login-card-heading"><span>账号登录</span><small>请使用已分配的平台账号</small></div>
                 <el-form :model="ruleForm" :rules="rules" ref="ruleForm" label-position="top" class="login-form">
@@ -39,6 +39,7 @@ export default {
         return {
             ruleForm: { UserName: '', Password: '' },
             submitting: false,
+            serviceStatus: 'checking',
             rules: {
                 UserName: [
                     { required: true, message: "请输入账号", trigger: "blur" },
@@ -52,6 +53,7 @@ export default {
         loginTitle () { return this.$store.state.Match.loginTitle },
         loginDescription () { return this.$store.state.Match.loginDescription },
         loginCopyright () { return this.$store.state.Match.loginCopyright },
+        serviceStatusText () { return ({ checking: '正在检查平台服务', ready: '平台服务就绪', unavailable: '平台服务暂不可用，可稍后重试' })[this.serviceStatus] },
         hasLoginBackground () { return Boolean(this.$store.state.Match.loginBackgroundUrl) },
         loginStyle () {
             const url = this.$store.state.Match.loginBackgroundUrl
@@ -87,9 +89,10 @@ export default {
     async mounted () {
         try {
             const result = await competitionApi()
-            if (result.code === 200) this.$store.commit('Match/SET_PLATFORM_SETTINGS', result.data)
+            if (result.code === 200) { this.$store.commit('Match/SET_PLATFORM_SETTINGS', result.data); this.serviceStatus = 'ready' }
+            else this.serviceStatus = 'unavailable'
         } catch (error) {
-            // The default theme remains usable when public settings are unavailable.
+            this.serviceStatus = 'unavailable'
         }
     },
 };

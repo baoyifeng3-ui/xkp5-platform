@@ -6,6 +6,7 @@
     workspace-title="管理工作台"
     workspace-caption="课程、资源、实训与竞赛业务管理"
     :user-name="userName"
+    :platform-name="platformName"
     @navigate="navigate"
     @logout="logout"
   >
@@ -22,7 +23,7 @@ import { logoutUser, startUserActivity, stopUserActivity } from '@/services/user
 export default {
   components: { PlatformShell },
   data: () => ({ items: managementItems }),
-  computed: { userName: () => getUserName() || '管理员' },
+  computed: { userName: () => getUserName() || '管理员', platformName: vm => vm.$store.state.Match.platformName },
   mounted () { startUserActivity() },
   beforeDestroy () { stopUserActivity() },
   methods: {

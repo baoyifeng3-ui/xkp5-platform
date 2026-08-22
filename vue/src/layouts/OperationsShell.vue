@@ -6,6 +6,7 @@
     workspace-title="平台运维"
     workspace-caption="系统级配置与管理员账号维护"
     :user-name="userName"
+    :platform-name="platformName"
     @navigate="navigate"
     @logout="logout"
   >
@@ -26,7 +27,7 @@ export default {
       ? operationsItems
       : operationsItems.filter(item => item.roles && item.roles.includes(getRole()))
   }),
-  computed: { userName: () => getUserName() || '管理员' },
+  computed: { userName: () => getUserName() || '管理员', platformName: vm => vm.$store.state.Match.platformName },
   mounted () { startUserActivity() },
   beforeDestroy () { stopUserActivity() },
   methods: {

@@ -6,6 +6,7 @@
       :brand-caption="showAdminNavigation ? '竞赛管理' : '参赛工作台'"
       :workspace-title="showAdminNavigation ? '竞赛管理' : platformName"
       :workspace-caption="showAdminNavigation ? '赛程、赛卷与比赛账号管理' : '比赛答题与实操环境'"
+      :platform-name="platformName"
       :user-name="userName"
       @navigate="handleShellNavigation"
       @logout="logout"

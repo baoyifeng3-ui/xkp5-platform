@@ -633,7 +633,7 @@ import {
   formatCompetitionHelpContent
 } from '@/utils/competitionDefaults'
 
-const DEFAULT_THEME_COLOR = '#162d45'
+const DEFAULT_THEME_COLOR = '#6f7ff7'
 
 export default {
   components: { AdminGrading },

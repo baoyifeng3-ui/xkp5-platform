@@ -1,6 +1,8 @@
 :root {
-  --ui-primary: #6f7ff7;
-  --ui-primary-strong: #5368ed;
+  --platform-theme-color: #6f7ff7;
+  --ui-primary: var(--platform-theme-color, #6f7ff7);
+  --ui-primary-strong: #5b68cb;
+  --ui-primary-soft: #eef0ff;
   --ui-workspace: #f3f5f9;
   --ui-surface: #ffffff;
   --ui-text: #1f2940;

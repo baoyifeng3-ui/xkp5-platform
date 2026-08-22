@@ -1,9 +1,9 @@
 import { userLoginApi, scoreTopApi, scoreApi, trainUrlApi, getUserApi, getTeamUserApi, competitionApi } from "@/api/Match";
 import { setToken, getToken, setPlan, getPlan, setUserName, getUserName, setUserInfo, getUserInfo, clearSession } from "@/utils/auth"
 import { Message } from 'element-ui'
+const { DEFAULT_THEME_COLOR, normalizeThemeColor, applyPlatformTheme } = require('@/services/platformTheme')
 
 const DEFAULT_PLATFORM_NAME = 'XKP5.0平台'
-const DEFAULT_THEME_COLOR = '#162d45'
 
 const state = {
     token: getToken("satoken"),
@@ -66,15 +66,13 @@ const mutations = {
     SET_PLATFORM_SETTINGS (state, settings) {
         const value = settings || {}
         state.platformName = String(value.platformName || '').trim() || DEFAULT_PLATFORM_NAME
-        state.themeColor = /^#[0-9a-f]{6}$/i.test(String(value.themeColor || ''))
-            ? String(value.themeColor).toLowerCase()
-            : DEFAULT_THEME_COLOR
+        state.themeColor = normalizeThemeColor(value.themeColor)
         state.loginBackgroundUrl = String(value.loginBackgroundUrl || '').trim()
         state.loginBrandName = String(value.loginBrandName || '').trim() || 'XKP5.0平台'
         state.loginTitle = String(value.loginTitle || '').trim() || '进入平台工作台'
         state.loginDescription = String(value.loginDescription || '').trim() || '请使用已分配的平台账号登录。'
         state.loginCopyright = String(value.loginCopyright || '').trim() || '2026 XKP5.0平台'
-        document.documentElement.style.setProperty('--platform-theme-color', state.themeColor)
+        applyPlatformTheme(state.themeColor)
     },
     SET_URL (state, url) {
         state.url = url
@@ -94,6 +92,7 @@ const mutations = {
         state.modeGeneration = 0
         state.platformName = DEFAULT_PLATFORM_NAME
         state.themeColor = DEFAULT_THEME_COLOR
+        applyPlatformTheme(DEFAULT_THEME_COLOR)
         state.loginBackgroundUrl = ''
         state.loginBrandName = 'XKP5.0平台'
         state.loginTitle = '进入平台工作台'

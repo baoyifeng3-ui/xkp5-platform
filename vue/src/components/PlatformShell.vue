@@ -27,7 +27,7 @@
       <div class="shell-brand">
         <span class="shell-brand-mark" aria-hidden="true">X</span>
         <div class="shell-brand-copy">
-          <strong>XKP5.0平台</strong>
+          <strong>{{ platformName }}</strong>
           <small>{{ brandCaption }}</small>
         </div>
         <button type="button" class="shell-drawer-close" aria-label="关闭导航" @click="closeDrawer">
@@ -115,6 +115,7 @@ export default {
     workspaceTitle: { type: String, required: true },
     workspaceCaption: { type: String, default: '' },
     userName: { type: String, default: '用户' },
+    platformName: { type: String, default: 'XKP5.0平台' },
     activeRoute: { type: String, default: '' }
   },
   data () {

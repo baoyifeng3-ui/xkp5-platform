@@ -6,6 +6,7 @@
     workspace-title="学习工作台"
     workspace-caption="课程学习、资源使用与实训环境"
     :user-name="userName"
+    :platform-name="platformName"
     @navigate="navigate"
     @logout="logout"
   >
@@ -26,7 +27,8 @@ export default {
   data: () => ({ items: userItems }),
   computed: {
     previewOnly () { return isPreviewRoute(this.$route, getRole()) },
-    userName () { return this.previewOnly ? '参赛端预览' : (getUserName() || '用户') }
+    userName () { return this.previewOnly ? '参赛端预览' : (getUserName() || '用户') },
+    platformName () { return this.$store.state.Match.platformName }
   },
   mounted () { if (!this.previewOnly) startUserActivity() },
   beforeDestroy () { if (!this.previewOnly) stopUserActivity() },
