@@ -97,6 +97,11 @@ validated 27 migrations, started successfully, accepted `admin` login, and
 returned HTTP 200 from `/admin/platform-mode` with `TRAINING`. The existing
 competition containers were left running unchanged.
 
+The same current-branch container was rechecked after Docker was restarted:
+Flyway validated all 27 migrations, Tomcat started normally, `admin/admin`
+login returned HTTP 200, and `/admin/platform-mode` returned HTTP 200 with the
+authoritative `TRAINING` state.
+
 ## Environment Limitation
 
 Docker Desktop was not running during final browser verification. Ports 19140,
