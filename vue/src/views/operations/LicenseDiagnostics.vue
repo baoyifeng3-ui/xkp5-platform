@@ -2,7 +2,7 @@
   <section class="module-page module-composed-page diagnostics-page">
     <header class="module-heading module-toolbar">
       <div><h1>授权诊断</h1><p>XKP5.0 平台授权与可信时钟状态</p></div>
-      <div><el-button type="primary" icon="el-icon-refresh" :loading="revalidating" @click="revalidate">重新校验</el-button><el-button icon="el-icon-plus" @click="tokenDialog=true">添加处理服务器</el-button></div>
+      <el-button type="primary" icon="el-icon-refresh" :loading="revalidating" @click="revalidate">重新校验</el-button>
     </header>
     <section class="diagnostic-band">
       <div class="state-cell" :class="tone"><small>授权状态</small><strong>{{ stateLabel }}</strong></div>
@@ -15,7 +15,6 @@
         <div><dt>公钥标识</dt><dd>{{ keyIds }}</dd></div>
       </dl>
     </section>
-    <el-dialog title="添加服务器（生成注册码）" :visible.sync="tokenDialog" width="520px" @closed="clearToken"><el-input v-model="tokenLabel" placeholder="用途，例如：A 机房" maxlength="80" /><div v-if="issuedToken" class="issued-token"><code>{{ issuedToken }}</code><el-button icon="el-icon-document-copy" @click="copyToken">复制注册码</el-button></div><div v-if="issuedToken" class="registration-hint"><p>在目标服务器 Agent 中提交：</p><code>POST /agent/v1/register</code><pre>{{ registrationPayload }}</pre></div><span slot="footer"><el-button @click="tokenDialog=false">关闭</el-button><el-button type="primary" :loading="issuing" @click="issueToken">生成注册码并显示注册请求</el-button></span></el-dialog>
     <section class="audit-section">
       <header class="module-toolbar"><div><strong>授权审计</strong><span>请求、导入和状态变化记录</span></div><el-button icon="el-icon-refresh" circle title="刷新审计" @click="loadAudits" /></header>
       <div class="module-table-wrap"><el-table :data="audits" v-loading="loading" empty-text="暂无审计记录">
@@ -33,15 +32,13 @@
 
 <script>
 import { getLicenseDiagnostics, listLicenseAudits, revalidateLicense } from '@/api/SuperAdmin'
-import { createRegistrationToken } from '@/api/ProcessingAgents'
 const labels = { NOT_ACTIVATED: '未激活', ACTIVE: '授权有效', EXPIRING: '即将到期', EXPIRED: '授权已到期', INVALID: '授权无效', CLOCK_ROLLBACK: '系统时间异常' }
 export default {
-  data: () => ({ diagnostics: {}, audits: [], page: 1, size: 20, total: 0, loading: false, revalidating: false, tokenDialog: false, tokenLabel: '', issuedToken: '', issuing: false }),
+  data: () => ({ diagnostics: {}, audits: [], page: 1, size: 20, total: 0, loading: false, revalidating: false }),
   computed: {
     stateLabel () { return labels[this.diagnostics.state] || '状态未知' },
     tone () { return ['ACTIVE', 'EXPIRING'].includes(this.diagnostics.state) ? 'is-usable' : 'is-locked' },
     keyIds () { return Array.isArray(this.diagnostics.keyIds) && this.diagnostics.keyIds.length ? this.diagnostics.keyIds.join('、') : '--' }
-    ,registrationPayload () { return JSON.stringify({ token: this.issuedToken, displayName: 'XKP5 处理服务器', hostname: '<hostname>', primaryIp: '<server-ip>', agentVersion: '1.0.0' }, null, 2) }
   },
   created () { this.loadAll() },
   methods: {
@@ -52,9 +49,6 @@ export default {
       try { const result = await listLicenseAudits({ page: this.page, size: this.size }); const data = result.data || {}; this.audits = data.records || []; this.total = Number(data.total || 0) } finally { this.loading = false }
     },
     async revalidate () { this.revalidating = true; try { await revalidateLicense(); await this.loadAll(); this.$message.success('授权状态已重新校验') } finally { this.revalidating = false } },
-    async issueToken () { this.issuing = true; try { const result = await createRegistrationToken({ label: this.tokenLabel }); this.issuedToken = (result.data || {}).token || '' } finally { this.issuing = false } },
-    async copyToken () { await navigator.clipboard.writeText(this.issuedToken); this.$message.success('注册码已复制') },
-    clearToken () { this.issuedToken = ''; this.tokenLabel = '' },
     changePage (page) { this.page = page; this.loadAudits() },
     formatTime (value) { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '--' }
   }
