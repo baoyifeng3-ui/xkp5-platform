@@ -14,3 +14,4 @@ export const deliverCourseResource = (resourceId, environmentId) => request.post
 export const deliverCourseResourceForUser = (resourceId, environmentId, userId) => request.post(`/course-resources/${resourceId}/deliver-for-user`, null, { params: { environmentId, userId } })
 export const deliverCourseResourceToAll = resourceId => request.post(`/course-resources/${resourceId}/deliver-to-all`)
 export const listCourseDeliveries = () => request.get('/course-resources/deliveries')
+export const listAdminCourseDeliveries = () => request.get('/course-resources/admin-deliveries')
