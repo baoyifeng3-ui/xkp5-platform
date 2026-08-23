@@ -8,7 +8,7 @@
       <el-table-column prop="templateVersion" label="版本" width="80" />
       <el-table-column label="GPU 算力" width="100"><template slot-scope="scope">{{ scope.row.gpuEnabled ? `${scope.row.gpuComputePercent}%` : '-' }}</template></el-table-column>
       <el-table-column label="状态" width="90"><template slot-scope="scope"><el-tag size="small" :type="scope.row.enabled ? 'success' : 'info'">{{ scope.row.enabled ? '可用' : '停用' }}</el-tag></template></el-table-column>
-      <el-table-column label="操作" width="120" align="right"><template slot-scope="scope"><el-button v-if="scope.row.enabled" type="text" @click="disable(scope.row)">停用版本</el-button></template></el-table-column>
+      <el-table-column label="操作" width="180" align="right"><template slot-scope="scope"><el-button size="small" @click="edit(scope.row)">发布新版本</el-button><el-button v-if="scope.row.enabled" size="small" type="danger" @click="disable(scope.row)">删除/停用</el-button></template></el-table-column>
     </el-table></div>
 
     <el-dialog title="发布容器模板" :visible.sync="dialog" width="620px">
@@ -37,6 +37,7 @@ export default {
   methods: {
     async load () { this.loading = true; try { const result = await listContainerTemplates(); this.templates = result.data || [] } finally { this.loading = false } },
     openCreate () { this.form = { templateName: '', componentType: 'ANNOTATION', imageReference: '', runtimeName: 'sysbox-runc', restartPolicy: 'always', mountTarget: '/root/data', cpuLimitMillis: 2000, gpuEnabled: false, gpuComputePercent: 50, privileged: false, hostNetwork: false }; this.portsText = '8080'; this.memoryGiB = 2; this.dialog = true },
+    edit (row) { this.form = Object.assign({}, row, { templateVersion: null }); this.portsText = (row.ports || []).map(p => p.containerPort).join(',') || '8080'; this.memoryGiB = Math.max(1, Math.round((row.memoryLimitBytes || GiB * 2) / GiB)); this.dialog = true },
     applyBoundary (type) { const editor = type === 'EDITOR'; this.form.runtimeName = editor ? 'nvidia' : 'sysbox-runc'; this.form.mountTarget = editor ? '/home/student/data' : '/root/data'; this.form.gpuEnabled = editor; this.portsText = editor ? '9090,8887,5000' : '8080'; this.memoryGiB = editor ? 6 : 2 },
     async publish () { const ports = this.portsText.split(',').map(value => Number(value.trim())).filter(Boolean).map(containerPort => ({ containerPort, protocol: 'tcp' })); const payload = { ...this.form, ports, memoryLimitBytes: this.memoryGiB * GiB }; if (!payload.gpuEnabled) { payload.gpuComputePercent = null; payload.gpuMemoryLimitBytes = null } this.publishing = true; try { await publishContainerTemplate(payload); this.$message.success('模板版本已发布'); this.dialog = false; await this.load() } finally { this.publishing = false } },
     async disable (row) { await this.$confirm('停用后不能再分配给新环境，已有环境仍使用固定版本。', '确认停用', { type: 'warning' }); await disableContainerTemplate(row.templateId, row.templateVersion); await this.load() }
