@@ -30,8 +30,9 @@ $adminSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
 $adminLogin = Invoke-JsonRequest "$BackendUrl/user/login" @{ UserName = $AdminUser; Password = $AdminPassword } $adminSession
 $adminData = ($adminLogin.Content | ConvertFrom-Json).data
 if ($adminData.role -notin @('ADMIN', 'SUPER_ADMIN')) { throw "Unexpected admin role: $($adminData.role)" }
+$adminHeaders = @{ satoken = $adminData.tokenValue }
 try {
-    $mode = Invoke-WebRequest -Uri "$BackendUrl/admin/platform-mode" -WebSession $adminSession -UseBasicParsing
+    $mode = Invoke-WebRequest -Uri "$BackendUrl/admin/platform-mode" -Headers $adminHeaders -WebSession $adminSession -UseBasicParsing
 } catch {
     $status = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 'network' }
     throw "Platform mode endpoint unavailable ($status). Rebuild the current Java image before testing."
@@ -41,7 +42,7 @@ if ($modeData.mode -notin @('TRAINING', 'COMPETITION')) { throw "Unexpected plat
 
 foreach ($path in @('/admin/image-groups?limit=1', '/admin/image-artifacts?limit=1', '/admin/image-releases?limit=1', '/admin/image-releases/deployments?limit=1', '/competition')) {
     try {
-        $readOnly = Invoke-WebRequest -Uri "$BackendUrl$path" -WebSession $adminSession -UseBasicParsing
+        $readOnly = Invoke-WebRequest -Uri "$BackendUrl$path" -Headers $adminHeaders -WebSession $adminSession -UseBasicParsing
         if ($readOnly.StatusCode -ne 200) { throw "status $($readOnly.StatusCode)" }
     } catch {
         throw "Read-only smoke endpoint failed: $path ($($_.Exception.Message))"

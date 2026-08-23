@@ -4,6 +4,7 @@ if ($script -notmatch 'AdminUser and AdminPassword are required') { throw 'crede
 if ($script -notmatch '/admin/platform-mode') { throw 'mode endpoint check missing' }
 if ($script -notmatch 'Rebuild the current Java image') { throw 'stale-image guidance missing' }
 if ($script -notmatch 'role -notin') { throw 'admin role check missing' }
+if ($script -notmatch 'adminHeaders') { throw 'admin token header missing' }
 if ($script -notmatch "role -ne 'USER'") { throw 'participant role check missing' }
 if ($script -notmatch '/admin/image-groups') { throw 'image group read check missing' }
 if ($script -notmatch '/admin/image-releases/deployments') { throw 'deployment read check missing' }
