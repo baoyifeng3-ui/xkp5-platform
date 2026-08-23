@@ -3,6 +3,7 @@ package com.match.course.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.match.agent.persistence.ProcessingAgentMapper;
 import com.match.agent.service.AgentCommandService;
+import com.match.agent.model.AgentCommandFinishedEvent;
 import com.match.course.persistence.CourseDeliveryMapper;
 import com.match.course.persistence.CourseResourceMapper;
 import com.match.course.persistence.CourseResourceRecord;
@@ -14,12 +15,14 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 public class CourseDeliveryServiceTest {
     private final CourseResourceMapper resources = mock(CourseResourceMapper.class);
+    private final CourseDeliveryMapper deliveries = mock(CourseDeliveryMapper.class);
     private final TrainingEnvironmentMapper environments = mock(TrainingEnvironmentMapper.class);
     private final CourseDeliveryService service = new CourseDeliveryService(resources,
-            mock(CourseDeliveryMapper.class), environments, mock(ProcessingAgentMapper.class),
+            deliveries, environments, mock(ProcessingAgentMapper.class),
             mock(AgentCommandService.class), new ObjectMapper());
 
     @Test
@@ -49,5 +52,18 @@ public class CourseDeliveryServiceTest {
         } catch (IllegalArgumentException error) {
             assertTrue(error.getMessage().contains("不属于目标用户"));
         }
+    }
+
+    @Test
+    public void commandSuccessMovesDeliveryToSucceeded() {
+        com.match.course.persistence.CourseDeliveryRecord delivery = new com.match.course.persistence.CourseDeliveryRecord();
+        delivery.setDeliveryId("delivery-1");
+        delivery.setCommandId("command-1");
+        delivery.setState("DISPATCHED");
+        when(deliveries.selectByCommandId("command-1")).thenReturn(delivery);
+        service.onCommandFinished(new AgentCommandFinishedEvent("command-1", "agent-1",
+                "DELIVER_COURSE_RESOURCE", true, "RESOURCE_DELIVERED", "ok"));
+        assertTrue("SUCCEEDED".equals(delivery.getState()));
+        verify(deliveries).updateById(delivery);
     }
 }
