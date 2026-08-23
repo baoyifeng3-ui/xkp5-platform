@@ -28,6 +28,12 @@ public class CourseDeliveryController {
         return Response.makeOKRsp(service.deliver(resourceId, environmentId, actor.getUserId(), actor.getUserId(), "USER"));
     }
 
+    @org.springframework.web.bind.annotation.GetMapping("/deliveries")
+    public ResponseResult<Object> deliveries() {
+        User actor = roleGuard.requireUser();
+        return Response.makeOKRsp(service.deliveriesForUser(actor.getUserId()));
+    }
+
     @PostMapping("/{resourceId}/deliver-for-user")
     public ResponseResult<Object> deliverForUser(@PathVariable String resourceId,
                                                  @RequestParam String environmentId,

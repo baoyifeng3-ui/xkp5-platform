@@ -96,6 +96,10 @@ public class CourseDeliveryService {
         return result;
     }
 
+    public List<CourseDeliveryRecord> deliveriesForUser(Integer userId) {
+        return deliveryMapper.selectByUser(userId);
+    }
+
     @EventListener
     @Transactional
     public void onCommandFinished(AgentCommandFinishedEvent event) {
