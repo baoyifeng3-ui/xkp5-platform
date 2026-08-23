@@ -34,6 +34,12 @@ public class CourseDeliveryController {
         return Response.makeOKRsp(service.deliveriesForUser(actor.getUserId()));
     }
 
+    @org.springframework.web.bind.annotation.GetMapping("/admin-deliveries")
+    public ResponseResult<Object> adminDeliveries() {
+        roleGuard.requireAnyAdmin();
+        return Response.makeOKRsp(service.recentDeliveries());
+    }
+
     @PostMapping("/{resourceId}/deliver-for-user")
     public ResponseResult<Object> deliverForUser(@PathVariable String resourceId,
                                                  @RequestParam String environmentId,

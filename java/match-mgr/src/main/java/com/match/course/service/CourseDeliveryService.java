@@ -100,6 +100,10 @@ public class CourseDeliveryService {
         return deliveryMapper.selectByUser(userId);
     }
 
+    public List<CourseDeliveryRecord> recentDeliveries() {
+        return deliveryMapper.selectRecent();
+    }
+
     @EventListener
     @Transactional
     public void onCommandFinished(AgentCommandFinishedEvent event) {

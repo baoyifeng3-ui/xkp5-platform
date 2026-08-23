@@ -10,4 +10,6 @@ public interface CourseDeliveryMapper extends BaseMapper<CourseDeliveryRecord> {
     CourseDeliveryRecord selectByCommandId(@Param("commandId") String commandId);
     @Select("SELECT * FROM course_resource_delivery WHERE user_id=#{userId} ORDER BY updated_at DESC")
     List<CourseDeliveryRecord> selectByUser(@Param("userId") Integer userId);
+    @Select("SELECT * FROM course_resource_delivery ORDER BY updated_at DESC LIMIT 500")
+    List<CourseDeliveryRecord> selectRecent();
 }
