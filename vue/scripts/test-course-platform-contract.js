@@ -12,7 +12,7 @@ for (const endpoint of ['/admin/courses', '/user/courses', '/user/courses/progre
 }
 assert.match(coursePage, /listUserCourses/)
 assert.match(coursePage, /recordCourseProgress/)
-assert.match(coursePage, /进入本课程实训/)
+assert.match(coursePage, /进入实训/)
 assert.match(trainingPage, /deliverCourseResource/)
 assert.match(validationPage, /api\/v2\/t100/)
 assert.match(validationPage, /httpToBase64/)

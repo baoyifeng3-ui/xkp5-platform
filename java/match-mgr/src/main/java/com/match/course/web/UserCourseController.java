@@ -48,4 +48,10 @@ public class UserCourseController {
         roleGuard.requireUser();
         return Response.makeOKRsp(learningService.previewUrl(resourceId));
     }
+
+    @GetMapping("/{courseId}/cover-url")
+    public ResponseResult<Object> coverUrl(@PathVariable String courseId) {
+        roleGuard.requireUser();
+        return Response.makeOKRsp(learningService.coverUrl(courseId));
+    }
 }

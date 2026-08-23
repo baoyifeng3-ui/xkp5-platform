@@ -95,4 +95,15 @@ public class CourseLearningService {
         result.put("previewUrl", previewUrl);
         return result;
     }
+
+    public Map<String, Object> coverUrl(String courseId) {
+        CourseRecord course = courseMapper.selectById(courseId);
+        if (course == null || !Boolean.TRUE.equals(course.getEnabled())) throw new IllegalArgumentException("课程未发布");
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("courseId", courseId);
+        if (course.getCoverResourceId() != null && !course.getCoverResourceId().trim().isEmpty()) {
+            result.put("coverUrl", FastDFSClient.getServerAccessUrl(course.getCoverResourceId()));
+        }
+        return result;
+    }
 }
