@@ -81,4 +81,19 @@ public class CourseDeliveryServiceTest {
         assertTrue("disk full".equals(delivery.getFailureMessage()));
         verify(deliveries).updateById(delivery);
     }
+
+    @Test
+    public void repeatedDeliveryReturnsExistingActiveRecord() {
+        CourseResourceRecord resource = new CourseResourceRecord();
+        resource.setEnabled(true);
+        com.match.course.persistence.CourseDeliveryRecord delivery = new com.match.course.persistence.CourseDeliveryRecord();
+        delivery.setDeliveryId("delivery-3");
+        delivery.setState("DISPATCHED");
+        when(resources.selectById("resource-1")).thenReturn(resource);
+        TrainingEnvironmentRecord environment = new TrainingEnvironmentRecord();
+        environment.setUserId(7);
+        when(environments.selectForUpdate("environment-1")).thenReturn(environment);
+        when(deliveries.selectDeliveryForUpdate("resource-1", 7, "environment-1")).thenReturn(delivery);
+        assertTrue(service.deliver("resource-1", "environment-1", 7, 7, "USER") == delivery);
+    }
 }
