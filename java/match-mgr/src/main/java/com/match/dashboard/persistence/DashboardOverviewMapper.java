@@ -16,7 +16,7 @@ public interface DashboardOverviewMapper {
 
     @Select("SELECT COUNT(*) FROM processing_agent a LEFT JOIN processing_agent_mode m "
             + "ON m.agent_id = a.agent_id WHERE a.enabled = 1 AND a.removed_at IS NULL "
-            + "AND BINARY COALESCE(m.actual_mode, 'NORMAL') = BINARY #{state}")
+            + "AND HEX(COALESCE(m.actual_mode, 'NORMAL')) = HEX(#{state})")
     int countAgentModesInState(@Param("state") String state);
 
     @Select("SELECT latest_metrics FROM processing_agent WHERE enabled = 1 AND removed_at IS NULL "
