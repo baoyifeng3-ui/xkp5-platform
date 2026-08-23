@@ -15,6 +15,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.List;
 
 @Service
 public class CourseLearningService {
@@ -63,5 +64,9 @@ public class CourseLearningService {
         record.setCompletedAt(done ? LocalDateTime.now() : null);
         record.setUpdatedAt(LocalDateTime.now());
         progressMapper.upsertProgress(record);
+    }
+
+    public List<CourseProgressRecord> progress(Integer userId) {
+        return progressMapper.selectByUser(userId);
     }
 }

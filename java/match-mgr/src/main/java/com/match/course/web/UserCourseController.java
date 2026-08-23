@@ -35,4 +35,10 @@ public class UserCourseController {
                 request.getProgressValue(), request.getCompleted());
         return Response.makeOKRsp(null);
     }
+
+    @GetMapping("/progress")
+    public ResponseResult<Object> progress() {
+        roleGuard.requireUser();
+        return Response.makeOKRsp(learningService.progress(roleGuard.requireUser().getUserId()));
+    }
 }

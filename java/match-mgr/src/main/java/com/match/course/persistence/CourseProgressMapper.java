@@ -1,4 +1,11 @@
 package com.match.course.persistence;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import org.apache.ibatis.annotations.Insert;
-public interface CourseProgressMapper extends BaseMapper<CourseProgressRecord> { @Insert("INSERT INTO course_resource_progress(progress_id,user_id,resource_id,progress_kind,current_value,total_value,percent,last_position,state,completed_at,updated_at) VALUES(#{progressId},#{userId},#{resourceId},#{progressKind},#{currentValue},#{totalValue},#{percent},#{lastPosition},#{state},#{completedAt},#{updatedAt}) ON DUPLICATE KEY UPDATE current_value=VALUES(current_value),total_value=VALUES(total_value),percent=VALUES(percent),last_position=VALUES(last_position),state=VALUES(state),completed_at=VALUES(completed_at),updated_at=VALUES(updated_at)") int upsertProgress(CourseProgressRecord record); }
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
+import java.util.List;
+public interface CourseProgressMapper extends BaseMapper<CourseProgressRecord> {
+    @Insert("INSERT INTO course_resource_progress(progress_id,user_id,resource_id,progress_kind,current_value,total_value,percent,last_position,state,completed_at,updated_at) VALUES(#{progressId},#{userId},#{resourceId},#{progressKind},#{currentValue},#{totalValue},#{percent},#{lastPosition},#{state},#{completedAt},#{updatedAt}) ON DUPLICATE KEY UPDATE current_value=VALUES(current_value),total_value=VALUES(total_value),percent=VALUES(percent),last_position=VALUES(last_position),state=VALUES(state),completed_at=VALUES(completed_at),updated_at=VALUES(updated_at)") int upsertProgress(CourseProgressRecord record);
+    @Select("SELECT * FROM course_resource_progress WHERE user_id=#{userId} ORDER BY updated_at DESC")
+    List<CourseProgressRecord> selectByUser(@Param("userId") Integer userId);
+}
