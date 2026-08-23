@@ -9,6 +9,9 @@ import com.match.licensing.persistence.PlatformInstallation;
 import com.match.licensing.persistence.PlatformLicenseMapper;
 import com.match.licensing.persistence.PlatformLicenseRecord;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -25,18 +28,35 @@ public class LicenseStatusService {
     private final HostIdentityProvider identityProvider;
     private final LicenseValidationService validationService;
     private final Clock clock;
+    private final Environment environment;
+    private final boolean localBypass;
 
     public LicenseStatusService(PlatformLicenseMapper licenseMapper, InstallationService installationService,
+                                HostIdentityProvider identityProvider, LicenseValidationService validationService,
+                                Clock clock) {
+        this(licenseMapper, installationService, identityProvider, validationService, clock,
+                new org.springframework.core.env.StandardEnvironment(), false);
+    }
+
+    @Autowired
+    public LicenseStatusService(PlatformLicenseMapper licenseMapper, InstallationService installationService,
                                 HostIdentityProvider identityProvider,
-                                LicenseValidationService validationService, Clock clock) {
+                                LicenseValidationService validationService, Clock clock,
+                                Environment environment,
+                                @Value("${MATCH_LOCAL_LICENSE_BYPASS:false}") boolean localBypass) {
         this.licenseMapper = licenseMapper;
         this.installationService = installationService;
         this.identityProvider = identityProvider;
         this.validationService = validationService;
         this.clock = clock;
+        this.environment = environment;
+        this.localBypass = localBypass;
     }
 
     public LicenseStatus currentStatus() {
+        if (localBypass && java.util.Arrays.asList(environment.getActiveProfiles()).contains("local")) {
+            return new LicenseStatus(LicenseState.ACTIVE, "LOCAL-DEVELOPMENT", "本地开发授权", Instant.now().plusSeconds(86400), 99);
+        }
         Instant now = clock.instant();
         PlatformInstallation installation = installationService.installation();
         if (isClockRollback(installation, now)) {
