@@ -7,7 +7,7 @@ assert.deepStrictEqual(navigation.landingRoute('SUPER_ADMIN'), { path: '/operati
 assert.deepStrictEqual(navigation.landingRoute('ADMIN'), { path: '/management' })
 assert.deepStrictEqual(navigation.landingRoute('USER'), { path: '/course-platform' })
 assert.deepStrictEqual(navigation.userItems.map(item => item.label), [
-  '课程平台', '资源中心', '实训环境'
+  '课程平台', '资源中心', '实训环境', '模型验证'
 ])
 assert.deepStrictEqual(navigation.managementItems.map(item => item.label), [
   '主页', '竞赛管理', '课程管理', '资源管理', '实训管理', '用户管理', '设备管理', '平台设置', '镜像仓库'

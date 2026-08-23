@@ -6,7 +6,8 @@ const { previewDestinations } = require('../services/participantPreview')
 const userItems = [
   { key: 'course', label: '课程平台', icon: 'el-icon-reading', route: '/course-platform' },
   { key: 'resources', label: '资源中心', icon: 'el-icon-folder-opened', route: '/resource-center' },
-  { key: 'training', label: '实训环境', icon: 'el-icon-monitor', route: '/training-environment' }
+  { key: 'training', label: '实训环境', icon: 'el-icon-monitor', route: '/training-environment' },
+  { key: 'validation', label: '模型验证', icon: 'el-icon-cpu', route: '/training-validation' }
 ]
 
 const competitionItems = [
