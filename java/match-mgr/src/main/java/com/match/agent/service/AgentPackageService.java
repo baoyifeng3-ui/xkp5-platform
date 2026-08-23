@@ -62,7 +62,7 @@ public class AgentPackageService {
     }
 
     private String wrapper(String token, String displayName, String workspace) {
-        return "#!/usr/bin/env bash\nset -Eeuo pipefail\ncd \"$(dirname \"$0\")\"\nexec bash deploy/install.sh --binary dist/xkp-agent-linux-amd64 "
+        return "#!/usr/bin/env bash\nset -Eeuo pipefail\ncd \"$(dirname \"$0\")\"\n# ZIP archives do not preserve executable bits; restore them before installation.\nchmod +x dist/xkp-agent-linux-amd64 deploy/install.sh deploy/verify.sh\nexec bash deploy/install.sh --binary dist/xkp-agent-linux-amd64 "
                 + "--management-url " + shellQuote(managementUrl) + " --ca deploy/ca.crt "
                 + "--registration-token " + shellQuote(token) + " --display-name "
                 + shellQuote(displayName) + " --workspace " + shellQuote(workspace) + "\n";
