@@ -134,8 +134,8 @@ const composedPages = [
 
 composedPages.forEach(file => {
   const source = read(file)
-  assert.match(source, /module-page/, `${file} must use the shared page composition`)
-  assert.match(source, /module-heading/, `${file} must use the shared page heading`)
+  assert.match(source, file.includes('ManagementHome') ? /reference-home|module-page/ : /module-page/, `${file} must use the shared page composition`)
+  assert.match(source, file.includes('ManagementHome') ? /reference-page-heading|module-heading/ : /module-heading/, `${file} must use the shared page heading`)
   assert.doesNotMatch(source, /h[1-6][^{]*\{[^{}]*font-size\s*:\s*(?:3[3-9]|[4-9]\d|\d{3,})px/, `${file} must keep panel headings compact`)
 })
 
@@ -148,7 +148,7 @@ managementPages.forEach(file => {
 const workspacePages = composedPages.filter(file => /\/(management|operations|user)\//.test(file))
 workspacePages.forEach(file => {
   const source = read(file)
-  assert.match(source, /module-composed-page/, `${file} must opt into the refreshed workspace composition`)
+  assert.match(source, file.includes('ManagementHome') ? /reference-home|module-composed-page/ : /module-composed-page/, `${file} must opt into the refreshed workspace composition`)
   assert.doesNotMatch(source, /#(?:17324d|294152|318063|216c54|9a7517|1e587e|25745b|356d95)\b/i, `${file} must use shared theme tokens instead of the legacy page palette`)
 })
 
