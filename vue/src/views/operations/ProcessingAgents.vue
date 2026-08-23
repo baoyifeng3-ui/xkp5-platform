@@ -20,7 +20,7 @@
         <el-table-column prop="resultMessage" label="结果" min-width="240" show-overflow-tooltip />
       </el-table></div>
     </section>
-    <el-dialog title="添加服务器" :visible.sync="tokenDialog" width="520px" @closed="clearToken"><el-form label-width="100px"><el-form-item label="服务器 IP"><el-input v-model.trim="serverIp" placeholder="例如 172.16.33.201" /></el-form-item><el-form-item label="备注名称"><el-input v-model.trim="label" placeholder="例如：GPU 训练服务器" maxlength="80" /></el-form-item></el-form><div v-if="issuedToken" class="registration-hint"><p>{{ registrationMessage }}</p><pre>{{ registrationPayload }}</pre></div><span slot="footer"><el-button @click="tokenDialog=false">关闭</el-button><el-button type="primary" :loading="issuing" @click="issueToken">添加服务器</el-button></span></el-dialog><RootTerminalDialog v-if="terminalVisible" :visible.sync="terminalVisible" :session="terminalSession" :agent-name="selected && (selected.displayName || selected.hostname)" @closed="terminalSession = null" />
+    <el-dialog title="添加服务器" :visible.sync="tokenDialog" width="520px" @closed="clearToken"><el-form v-if="!adding" label-width="100px"><el-form-item label="服务器 IP"><el-input v-model.trim="serverIp" placeholder="例如 172.16.33.201" /></el-form-item><el-form-item label="备注名称"><el-input v-model.trim="label" placeholder="例如：GPU 训练服务器" maxlength="80" /></el-form-item></el-form><div v-else class="adding-state"><i class="el-icon-loading" /><strong>正在添加服务器...</strong><span>{{ serverIp }}</span></div><span slot="footer"><el-button :disabled="adding" @click="tokenDialog=false">关闭</el-button><el-button v-if="!adding" type="primary" :loading="issuing" @click="issueToken">添加服务器</el-button></span></el-dialog><RootTerminalDialog v-if="terminalVisible" :visible.sync="terminalVisible" :session="terminalSession" :agent-name="selected && (selected.displayName || selected.hostname)" @closed="terminalSession = null" />
   </section>
 </template>
 <script>
@@ -32,7 +32,7 @@ import { getRole } from '@/utils/auth'
 import { SUPER_ADMIN } from '@/navigation/roleNavigation'
 export default {
   name: 'ProcessingAgents', components: { AgentStatusTable, RootTerminalDialog },
-  data: () => ({ agents: [], selected: null, commands: [], loading: false, busyAction: '', tokenDialog: false, serverIp: '', label: '', issuedToken: '', issuing: false, registrationMessage: '', terminalVisible: false, terminalSession: null, terminalOpening: false }),
+  data: () => ({ agents: [], selected: null, commands: [], loading: false, busyAction: '', tokenDialog: false, adding: false, serverIp: '', label: '', issuedToken: '', issuing: false, registrationMessage: '', terminalVisible: false, terminalSession: null, terminalOpening: false }),
   computed: { actionBusy () { return Boolean(this.busyAction) }, canOpenRootTerminal () { return getRole() === SUPER_ADMIN && Boolean(this.selected && this.selected.online && this.selected.enabled) }, registrationPayload () { return JSON.stringify({ token: this.issuedToken, displayName: this.label, hostname: '<hostname>', primaryIp: this.serverIp, agentVersion: '1.0.0' }, null, 2) } },
   mounted () { this.load() },
   methods: {
@@ -51,10 +51,10 @@ export default {
     },
     commandState (command) { return ({ PENDING: '等待 Agent 接收', LEASED: '已送达', RUNNING: '等待离线确认', SUCCEEDED: '已完成', FAILED: command.resultMessage || '执行失败' })[command.state] || command.state },
     commandTag (state) { return ({ PENDING: 'info', LEASED: '', RUNNING: 'warning', SUCCEEDED: 'success', FAILED: 'danger' })[state] || 'info' },
-    async issueToken () { if (!this.serverIp || !this.label) { this.$message.warning('请输入服务器 IP 和备注名称'); return } this.issuing = true; try { const result = await createRegistrationToken({ label: this.label }); this.issuedToken = (result.data || {}).token || ''; this.registrationMessage = `已创建“${this.label}”的接入凭据，等待 ${this.serverIp} 上的 Agent 注册`; await this.waitForAgent() } finally { this.issuing = false } },
-    async waitForAgent () { for (let attempt = 0; attempt < 6; attempt++) { await new Promise(resolve => setTimeout(resolve, 2000)); const result = await listProcessingAgents(); const found = (result.data || []).find(agent => agent.primaryIp === this.serverIp); if (found) { this.registrationMessage = `添加成功：${found.displayName || this.label}（${this.serverIp}）`; this.$message.success('服务器添加成功'); return } } this.registrationMessage = `服务器尚未上线，请在 ${this.serverIp} 执行注册请求后再刷新列表` },
+    async issueToken () { if (!this.serverIp || !this.label) { this.$message.warning('请输入服务器 IP 和备注名称'); return } this.issuing = true; this.adding = true; try { const result = await createRegistrationToken({ label: this.label }); this.issuedToken = (result.data || {}).token || ''; await this.waitForAgent() } finally { this.issuing = false } },
+    async waitForAgent () { for (let attempt = 0; attempt < 15; attempt++) { await new Promise(resolve => setTimeout(resolve, 2000)); const result = await listProcessingAgents(); const found = (result.data || []).find(agent => agent.primaryIp === this.serverIp); if (found) { this.adding = false; this.tokenDialog = false; this.$message.success('服务器添加成功'); await this.load(); return } } this.adding = false; this.registrationMessage = '正在等待服务器 Agent 注册，请稍后刷新服务器列表' },
     async copyToken () { await navigator.clipboard.writeText(this.issuedToken); this.$message.success('注册码已复制') },
-    clearToken () { this.issuedToken = ''; this.label = ''; this.serverIp = ''; this.registrationMessage = '' },
+    clearToken () { this.adding = false; this.issuedToken = ''; this.label = ''; this.serverIp = ''; this.registrationMessage = '' },
     async disableProcessingAgentAction () { await this.confirmAction('停用后该服务器将不能继续上报，是否继续？', () => disableProcessingAgent(this.selected.agentId)) },
     async enableAgent () { await enableProcessingAgent(this.selected.agentId); await this.load() },
     async removeAgent () { await this.confirmAction('移除后需重新注册才能接入，历史监控数据会保留。', () => removeProcessingAgent(this.selected.agentId)) },
@@ -70,4 +70,7 @@ export default {
 .command-history h2 { margin: 0 0 12px; color: var(--ui-text); font-size: 16px; }
 .issued-token { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
 .issued-token code { flex: 1; overflow-wrap: anywhere; padding: 12px; background: var(--ui-workspace); color: var(--ui-text); }
+.adding-state { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 34px 0; color: var(--ui-muted); }
+.adding-state i { color: var(--ui-primary); font-size: 30px; }
+.adding-state strong { color: var(--ui-text); font-size: 17px; }
 </style>
