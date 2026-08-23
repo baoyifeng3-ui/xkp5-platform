@@ -61,7 +61,16 @@ public class AgentPackageService {
     }
 
     private String wrapper(String token, String displayName, String workspace) {
-        return "#!/usr/bin/env bash\nset -Eeuo pipefail\ncd \"$(dirname \"$0\")\"\n# Restore permissions defensively when the package is extracted by a tool that ignores tar modes.\nchmod +x dist/xkp-agent-linux-amd64 deploy/install.sh deploy/verify.sh\nexec bash deploy/install.sh --binary dist/xkp-agent-linux-amd64 "
+        return "#!/usr/bin/env bash\nset -Eeuo pipefail\ncd \"$(dirname \"$0\")\"\n"
+                + "# Restore permissions defensively when the package is extracted by a tool that ignores tar modes.\n"
+                + "chmod +x dist/xkp-agent-linux-amd64 deploy/install.sh deploy/verify.sh\n"
+                + "if [[ ! -d /etc/polkit-1/rules.d ]]; then\n"
+                + "  command -v apt-get >/dev/null || { echo 'ERROR: apt-get is required to install polkit' >&2; exit 1; }\n"
+                + "  apt-get update\n"
+                + "  DEBIAN_FRONTEND=noninteractive apt-get install -y policykit-1 polkitd\n"
+                + "  install -d -m 0755 /etc/polkit-1/rules.d\n"
+                + "fi\n"
+                + "exec bash deploy/install.sh --binary dist/xkp-agent-linux-amd64 "
                 + "--management-url " + shellQuote(managementUrl) + " --ca deploy/ca.crt "
                 + "--registration-token " + shellQuote(token) + " --display-name "
                 + shellQuote(displayName) + " --workspace " + shellQuote(workspace) + "\n";
