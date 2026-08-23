@@ -32,7 +32,8 @@ public class UserCourseController {
     public ResponseResult<Object> progress(@RequestBody CourseProgressRequest request) {
         Integer userId = roleGuard.requireUser().getUserId();
         learningService.recordProgress(userId, request.getResourceId(), request.getProgressKind(),
-                request.getProgressValue(), request.getCompleted());
+                request.getProgressValue(), request.getCompleted(), request.getCurrentValue(),
+                request.getTotalValue(), request.getLastPosition());
         return Response.makeOKRsp(null);
     }
 

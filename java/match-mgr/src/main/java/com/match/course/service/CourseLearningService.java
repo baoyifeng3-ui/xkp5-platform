@@ -30,6 +30,11 @@ public class CourseLearningService {
         this.progressMapper = progressMapper;
     }
 
+    public void recordProgress(Integer userId, String resourceId, String progressKind,
+                               Integer progressValue, Boolean completed) {
+        recordProgress(userId, resourceId, progressKind, progressValue, completed, null, null, null);
+    }
+
     public List<CourseView> visibleCourses() {
         return courseMapper.selectVisible().stream().map(record -> new CourseView(record,
                 resourceMapper.selectByCourseId(record.getCourseId()).stream()
@@ -42,7 +47,8 @@ public class CourseLearningService {
 
     @Transactional
     public void recordProgress(Integer userId, String resourceId, String progressKind,
-                               Integer progressValue, Boolean completed) {
+                               Integer progressValue, Boolean completed, Long currentValue,
+                               Long totalValue, String lastPosition) {
         CourseResourceRecord resource = resourceMapper.selectById(resourceId);
         if (resource == null || !Boolean.TRUE.equals(resource.getEnabled())) {
             throw new IllegalArgumentException("课程资源不存在或已停用");
@@ -51,15 +57,18 @@ public class CourseLearningService {
             throw new IllegalArgumentException("学习进度类型无效");
         }
         CourseProgressRecord record = new CourseProgressRecord();
-        int value = progressValue == null ? 0 : Math.max(0, Math.min(100, progressValue));
+        long current = currentValue == null ? (progressValue == null ? 0 : progressValue) : currentValue;
+        long total = totalValue == null || totalValue <= 0 ? 100 : totalValue;
+        int value = (int) Math.max(0, Math.min(100, Math.round(current * 100.0 / total)));
         boolean done = Boolean.TRUE.equals(completed) || value >= 100;
         record.setProgressId(UUID.randomUUID().toString());
         record.setUserId(userId);
         record.setResourceId(resourceId);
         record.setProgressKind(progressKind);
-        record.setCurrentValue((long) value);
-        record.setTotalValue(100L);
+        record.setCurrentValue(Math.max(0, current));
+        record.setTotalValue(total);
         record.setPercent(BigDecimal.valueOf(value));
+        record.setLastPosition(lastPosition);
         record.setState(done ? "COMPLETED" : "IN_PROGRESS");
         record.setCompletedAt(done ? LocalDateTime.now() : null);
         record.setUpdatedAt(LocalDateTime.now());
