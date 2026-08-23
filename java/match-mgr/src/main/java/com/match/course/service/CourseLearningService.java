@@ -14,6 +14,9 @@ import java.time.LocalDateTime;
 import java.math.BigDecimal;
 import java.util.UUID;
 import java.util.List;
+import com.match.util.dfs.FastDFSClient;
+import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.stream.Collectors;
 import java.util.List;
 
@@ -77,5 +80,16 @@ public class CourseLearningService {
 
     public List<CourseProgressRecord> progress(Integer userId) {
         return progressMapper.selectByUser(userId);
+    }
+
+    public Map<String, Object> previewUrl(String resourceId) {
+        CourseResourceRecord resource = resourceMapper.selectById(resourceId);
+        if (resource == null || !Boolean.TRUE.equals(resource.getEnabled())) throw new IllegalArgumentException("课程资源不存在或已停用");
+        CourseRecord course = courseMapper.selectById(resource.getCourseId());
+        if (course == null || !Boolean.TRUE.equals(course.getEnabled())) throw new IllegalArgumentException("课程未发布");
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("resourceId", resourceId); result.put("resourceType", resource.getResourceType());
+        result.put("previewUrl", FastDFSClient.getServerAccessUrl(resource.getStorageKey()));
+        return result;
     }
 }

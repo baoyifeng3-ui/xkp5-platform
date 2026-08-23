@@ -7,7 +7,7 @@ const trainingPage = fs.readFileSync('src/views/user/TrainingEnvironment.vue', '
 const validationPage = fs.readFileSync('src/views/user/TrainingValidation.vue', 'utf8')
 const adminPage = fs.readFileSync('src/views/management/CourseManagement.vue', 'utf8')
 
-for (const endpoint of ['/admin/courses', '/user/courses', '/user/courses/progress', '/admin/course-resources/upload', '/course-resources/', '/admin/courses/resources/']) {
+for (const endpoint of ['/admin/courses', '/user/courses', '/user/courses/progress', '/user/courses/resources/', '/admin/course-resources/upload', '/course-resources/', '/admin/courses/resources/']) {
   assert.ok(api.includes(endpoint), `Courses API must include ${endpoint}`)
 }
 assert.match(coursePage, /listUserCourses/)

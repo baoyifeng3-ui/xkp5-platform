@@ -9,6 +9,7 @@ export const uploadCourseResource = file => { const data = new FormData(); data.
 export const listUserCourses = () => request.get('/user/courses')
 export const recordCourseProgress = payload => request.post('/user/courses/progress', payload)
 export const listCourseProgress = () => request.get('/user/courses/progress')
+export const getCourseResourcePreviewUrl = resourceId => request.get(`/user/courses/resources/${resourceId}/preview-url`)
 export const deliverCourseResource = (resourceId, environmentId) => request.post(`/course-resources/${resourceId}/deliver`, null, { params: { environmentId } })
 export const deliverCourseResourceForUser = (resourceId, environmentId, userId) => request.post(`/course-resources/${resourceId}/deliver-for-user`, null, { params: { environmentId, userId } })
 export const deliverCourseResourceToAll = resourceId => request.post(`/course-resources/${resourceId}/deliver-to-all`)

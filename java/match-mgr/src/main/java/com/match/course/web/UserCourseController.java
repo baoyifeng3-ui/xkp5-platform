@@ -42,4 +42,10 @@ public class UserCourseController {
         roleGuard.requireUser();
         return Response.makeOKRsp(learningService.progress(roleGuard.requireUser().getUserId()));
     }
+
+    @GetMapping("/resources/{resourceId}/preview-url")
+    public ResponseResult<Object> previewUrl(@org.springframework.web.bind.annotation.PathVariable String resourceId) {
+        roleGuard.requireUser();
+        return Response.makeOKRsp(learningService.previewUrl(resourceId));
+    }
 }
