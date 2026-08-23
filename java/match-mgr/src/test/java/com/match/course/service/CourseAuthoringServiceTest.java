@@ -57,6 +57,17 @@ class CourseAuthoringServiceTest {
                 .noneMatch(field -> "storageKey".equals(field.getName()) || "sha256".equals(field.getName())));
     }
 
+    @Test
+    void togglesResourceAvailability() {
+        com.match.course.persistence.CourseResourceRecord resource = new com.match.course.persistence.CourseResourceRecord();
+        resource.setResourceId("resource-1");
+        resource.setEnabled(true);
+        when(resourceMapper.selectById("resource-1")).thenReturn(resource);
+        service.setResourceEnabled("resource-1", false);
+        assertEquals(false, resource.getEnabled());
+        verify(resourceMapper).updateById(resource);
+    }
+
     private CourseUpsertRequest course(String name, String type) {
         CourseUpsertRequest request = new CourseUpsertRequest();
         request.setName(name);
