@@ -1,6 +1,6 @@
 <template>
   <section class="module-page module-composed-page">
-    <header class="module-heading module-toolbar action-heading"><div><h1>处理服务器</h1><p>添加服务器后，在目标服务器执行 Agent 注册命令接入平台。</p></div><div><el-button icon="el-icon-info" @click="helpDialog=true">如何添加</el-button><el-button type="primary" icon="el-icon-plus" @click="tokenDialog = true">生成注册码</el-button></div></header>
+    <header class="module-heading module-toolbar action-heading"><div><h1>处理服务器</h1><p>添加服务器后，在目标服务器执行 Agent 注册请求接入平台。</p></div><div><el-button icon="el-icon-info" @click="helpDialog=true">如何添加</el-button><el-button type="primary" icon="el-icon-plus" @click="tokenDialog = true">添加服务器</el-button></div></header>
     <AgentStatusTable :agents="agents" :loading="loading" @select="selectAgent" />
     <div v-if="selected" class="operations-bar module-toolbar">
       <strong>{{ selected.displayName || selected.hostname }}</strong><span class="grow" />
@@ -22,7 +22,7 @@
     </section>
     <el-dialog title="生成一次性注册码" :visible.sync="tokenDialog" width="460px" @closed="clearToken">
       <el-input v-model="label" placeholder="用途，例如：A 机房" maxlength="80" />
-      <div v-if="issuedToken" class="issued-token"><code>{{ issuedToken }}</code><el-button icon="el-icon-document-copy" @click="copyToken">复制</el-button></div>
+      <div v-if="issuedToken" class="issued-token"><code>{{ issuedToken }}</code><el-button icon="el-icon-document-copy" @click="copyToken">复制注册码</el-button></div><div v-if="issuedToken" class="registration-hint"><p>在目标服务器 Agent 中提交：</p><code>POST /agent/v1/register</code><pre>{{ registrationPayload }}</pre></div>
       <span slot="footer"><el-button @click="tokenDialog = false">关闭</el-button><el-button type="primary" :loading="issuing" @click="issueToken">生成</el-button></span>
     </el-dialog>
     <RootTerminalDialog v-if="terminalVisible" :visible.sync="terminalVisible" :session="terminalSession" :agent-name="selected && (selected.displayName || selected.hostname)" @closed="terminalSession = null" /><el-dialog title="添加处理服务器" :visible.sync="helpDialog" width="560px"><p>1. 点击“生成注册码”创建一次性注册码。</p><p>2. 在目标服务器安装并启动 XKP Agent。</p><p>3. 使用注册码执行 Agent 注册命令，注册成功后服务器会自动出现在列表中。</p><p>注册码只负责首次注册，不能直接当作服务器地址或登录密码使用。</p></el-dialog>
@@ -38,7 +38,7 @@ import { SUPER_ADMIN } from '@/navigation/roleNavigation'
 export default {
   name: 'ProcessingAgents', components: { AgentStatusTable, RootTerminalDialog },
   data: () => ({ agents: [], selected: null, commands: [], loading: false, busyAction: '', tokenDialog: false, helpDialog: false, label: '', issuedToken: '', issuing: false, terminalVisible: false, terminalSession: null, terminalOpening: false }),
-  computed: { actionBusy () { return Boolean(this.busyAction) }, canOpenRootTerminal () { return getRole() === SUPER_ADMIN && Boolean(this.selected && this.selected.online && this.selected.enabled) } },
+  computed: { actionBusy () { return Boolean(this.busyAction) }, canOpenRootTerminal () { return getRole() === SUPER_ADMIN && Boolean(this.selected && this.selected.online && this.selected.enabled) }, registrationPayload () { return JSON.stringify({ token: this.issuedToken, displayName: 'XKP5 处理服务器', hostname: '<hostname>', primaryIp: '<server-ip>', agentVersion: '1.0.0' }, null, 2) } },
   mounted () { this.load() },
   methods: {
     async load () { this.loading = true; try { const result = await listProcessingAgents(); this.agents = result.data || [] } finally { this.loading = false } },
