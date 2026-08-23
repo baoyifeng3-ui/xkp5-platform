@@ -6,6 +6,7 @@ import com.match.course.persistence.CourseResourceMapper;
 import com.match.course.persistence.CourseResourceRecord;
 import org.junit.Test;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.Mockito.mock;
