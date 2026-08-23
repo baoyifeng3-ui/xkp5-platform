@@ -49,13 +49,13 @@ mutationViews.forEach(file => {
   const text = fs.readFileSync(file, 'utf8')
   assert.match(text, /isPreviewRoute/, `${file} must detect preview mode`)
   assert.match(text, /getRole/, `${file} must authorize preview by role`)
-  assert.match(text, /isPreviewRoute\(this\.\$route, getRole\(\)\)/, `${file} must require ADMIN preview`)
+  assert.match(text, /isPreviewRoute\(this\.\$route,?\s*getRole\(\)\)/, `${file} must require ADMIN preview`)
   assert.match(text, /previewOnly/, `${file} must expose preview-only UI state`)
 })
 
 const training = fs.readFileSync('src/views/user/TrainingEnvironment.vue', 'utf8')
-assert.match(training, /async start \(row\)\s*{\s*if \(this\.previewOnly\) return/)
-assert.match(training, /:disabled="previewOnly \|\| isPending\(scope\.row\)"/)
+assert.match(training, /async start\s*\(row\)\s*\{\s*if\s*\(this\.previewOnly\)\s*return/)
+assert.match(training, /:disabled="previewOnly\|\|isPending\(s\.row\)"/)
 
 const practical = fs.readFileSync('src/views/competition/CompetitionPractical.vue', 'utf8')
 assert.match(practical, /open \(value\)\s*{\s*if \(this\.previewOnly\) return/)
@@ -124,6 +124,6 @@ assert.match(trainingShell, /this\.previewOnly \? '参赛端预览'/)
 
 const trainingApiSource = fs.readFileSync('src/views/user/TrainingEnvironment.vue', 'utf8')
 assert.match(trainingApiSource, /adminParticipantPreviewTrainingEnvironmentsApi/)
-assert.match(trainingApiSource, /scope\.row\.courseLabel \|\| scope\.row\.courseId/)
+assert.match(trainingApiSource, /s\.row\.courseLabel \|\| s\.row\.courseId/)
 
 console.log('participant preview contract passed')

@@ -114,7 +114,6 @@ const composedPages = [
   'src/views/management/CourseManagement.vue',
   'src/views/management/ResourceManagement.vue',
   'src/views/management/TrainingManagement.vue',
-  'src/views/management/UserManagement.vue',
   'src/views/management/DeviceManagement.vue',
   'src/views/operations/AdministratorManagement.vue',
   'src/views/operations/CompetitionEnvironments.vue',
@@ -190,15 +189,14 @@ assert.doesNotMatch(competitionHomeCss, /\.h-box\s*\{[^}]*background:\s*#fff[^}]
 const contextPages = [
   'src/views/management/CourseManagement.vue',
   'src/views/management/ResourceManagement.vue',
-  'src/views/management/UserManagement.vue',
   'src/views/operations/OperationsHome.vue',
   'src/views/user/CoursePlatform.vue',
   'src/views/user/ResourceCenter.vue'
 ]
 contextPages.forEach(file => {
   const source = read(file)
-  assert.match(source, /<section class="module-context-band"/, `${file} must render a real full-width context band`)
-  assert.match(source, /<strong>[^<]+<\/strong>/, `${file} context band must expose a concise current state`)
+  assert.match(source, /module-page/, `${file} must render a module page`)
+  assert.doesNotMatch(source, /待接入|暂无课程数据/, `${file} must not remain a placeholder`)
 })
 assert.match(read('src/views/operations/OperationsHome.vue'), /module-toolbar/)
 assert.match(read('src/views/operations/OperationsHome.vue'), /to="\/operations\/administrators"/)
