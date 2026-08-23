@@ -191,6 +191,22 @@ public class EnvironmentOperationServiceTest {
         verify(commandService, never()).requestEnvironmentCommand(any(), any(), any(), any(), any(), any());
     }
 
+    @Test
+    public void adminCanDeleteStoppedEnvironment() {
+        TrainingEnvironmentRecord selected = environment("env-selected", 21, 32, "STOPPED", "STOPPED", 7L);
+        when(environmentMapper.selectForUpdate("env-selected")).thenReturn(selected);
+        service.delete("env-selected", 9, "ADMIN");
+        verify(environmentMapper).deleteById("env-selected");
+    }
+
+    @Test
+    public void runningEnvironmentCannotBeDeleted() {
+        TrainingEnvironmentRecord selected = environment("env-selected", 21, 32, "RUNNING", "RUNNING", 7L);
+        when(environmentMapper.selectForUpdate("env-selected")).thenReturn(selected);
+        expectIllegalArgument(() -> service.delete("env-selected", 9, "ADMIN"), "停止");
+        verify(environmentMapper, never()).deleteById("env-selected");
+    }
+
     private TrainingEnvironmentRecord environment(String id, int userId, int courseId,
                                                   String desired, String actual, long version) {
         TrainingEnvironmentRecord environment = new TrainingEnvironmentRecord();
