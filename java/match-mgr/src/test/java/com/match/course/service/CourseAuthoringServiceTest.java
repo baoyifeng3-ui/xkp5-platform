@@ -45,6 +45,21 @@ class CourseAuthoringServiceTest {
     }
 
     @Test
+    void rejectsInvalidResourceDigest() {
+        CourseRecord course = new CourseRecord();
+        course.setCourseId("course-1");
+        when(courseMapper.selectForUpdate("course-1")).thenReturn(course);
+        CourseResourceRequest request = resource("EBOOK");
+        request.setSha256("invalid");
+        try {
+            service.addResource("course-1", request, 7);
+            fail("invalid digest should be rejected");
+        } catch (IllegalArgumentException error) {
+            assertTrue(error.getMessage().contains("摘要"));
+        }
+    }
+
+    @Test
     void resourceProjectionNeverExposesStorageKeyOrDigest() {
         CourseRecord course = new CourseRecord();
         course.setCourseId("course-1");

@@ -80,6 +80,9 @@ public class CourseAuthoringService {
         requireText(request.getName(), "资源名称不能为空");
         requireText(request.getStorageKey(), "资源存储标识不能为空");
         requireText(request.getSha256(), "资源摘要不能为空");
+        if (!request.getSha256().trim().matches("[0-9a-fA-F]{64}")) {
+            throw new IllegalArgumentException("资源摘要格式无效");
+        }
         if (resourceMapper.selectByDigest(courseId, request.getSha256()) != null) {
             throw new IllegalArgumentException("相同资源已添加到该课程");
         }
