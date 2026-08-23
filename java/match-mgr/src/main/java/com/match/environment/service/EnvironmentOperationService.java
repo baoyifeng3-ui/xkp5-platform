@@ -231,6 +231,9 @@ public class EnvironmentOperationService {
 
     private void requireAccess(TrainingEnvironmentRecord environment, int actorUserId,
                                String actorRole, String operationType) {
+        if (environment.getUserId() == null) {
+            throw new IllegalArgumentException("实训环境尚未绑定用户，不能启动");
+        }
         if ("SYSTEM".equals(actorRole)) {
             if (!"STOP".equals(operationType)) {
                 throw new IllegalArgumentException("系统角色只能停止实训环境");

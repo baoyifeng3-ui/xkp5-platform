@@ -192,6 +192,16 @@ public class EnvironmentOperationServiceTest {
     }
 
     @Test
+    public void unboundEnvironmentCannotStart() {
+        TrainingEnvironmentRecord selected = environment("env-unbound", 21, 32, "STOPPED", "STOPPED", 7L);
+        selected.setUserId(null);
+        when(environmentMapper.selectUserId("env-unbound")).thenReturn(21);
+        when(environmentMapper.selectUserEnvironmentsForUpdate(21)).thenReturn(Collections.singletonList(selected));
+        expectIllegalArgument(() -> service.start("env-unbound", 21, "USER"), "尚未绑定用户");
+        verify(commandService, never()).requestEnvironmentCommand(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
     public void adminCanDeleteStoppedEnvironment() {
         TrainingEnvironmentRecord selected = environment("env-selected", 21, 32, "STOPPED", "STOPPED", 7L);
         when(environmentMapper.selectForUpdate("env-selected")).thenReturn(selected);
