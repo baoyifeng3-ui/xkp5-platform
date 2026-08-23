@@ -14,8 +14,8 @@ public interface DashboardOverviewMapper {
             + "AND last_seen_at >= #{cutoff}")
     int countOnlineAgents(@Param("cutoff") LocalDateTime cutoff);
 
-    @Select("SELECT COUNT(*) FROM processing_agent a LEFT JOIN processing_agent_mode m "
-            + "ON m.agent_id = a.agent_id WHERE a.enabled = 1 AND a.removed_at IS NULL "
+        @Select("SELECT COUNT(*) FROM processing_agent a LEFT JOIN processing_agent_mode m "
+            + "ON BINARY m.agent_id = BINARY a.agent_id WHERE a.enabled = 1 AND a.removed_at IS NULL "
             + "AND HEX(COALESCE(m.actual_mode, 'NORMAL')) = HEX(#{state})")
     int countAgentModesInState(@Param("state") String state);
 
