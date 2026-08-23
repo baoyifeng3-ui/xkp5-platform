@@ -3,6 +3,8 @@ package com.match.agent.web;
 import com.match.agent.model.RegistrationTokenRequest;
 import com.match.agent.service.RegistrationTokenService;
 import com.match.agent.service.AgentAdministrationService;
+import com.match.agent.service.AgentPackageService;
+import com.match.agent.model.AgentPackageRequest;
 import com.match.entity.User;
 import com.match.security.RoleGuard;
 import com.match.util.result.Response;
@@ -14,6 +16,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @RestController
 @RequestMapping("/super-admin/processing-agents")
@@ -21,12 +27,31 @@ public class SuperAdminAgentController {
     private final RoleGuard roleGuard;
     private final RegistrationTokenService tokenService;
     private final AgentAdministrationService administrationService;
+    private final AgentPackageService packageService;
 
     public SuperAdminAgentController(RoleGuard roleGuard, RegistrationTokenService tokenService,
                                      AgentAdministrationService administrationService) {
+        this(roleGuard, tokenService, administrationService, null);
+    }
+
+    @Autowired
+    public SuperAdminAgentController(RoleGuard roleGuard, RegistrationTokenService tokenService,
+                                     AgentAdministrationService administrationService,
+                                     AgentPackageService packageService) {
         this.roleGuard = roleGuard;
         this.tokenService = tokenService;
         this.administrationService = administrationService;
+        this.packageService = packageService;
+    }
+
+    @PostMapping("/package")
+    public ResponseEntity<byte[]> packageAgent(@RequestBody AgentPackageRequest request) {
+        User actor = roleGuard.requireSuperAdmin();
+        AgentPackageService.PackageArtifact artifact = packageService.build(actor.getUserId(), request);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + artifact.getFileName() + "\"")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(artifact.getContent());
     }
 
     @PostMapping("/registration-tokens")

@@ -38,6 +38,10 @@ match:
   allowed-origins: ${MATCH_ALLOWED_ORIGINS:http://localhost:19140,http://127.0.0.1:19140,http://127.0.0.1:19146,http://172.16.33.154:19140,http://172.16.33.158:19140}
 
 xkp:
+  agent:
+    package-root: ${XKP_AGENT_PACKAGE_ROOT:/opt/xkp-agent-package}
+    ca-file: ${XKP_AGENT_CA_FILE:/etc/xkp/agent-tls/ca.crt}
+    management-url: ${XKP_AGENT_MANAGEMENT_URL:https://172.16.33.182:19443}
   license:
     public-keys: ${XKP_LICENSE_PUBLIC_KEYS:}
     test-public-key: ${XKP_LICENSE_TEST_PUBLIC_KEY:}
