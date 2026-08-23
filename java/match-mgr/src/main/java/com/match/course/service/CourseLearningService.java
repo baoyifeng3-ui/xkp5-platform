@@ -85,6 +85,7 @@ public class CourseLearningService {
     public Map<String, Object> previewUrl(String resourceId) {
         CourseResourceRecord resource = resourceMapper.selectById(resourceId);
         if (resource == null || !Boolean.TRUE.equals(resource.getEnabled())) throw new IllegalArgumentException("课程资源不存在或已停用");
+        if ("ARCHIVE".equals(resource.getResourceType())) throw new IllegalArgumentException("压缩包仅支持发送到实训环境");
         CourseRecord course = courseMapper.selectById(resource.getCourseId());
         if (course == null || !Boolean.TRUE.equals(course.getEnabled())) throw new IllegalArgumentException("课程未发布");
         Map<String, Object> result = new LinkedHashMap<>();

@@ -41,4 +41,18 @@ public class CourseLearningServiceTest {
             assertTrue(error.getMessage().contains("类型"));
         }
     }
+
+    @Test
+    public void rejectsArchivePreview() {
+        CourseResourceRecord resource = new CourseResourceRecord();
+        resource.setEnabled(true);
+        resource.setResourceType("ARCHIVE");
+        when(resources.selectById("archive-1")).thenReturn(resource);
+        try {
+            service.previewUrl("archive-1");
+            fail("archive preview should be rejected");
+        } catch (IllegalArgumentException error) {
+            assertTrue(error.getMessage().contains("实训环境"));
+        }
+    }
 }
