@@ -15,3 +15,4 @@ export const enableProcessingAgent = id => request.post(`${SUPER_BASE}/${id}/ena
 export const disableProcessingAgent = id => request.post(`${SUPER_BASE}/${id}/disable`)
 export const removeProcessingAgent = id => request.delete(`${SUPER_BASE}/${id}`)
 export const downloadAgentPackage = payload => request.post(`${SUPER_BASE}/package`, payload, { responseType: 'blob', headers: { 'Content-Type': 'application/json' } })
+export const checkAgentConnectivity = serverIp => request.get(`${SUPER_BASE}/connectivity`, { params: { serverIp } })

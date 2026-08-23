@@ -4,6 +4,7 @@ import com.match.agent.model.RegistrationTokenRequest;
 import com.match.agent.service.RegistrationTokenService;
 import com.match.agent.service.AgentAdministrationService;
 import com.match.agent.service.AgentPackageService;
+import com.match.agent.service.AgentConnectivityService;
 import com.match.agent.model.AgentPackageRequest;
 import com.match.entity.User;
 import com.match.security.RoleGuard;
@@ -28,20 +29,29 @@ public class SuperAdminAgentController {
     private final RegistrationTokenService tokenService;
     private final AgentAdministrationService administrationService;
     private final AgentPackageService packageService;
+    private final AgentConnectivityService connectivityService;
 
     public SuperAdminAgentController(RoleGuard roleGuard, RegistrationTokenService tokenService,
                                      AgentAdministrationService administrationService) {
-        this(roleGuard, tokenService, administrationService, null);
+        this(roleGuard, tokenService, administrationService, null, null);
     }
 
     @Autowired
     public SuperAdminAgentController(RoleGuard roleGuard, RegistrationTokenService tokenService,
                                      AgentAdministrationService administrationService,
-                                     AgentPackageService packageService) {
+                                     AgentPackageService packageService,
+                                     AgentConnectivityService connectivityService) {
         this.roleGuard = roleGuard;
         this.tokenService = tokenService;
         this.administrationService = administrationService;
         this.packageService = packageService;
+        this.connectivityService = connectivityService;
+    }
+
+    @GetMapping("/connectivity")
+    public ResponseResult<Object> connectivity(@org.springframework.web.bind.annotation.RequestParam String serverIp) {
+        roleGuard.requireSuperAdmin();
+        return Response.makeOKRsp(connectivityService.check(serverIp));
     }
 
     @PostMapping("/package")

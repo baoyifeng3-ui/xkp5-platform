@@ -1,7 +1,8 @@
 <template>
   <section class="module-page module-composed-page">
     <header class="module-heading action-heading">
-      <div><h1>处理服务器</h1><p>下载一键部署包并查看已接入服务器。</p></div>
+      <div><h1>处理服务器</h1><p>检测服务器网络、下载 Agent 部署包并管理已接入服务器。</p></div>
+      <el-button v-if="pendingServerIp" plain icon="el-icon-search" @click="searchRegisteredAgent">搜索已注册 Agent</el-button>
       <el-button type="primary" icon="el-icon-plus" @click="openTokenDialog">添加服务器</el-button>
     </header>
     <AgentStatusTable :agents="agents" :loading="loading" @select="selectAgent" />
@@ -30,14 +31,14 @@
           <div class="ip-status">
             <span :class="['status-dot', ipStatusClass]" />
             <span>{{ ipStatusText }}</span>
-            <el-button v-if="validServerIp" type="text" icon="el-icon-refresh" :loading="statusChecking" aria-label="重新检测服务器状态" @click="checkServerStatus" />
+            <el-button v-if="validServerIp" type="text" icon="el-icon-refresh" :loading="statusChecking" aria-label="重新检测服务器连通性" @click="checkServerConnectivity" />
           </div>
         </el-form-item>
         <el-form-item label="备注名称"><el-input v-model.trim="form.label" placeholder="例如：GPU 训练服务器" maxlength="80" /></el-form-item>
         <el-form-item label="工作目录"><el-input v-model.trim="form.workspace" placeholder="/srv/xkp" /></el-form-item>
       </el-form>
       <div v-else class="adding-state"><i class="el-icon-loading" /><strong>正在生成部署包...</strong><span>{{ form.serverIp }}</span></div>
-      <span slot="footer"><el-button :disabled="downloading" @click="tokenDialog = false">关闭</el-button><el-button v-if="!downloading" type="primary" :loading="downloading" :disabled="!formReady" @click="downloadPackage">下载部署包</el-button></span>
+      <span slot="footer"><el-button :disabled="downloading" @click="tokenDialog = false">关闭</el-button><el-button v-if="!downloading" type="primary" :loading="downloading" :disabled="!formReady || serverReachable !== true" @click="downloadPackage">下载部署包</el-button></span>
     </el-dialog>
     <RootTerminalDialog v-if="terminalVisible" :visible.sync="terminalVisible" :session="terminalSession" :agent-name="selected && (selected.displayName || selected.hostname)" @closed="terminalSession = null" />
   </section>
@@ -45,7 +46,7 @@
 <script>
 import AgentStatusTable from '@/components/agents/AgentStatusTable.vue'
 import RootTerminalDialog from '@/components/agents/RootTerminalDialog.vue'
-import { listProcessingAgents, downloadAgentPackage, enableProcessingAgent, disableProcessingAgent, removeProcessingAgent, listProcessingAgentCommands, wakeProcessingAgent, shutdownProcessingAgent } from '@/api/ProcessingAgents'
+import { listProcessingAgents, checkAgentConnectivity, downloadAgentPackage, enableProcessingAgent, disableProcessingAgent, removeProcessingAgent, listProcessingAgentCommands, wakeProcessingAgent, shutdownProcessingAgent } from '@/api/ProcessingAgents'
 
 const SERVER_IP_PATTERN = /^(?:\d{1,3}\.){3}\d{1,3}$/
 
@@ -53,21 +54,19 @@ export default {
   components: { AgentStatusTable, RootTerminalDialog },
   data: () => ({
     agents: [], selected: null, commands: [], loading: false, busyAction: '', tokenDialog: false,
-    downloading: false, ipTouched: false, statusChecking: false, refreshTimer: null, ipCheckTimer: null,
+    downloading: false, ipTouched: false, statusChecking: false, serverReachable: null, pendingServerIp: '', refreshTimer: null, ipCheckTimer: null,
     form: { serverIp: '', label: '', workspace: '/srv/xkp' }, terminalVisible: false, terminalSession: null
   }),
   computed: {
     validServerIp () { return SERVER_IP_PATTERN.test(this.form.serverIp) },
     formReady () { return this.validServerIp && !!this.form.label && !!this.form.workspace },
-    ipOnline () {
-      const current = this.form.serverIp
-      return !!current && (this.agents || []).some(agent => agent.primaryIp === current && agent.online)
-    },
-    ipStatusClass () { if (this.statusChecking) return 'is-checking'; return this.ipOnline ? 'is-online' : 'is-waiting' },
+    ipStatusClass () { if (this.statusChecking) return 'is-checking'; return this.serverReachable === true ? 'is-online' : this.serverReachable === false ? 'is-offline' : 'is-waiting' },
     ipStatusText () {
       if (!this.validServerIp) return '请输入完整 IP 地址'
       if (this.statusChecking) return '正在检测服务器状态'
-      return this.ipOnline ? '服务器已接入' : '等待 Agent 注册'
+      if (this.serverReachable === true) return '服务器网络可达，可以下载部署包'
+      if (this.serverReachable === false) return '服务器无法连通，不能下载部署包'
+      return '等待检测服务器网络'
     }
   },
   mounted () {
@@ -83,13 +82,30 @@ export default {
       this.loading = true
       try { const result = await listProcessingAgents(); this.agents = result.data || [] } finally { this.loading = false }
     },
-    openTokenDialog () { this.tokenDialog = true; this.checkServerStatus() },
-    handleServerIpInput () { this.ipTouched = true; this.checkServerStatus() },
-    checkServerStatus () {
+    openTokenDialog () { this.tokenDialog = true; this.checkServerConnectivity() },
+    handleServerIpInput () { this.ipTouched = true; this.checkServerConnectivity() },
+    checkServerStatus () { this.checkServerConnectivity() },
+    checkServerConnectivity () {
       window.clearTimeout(this.ipCheckTimer)
+      this.serverReachable = null
       if (!this.validServerIp) { this.statusChecking = false; return }
       this.statusChecking = true
-      this.ipCheckTimer = window.setTimeout(async () => { try { await this.load() } finally { this.statusChecking = false } }, 250)
+      this.ipCheckTimer = window.setTimeout(async () => {
+        try {
+          const result = await checkAgentConnectivity(this.form.serverIp)
+          this.serverReachable = Boolean(result.data && result.data.reachable)
+        } catch (error) {
+          this.serverReachable = false
+        } finally { this.statusChecking = false }
+      }, 350)
+    },
+    async searchRegisteredAgent () {
+      await this.load()
+      const found = this.agents.find(agent => agent.primaryIp === this.pendingServerIp)
+      if (!found) { this.$message.warning(`未找到 ${this.pendingServerIp} 的 Agent，请确认服务器已完成安装并联网`) ; return }
+      this.pendingServerIp = ''
+      await this.selectAgent(found)
+      this.$message.success('已找到并加入平台')
     },
     async selectAgent (agent) { this.selected = agent; const result = await listProcessingAgentCommands(agent.agentId); this.commands = result.data || [] },
     async wakeAgent () { this.busyAction = 'wake'; try { await wakeProcessingAgent(this.selected.agentId); this.$message.success('唤醒请求已提交') } finally { this.busyAction = '' } },
@@ -106,10 +122,11 @@ export default {
         const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${this.form.label}-xkp-agent.tar.gz`; anchor.style.display = 'none'
         document.body.appendChild(anchor); anchor.click()
         window.setTimeout(() => { if (anchor.parentNode) anchor.parentNode.removeChild(anchor); window.URL.revokeObjectURL(url) }, 2000)
-        this.$message.success('Agent 部署包已下载'); this.tokenDialog = false
+        this.pendingServerIp = this.form.serverIp
+        this.$message.success('部署包已下载，安装完成后点击“搜索已注册 Agent”加入平台'); this.tokenDialog = false
       } catch (error) { this.$message.error('部署包下载失败，请确认已登录超级管理员账号后重试') } finally { this.downloading = false }
     },
-    clearForm () { window.clearTimeout(this.ipCheckTimer); this.form = { serverIp: '', label: '', workspace: '/srv/xkp' }; this.ipTouched = false; this.statusChecking = false },
+    clearForm () { window.clearTimeout(this.ipCheckTimer); this.form = { serverIp: '', label: '', workspace: '/srv/xkp' }; this.ipTouched = false; this.statusChecking = false; this.serverReachable = null },
     async disableAgentAction () { await this.$confirm('停用该处理服务器？', '提示', { type: 'warning' }); await disableProcessingAgent(this.selected.agentId); await this.load() },
     async enableAgent () { await enableProcessingAgent(this.selected.agentId); await this.load() },
     async removeAgent () { await this.$confirm('移除后需重新注册，确认继续？', '提示', { type: 'warning' }); await removeProcessingAgent(this.selected.agentId); this.selected = null; await this.load() },
@@ -119,5 +136,5 @@ export default {
 }
 </script>
 <style scoped>
-.action-heading,.operations-bar{display:flex;align-items:center;justify-content:space-between}.operations-bar{min-height:58px;padding:0 16px;border:1px solid var(--ui-border);border-top:0}.grow{flex:1}.command-history{margin-top:24px}.command-history h2{margin:0 0 12px;font-size:16px}.ip-status{display:flex;align-items:center;gap:6px;margin-top:7px;color:var(--ui-muted);font-size:12px}.ip-status .el-button{margin-left:auto;padding:0}.status-dot{width:7px;height:7px;border-radius:50%;background:#c7cbd5}.status-dot.is-online{background:#35c59c}.status-dot.is-checking{background:#e6a23c}.adding-state{display:flex;flex-direction:column;align-items:center;gap:12px;padding:34px 0;color:var(--ui-muted)}.adding-state i{color:var(--ui-primary);font-size:30px}.adding-state strong{color:var(--ui-text);font-size:17px}
+.action-heading,.operations-bar{display:flex;align-items:center;justify-content:space-between}.operations-bar{min-height:58px;padding:0 16px;border:1px solid var(--ui-border);border-top:0}.grow{flex:1}.command-history{margin-top:24px}.command-history h2{margin:0 0 12px;font-size:16px}.ip-status{display:flex;align-items:center;gap:6px;margin-top:7px;color:var(--ui-muted);font-size:12px}.ip-status .el-button{margin-left:auto;padding:0}.status-dot{width:7px;height:7px;border-radius:50%;background:#c7cbd5}.status-dot.is-online{background:#35c59c}.status-dot.is-offline{background:#f56c6c}.status-dot.is-checking{background:#e6a23c}.adding-state{display:flex;flex-direction:column;align-items:center;gap:12px;padding:34px 0;color:var(--ui-muted)}.adding-state i{color:var(--ui-primary);font-size:30px}.adding-state strong{color:var(--ui-text);font-size:17px}
 </style>
