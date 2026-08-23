@@ -6,6 +6,7 @@ import com.match.security.RoleGuard;
 import com.match.util.result.Response;
 import com.match.util.result.ResponseResult;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
