@@ -8,14 +8,12 @@ import org.springframework.stereotype.Service;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
+import java.util.zip.GZIPOutputStream;
 
 @Service
 public class AgentPackageService {
@@ -47,22 +45,23 @@ public class AgentPackageService {
         String workspace = request.getWorkspace() == null || request.getWorkspace().trim().isEmpty()
                 ? "/srv/xkp" : request.getWorkspace().trim();
         ByteArrayOutputStream output = new ByteArrayOutputStream();
-        try (ZipOutputStream zip = new ZipOutputStream(output)) {
-            addFile(zip, "dist/xkp-agent-linux-amd64", packageRoot.resolve("dist/xkp-agent-linux-amd64"));
-            addFile(zip, "deploy/install.sh", packageRoot.resolve("deploy/install.sh"));
-            addFile(zip, "deploy/one-click-install.sh", packageRoot.resolve("deploy/one-click-install.sh"));
-            addFile(zip, "deploy/verify.sh", packageRoot.resolve("deploy/verify.sh"));
-            addFile(zip, "deploy/ca.crt", caFile);
-            addText(zip, "install-server.sh", wrapper(token.getToken(), displayName, workspace));
-            addText(zip, "INSTALL.txt", instructions(displayName, request.getServerIp()));
+        try (GZIPOutputStream gzip = new GZIPOutputStream(output)) {
+            addFile(gzip, "dist/xkp-agent-linux-amd64", packageRoot.resolve("dist/xkp-agent-linux-amd64"), 0755);
+            addFile(gzip, "deploy/install.sh", packageRoot.resolve("deploy/install.sh"), 0755);
+            addFile(gzip, "deploy/one-click-install.sh", packageRoot.resolve("deploy/one-click-install.sh"), 0755);
+            addFile(gzip, "deploy/verify.sh", packageRoot.resolve("deploy/verify.sh"), 0755);
+            addFile(gzip, "deploy/ca.crt", caFile, 0644);
+            addText(gzip, "install-server.sh", wrapper(token.getToken(), displayName, workspace), 0755);
+            addText(gzip, "INSTALL.txt", instructions(displayName, request.getServerIp()), 0644);
+            gzip.write(new byte[1024]);
         } catch (IOException exception) {
             throw new IllegalStateException("Agent 部署包生成失败", exception);
         }
-        return new PackageArtifact(output.toByteArray(), safeFileName(displayName) + "-xkp-agent.zip");
+        return new PackageArtifact(output.toByteArray(), safeFileName(displayName) + "-xkp-agent.tar.gz");
     }
 
     private String wrapper(String token, String displayName, String workspace) {
-        return "#!/usr/bin/env bash\nset -Eeuo pipefail\ncd \"$(dirname \"$0\")\"\n# ZIP archives do not preserve executable bits; restore them before installation.\nchmod +x dist/xkp-agent-linux-amd64 deploy/install.sh deploy/verify.sh\nexec bash deploy/install.sh --binary dist/xkp-agent-linux-amd64 "
+        return "#!/usr/bin/env bash\nset -Eeuo pipefail\ncd \"$(dirname \"$0\")\"\n# Restore permissions defensively when the package is extracted by a tool that ignores tar modes.\nchmod +x dist/xkp-agent-linux-amd64 deploy/install.sh deploy/verify.sh\nexec bash deploy/install.sh --binary dist/xkp-agent-linux-amd64 "
                 + "--management-url " + shellQuote(managementUrl) + " --ca deploy/ca.crt "
                 + "--registration-token " + shellQuote(token) + " --display-name "
                 + shellQuote(displayName) + " --workspace " + shellQuote(workspace) + "\n";
@@ -73,21 +72,64 @@ public class AgentPackageService {
                 + "\n\n在 Ubuntu 处理服务器执行：\n  chmod +x install-server.sh\n  sudo bash install-server.sh\n\n部署包内包含一次性凭据，请勿转发或重复使用。\n";
     }
 
-    private void addFile(ZipOutputStream zip, String name, Path source) throws IOException {
-        ZipEntry entry = new ZipEntry(name);
-        zip.putNextEntry(entry);
+    private void addFile(OutputStream output, String name, Path source, int mode) throws IOException {
+        long size = Files.size(source);
+        writeHeader(output, name, size, mode);
         try (InputStream input = Files.newInputStream(source)) {
             byte[] buffer = new byte[8192];
-            int read;
-            while ((read = input.read(buffer)) != -1) zip.write(buffer, 0, read);
+            int read; long written = 0;
+            while ((read = input.read(buffer)) != -1) { output.write(buffer, 0, read); written += read; }
+            writePadding(output, written);
         }
-        zip.closeEntry();
     }
 
-    private void addText(ZipOutputStream zip, String name, String value) throws IOException {
-        zip.putNextEntry(new ZipEntry(name));
-        zip.write(value.getBytes(StandardCharsets.UTF_8));
-        zip.closeEntry();
+    private void addText(OutputStream output, String name, String value, int mode) throws IOException {
+        byte[] content = value.getBytes(StandardCharsets.UTF_8);
+        writeHeader(output, name, content.length, mode);
+        output.write(content);
+        writePadding(output, content.length);
+    }
+
+    private void writeHeader(OutputStream output, String name, long size, int mode) throws IOException {
+        byte[] header = new byte[512];
+        writeString(header, 0, 100, name);
+        writeOctal(header, 100, 8, mode);
+        writeOctal(header, 108, 8, 0);
+        writeOctal(header, 116, 8, 0);
+        writeOctal(header, 124, 12, size);
+        writeOctal(header, 136, 12, 0);
+        for (int i = 148; i < 156; i++) header[i] = ' ';
+        header[156] = '0';
+        writeString(header, 257, 6, "ustar");
+        writeString(header, 263, 2, "00");
+        long checksum = 0;
+        for (int i = 0; i < header.length; i++) {
+            checksum += (i >= 148 && i < 156) ? ' ' : header[i] & 0xff;
+        }
+        String checksumText = String.format("%06o", checksum);
+        writeString(header, 148, 6, checksumText);
+        header[154] = 0;
+        header[155] = ' ';
+        output.write(header);
+    }
+
+    private void writePadding(OutputStream output, long size) throws IOException {
+        int padding = (int) ((512 - (size % 512)) % 512);
+        if (padding > 0) output.write(new byte[padding]);
+    }
+
+    private void writeString(byte[] target, int offset, int length, String value) {
+        byte[] bytes = value.getBytes(StandardCharsets.US_ASCII);
+        System.arraycopy(bytes, 0, target, offset, Math.min(bytes.length, length));
+    }
+
+    private void writeOctal(byte[] target, int offset, int length, long value) {
+        String text = Long.toOctalString(value);
+        int digits = Math.min(text.length(), length - 1);
+        for (int i = offset; i < offset + length - 1; i++) target[i] = '0';
+        int start = offset + length - digits - 1;
+        for (int i = 0; i < digits; i++) target[start + i] = (byte) text.charAt(text.length() - digits + i);
+        target[offset + length - 1] = 0;
     }
 
     private void validate(AgentPackageRequest request) {

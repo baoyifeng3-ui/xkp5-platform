@@ -50,7 +50,7 @@ public class SuperAdminAgentController {
         AgentPackageService.PackageArtifact artifact = packageService.build(actor.getUserId(), request);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + artifact.getFileName() + "\"")
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .contentType(MediaType.parseMediaType("application/gzip"))
                 .body(artifact.getContent());
     }
 

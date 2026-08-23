@@ -100,10 +100,10 @@ export default {
       try {
         const response = await downloadAgentPackage(this.form)
         const payload = response && Object.prototype.hasOwnProperty.call(response, 'data') ? response.data : response
-        const blob = payload instanceof Blob ? payload : new Blob([payload], { type: 'application/zip' })
+        const blob = payload instanceof Blob ? payload : new Blob([payload], { type: 'application/gzip' })
         if (!blob.size) throw new Error('部署包为空')
         const url = window.URL.createObjectURL(blob)
-        const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${this.form.label}-xkp-agent.zip`; anchor.style.display = 'none'
+        const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${this.form.label}-xkp-agent.tar.gz`; anchor.style.display = 'none'
         document.body.appendChild(anchor); anchor.click()
         window.setTimeout(() => { if (anchor.parentNode) anchor.parentNode.removeChild(anchor); window.URL.revokeObjectURL(url) }, 2000)
         this.$message.success('Agent 部署包已下载'); this.tokenDialog = false
