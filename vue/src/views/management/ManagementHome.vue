@@ -2,6 +2,7 @@
   <section class="module-page module-composed-page dashboard-home">
     <header class="module-heading"><div><h1>主页</h1><p>普通管理员的业务总览与快捷入口。</p></div><span v-if="stale" class="stale-state">数据暂未更新</span></header>
     <div class="overview-grid"><button v-for="action in actions" :key="action.key" type="button" class="overview-action" :disabled="action.key === 'mode' && (modeLoading || !modeInitialized || modeSwitching)" @click="handleAction(action)"><i :class="action.icon" /><span>{{ actionLabel(action) }}</span></button></div>
+    <el-dialog title="一键上课" :visible.sync="classDialog" width="460px"><el-form label-width="90px"><el-form-item label="课程名称"><el-select v-model="classForm.courseId" filterable placeholder="选择需要启动的课程" style="width:100%"><el-option v-for="item in courses" :key="item.course.courseId" :label="item.course.name" :value="item.course.courseId" /></el-select></el-form-item><el-form-item label="代码工具"><el-select v-model="classForm.tool" style="width:100%"><el-option label="VS Code（9091-9094）" value="vscode" /><el-option label="Jupyter Notebook（8881-8884）" value="jupyter" /></el-select></el-form-item></el-form><span slot="footer"><el-button @click="classDialog=false">取消</el-button><el-button type="primary" :loading="classStarting" @click="startSelectedClass">确认上课</el-button></span></el-dialog>
     <div v-if="modeLoadError" class="mode-error" role="alert"><span>平台模式加载失败，模式切换已禁用。</span><el-button size="small" icon="el-icon-refresh" :loading="modeLoading" @click="loadPlatformMode">重新加载</el-button></div>
     <LicenseStatusPanel />
     <div v-if="firstLoadFailed" class="overview-warning">概览服务暂不可用，请稍后重试。</div>
@@ -20,6 +21,8 @@
 import LicenseStatusPanel from '@/components/LicenseStatusPanel.vue'
 import { getDashboardOverview } from '@/api/DashboardOverview'
 import { getPlatformMode, changePlatformMode } from '@/api/PlatformMode'
+import { listAdminCourses } from '@/api/Courses'
+import { listAdminTrainingEnvironments, startAdminTrainingEnvironment } from '@/api/TrainingEnvironments'
 const { applyOverviewSuccess, applyOverviewFailure, resourceText } = require('@/services/dashboardOverviewState')
 
 export default {
@@ -29,7 +32,7 @@ export default {
     modeLoading: false,
     modeInitialized: false,
     modeLoadError: false,
-    modeSwitching: false,
+    modeSwitching: false, classDialog: false, classStarting: false, courses: [], classForm: { courseId: '', tool: 'vscode' },
     snapshot: null,
     loading: false,
     stale: false,
@@ -56,7 +59,7 @@ export default {
       return [{ label: '离线服务器', value: alerts.offlineAgents || 0, route: '/management/devices' }, { label: '异常实训环境', value: (alerts.degradedEnvironments || 0) + (alerts.failedEnvironments || 0), route: '/management/training' }, { label: '待处理环境操作', value: (alerts.pendingOperations || 0) + (alerts.failedOperations || 0), route: '/management/training' }, { label: '待处理服务器命令', value: (alerts.pendingCommands || 0) + (alerts.failedCommands || 0), route: '/management/devices' }, { label: '授权提醒', value: (alerts.licenseUnusable || 0) + (alerts.licenseExpiring || 0), route: '/management/license' }]
     }
   },
-  mounted () { this.loadPlatformMode(); this.loadOverview(); this.refreshTimer = setInterval(this.loadOverview, 15000) },
+  mounted () { this.loadPlatformMode(); this.loadOverview(); this.loadCourses(); this.refreshTimer = setInterval(this.loadOverview, 15000) },
   beforeDestroy () { clearInterval(this.refreshTimer) },
   methods: {
     async loadPlatformMode () {
@@ -100,7 +103,22 @@ export default {
     },
     handleAction (action) {
       if (action.key === 'mode') return this.togglePlatformMode()
+      if (action.key === 'training') { this.classDialog = true; return }
       if (action.route) return this.$router.push(action.route)
+    },
+    async loadCourses () { try { const result = await listAdminCourses(); this.courses = result.data || [] } catch (error) {} },
+    async startSelectedClass () {
+      if (!this.classForm.courseId) { this.$message.warning('请选择需要启动的课程'); return }
+      this.classStarting = true
+      try {
+        const result = await listAdminTrainingEnvironments()
+        const environment = (result.data || []).find(item => String(item.courseId) === String(this.classForm.courseId) && item.userId != null)
+        if (!environment) { this.$message.warning('该课程尚未绑定用户或创建实训环境'); return }
+        if (environment.actualState === 'RUNNING') { this.$message.success('该课程环境已经在运行'); this.classDialog = false; return }
+        await startAdminTrainingEnvironment(environment.environmentId)
+        this.classDialog = false
+        this.$message.success(`${this.classForm.tool === 'vscode' ? 'VS Code' : 'Jupyter Notebook'} 启动任务已提交`)
+      } finally { this.classStarting = false }
     },
     actionLabel (action) {
       if (action.key === 'mode') {
