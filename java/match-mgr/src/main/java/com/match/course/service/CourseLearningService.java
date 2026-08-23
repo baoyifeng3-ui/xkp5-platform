@@ -90,7 +90,9 @@ public class CourseLearningService {
         if (course == null || !Boolean.TRUE.equals(course.getEnabled())) throw new IllegalArgumentException("课程未发布");
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("resourceId", resourceId); result.put("resourceType", resource.getResourceType());
-        result.put("previewUrl", FastDFSClient.getServerAccessUrl(resource.getStorageKey()));
+        String previewUrl = FastDFSClient.getServerAccessUrl(resource.getStorageKey());
+        if (previewUrl == null || previewUrl.trim().isEmpty()) throw new IllegalArgumentException("资源预览地址不可用");
+        result.put("previewUrl", previewUrl);
         return result;
     }
 }
