@@ -4,6 +4,7 @@ import com.match.licensing.model.LicenseStatus;
 import com.match.licensing.service.LicenseStatusService;
 import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 import com.match.licensing.model.LicenseState;
 import com.match.licensing.model.LicenseStatus;
@@ -18,6 +19,7 @@ public class LicenseGuard {
         this(statusService, new org.springframework.core.env.StandardEnvironment(), false);
     }
 
+    @Autowired
     public LicenseGuard(LicenseStatusService statusService, Environment environment,
                         @Value("${MATCH_LOCAL_LICENSE_BYPASS:false}") boolean localBypass) {
         this.statusService = statusService;
