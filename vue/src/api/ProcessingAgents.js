@@ -14,3 +14,4 @@ export const createRegistrationToken = data => request.post(`${SUPER_BASE}/regis
 export const enableProcessingAgent = id => request.post(`${SUPER_BASE}/${id}/enable`)
 export const disableProcessingAgent = id => request.post(`${SUPER_BASE}/${id}/disable`)
 export const removeProcessingAgent = id => request.delete(`${SUPER_BASE}/${id}`)
+export const downloadAgentPackage = payload => request.post(`${SUPER_BASE}/package`, payload, { responseType: 'blob', headers: { 'Content-Type': 'application/json' } })
