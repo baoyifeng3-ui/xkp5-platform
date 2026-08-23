@@ -69,6 +69,7 @@ const routes = [
       { path: '', name: 'ManagementHome', component: ManagementHome },
       { path: 'competition', name: 'CompetitionManagement', component: CompetitionManagement },
       { path: 'courses', name: 'CourseManagement', component: CourseManagement },
+      { path: 'course-platform', name: 'AdminCoursePlatform', component: CoursePlatform },
       { path: 'resources', name: 'ResourceManagement', component: ResourceManagement },
       { path: 'training', name: 'TrainingManagement', component: TrainingManagement },
       { path: 'competition-mode', name: 'CompetitionMode', component: CompetitionMode },
