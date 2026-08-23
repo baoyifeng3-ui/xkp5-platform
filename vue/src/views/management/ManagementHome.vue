@@ -38,7 +38,7 @@ export default {
   }),
   computed: {
     actions () {
-      return [{ key: 'training', label: '一键上课', icon: 'el-icon-video-play', route: '/management/training' }, { key: 'mode', icon: 'el-icon-refresh' }, { key: 'courses', label: '进入课程平台', icon: 'el-icon-reading', route: '/management/courses' }, { key: 'environment', label: '进入实训环境', icon: 'el-icon-monitor', route: '/management/training' }]
+      return [{ key: 'training', label: '一键上课', icon: 'el-icon-video-play', route: '/management/training' }, { key: 'mode', icon: 'el-icon-refresh' }, { key: 'courses', label: '进入课程平台', icon: 'el-icon-reading', route: '/management/course-platform' }, { key: 'environment', label: '进入实训环境', icon: 'el-icon-monitor', route: '/management/training' }]
     },
     metrics () {
       const data = this.snapshot || {}
@@ -82,7 +82,7 @@ export default {
       const target = this.mode.mode === 'COMPETITION' ? 'TRAINING' : 'COMPETITION'
       const phrase = target === 'COMPETITION' ? 'ENTER COMPETITION' : 'EXIT COMPETITION'
       try {
-        await this.$prompt(`输入 ${phrase} 确认切换。普通用户现有登录会失效。`, target === 'COMPETITION' ? '进入比赛模式' : '退出比赛模式', { confirmButtonText: '确认切换', inputPattern: new RegExp(`^${phrase}$`), inputErrorMessage: '确认文本不匹配' })
+        await this.$confirm('切换后普通用户下次登录将进入对应模式，是否继续？', target === 'COMPETITION' ? '进入比赛模式' : '退出比赛模式', { confirmButtonText: '确认切换', cancelButtonText: '取消', type: 'warning' })
       } catch (error) {
         return
       }

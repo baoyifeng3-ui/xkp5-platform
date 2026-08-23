@@ -16,7 +16,7 @@
         <el-form-item label="模板名称"><el-input v-model.trim="form.templateName" maxlength="80" /></el-form-item>
         <el-form-item label="组件类型"><el-radio-group v-model="form.componentType" @change="applyBoundary"><el-radio-button label="ANNOTATION">图像标注</el-radio-button><el-radio-button label="EDITOR">代码编辑</el-radio-button></el-radio-group></el-form-item>
         <el-form-item label="镜像"><el-input v-model.trim="form.imageReference" placeholder="例如 zy-anno:latest" /></el-form-item>
-        <el-form-item label="容器端口"><el-input v-model.trim="portsText" placeholder="例如 8080 或 9090,8887,5000" /></el-form-item>
+        <el-form-item label="容器端口"><el-input v-model.trim="portsText" placeholder="标注 8081；代码工具 9091,8881,5000" /></el-form-item>
         <el-form-item label="CPU 限制"><el-input-number v-model="form.cpuLimitMillis" :min="100" :max="128000" :step="100" /><span class="unit">毫核</span></el-form-item>
         <el-form-item label="内存限制"><el-input-number v-model="memoryGiB" :min="1" :max="512" /><span class="unit">GiB</span></el-form-item>
         <el-form-item v-if="form.componentType === 'EDITOR'" label="启用 GPU"><el-switch v-model="form.gpuEnabled" /></el-form-item>
@@ -36,9 +36,9 @@ export default {
   created () { this.load() },
   methods: {
     async load () { this.loading = true; try { const result = await listContainerTemplates(); this.templates = result.data || [] } finally { this.loading = false } },
-    openCreate () { this.form = { templateName: '', componentType: 'ANNOTATION', imageReference: '', runtimeName: 'sysbox-runc', restartPolicy: 'always', mountTarget: '/root/data', cpuLimitMillis: 2000, gpuEnabled: false, gpuComputePercent: 50, privileged: false, hostNetwork: false }; this.portsText = '8080'; this.memoryGiB = 2; this.dialog = true },
+    openCreate () { this.form = { templateName: '', componentType: 'ANNOTATION', imageReference: '', runtimeName: 'sysbox-runc', restartPolicy: 'always', mountTarget: '/root/data', cpuLimitMillis: 2000, gpuEnabled: false, gpuComputePercent: 50, privileged: false, hostNetwork: false }; this.portsText = '8081'; this.memoryGiB = 2; this.dialog = true },
     edit (row) { this.form = Object.assign({}, row, { templateVersion: null }); this.portsText = (row.ports || []).map(p => p.containerPort).join(',') || '8080'; this.memoryGiB = Math.max(1, Math.round((row.memoryLimitBytes || GiB * 2) / GiB)); this.dialog = true },
-    applyBoundary (type) { const editor = type === 'EDITOR'; this.form.runtimeName = editor ? 'nvidia' : 'sysbox-runc'; this.form.mountTarget = editor ? '/home/student/data' : '/root/data'; this.form.gpuEnabled = editor; this.portsText = editor ? '9090,8887,5000' : '8080'; this.memoryGiB = editor ? 6 : 2 },
+    applyBoundary (type) { const editor = type === 'EDITOR'; this.form.runtimeName = editor ? 'nvidia' : 'sysbox-runc'; this.form.mountTarget = editor ? '/home/student/data' : '/root/data'; this.form.gpuEnabled = editor; this.portsText = editor ? '9091,8881,5000' : '8081'; this.memoryGiB = editor ? 6 : 2 },
     async publish () { const ports = this.portsText.split(',').map(value => Number(value.trim())).filter(Boolean).map(containerPort => ({ containerPort, protocol: 'tcp' })); const payload = { ...this.form, ports, memoryLimitBytes: this.memoryGiB * GiB }; if (!payload.gpuEnabled) { payload.gpuComputePercent = null; payload.gpuMemoryLimitBytes = null } this.publishing = true; try { await publishContainerTemplate(payload); this.$message.success('模板版本已发布'); this.dialog = false; await this.load() } finally { this.publishing = false } },
     async disable (row) { await this.$confirm('停用后不能再分配给新环境，已有环境仍使用固定版本。', '确认停用', { type: 'warning' }); await disableContainerTemplate(row.templateId, row.templateVersion); await this.load() }
   }
