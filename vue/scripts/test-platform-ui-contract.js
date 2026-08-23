@@ -31,7 +31,7 @@ assert.match(shell, /<slot name="status"/)
 assert.match(shell, /<slot name="account-actions"/)
 assert.match(shell, /aria-label="导航搜索建议"/)
 assert.doesNotMatch(shell, /role="listbox"|role="option"/)
-assert.match(theme, /--ui-primary:\s*var\(--platform-theme-color,\s*#6f7ff7\)/)
+assert.match(theme, /--ui-primary:\s*var\(--platform-theme-color,\s*#7184f8\)/)
 assert.strictEqual(themeService.DEFAULT_THEME_COLOR, '#6f7ff7')
 assert.deepStrictEqual(themeService.themeVariables('#123456'), {
   '--platform-theme-color': '#123456',
@@ -40,9 +40,9 @@ assert.deepStrictEqual(themeService.themeVariables('#123456'), {
 })
 ;['src/store/modules/Match.js', 'src/views/Admin.vue', 'src/views/management/PlatformSettings.vue']
   .forEach(file => assert.doesNotMatch(read(file), /DEFAULT_THEME_COLOR\s*=\s*['"]#162d45['"]/i))
-assert.match(theme, /--ui-workspace:\s*#f3f5f9/)
-assert.match(theme, /--ui-radius:\s*8px/)
-assert.match(theme, /--ui-sidebar-width:\s*220px/)
+assert.match(theme, /--ui-workspace:\s*#f1f2f5/)
+assert.match(theme, /--ui-radius:\s*10px/)
+assert.match(theme, /--ui-sidebar-width:\s*188px/)
 assert.match(theme, /--ui-sidebar-compact-width:\s*76px/)
 
 ;['ManagementShell', 'OperationsShell', 'NormalUserShell'].forEach(name => {

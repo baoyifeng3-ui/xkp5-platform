@@ -1,9 +1,9 @@
 :root {
   --platform-theme-color: #6f7ff7;
-  --ui-primary: var(--platform-theme-color, #6f7ff7);
+  --ui-primary: var(--platform-theme-color, #7184f8);
   --ui-primary-strong: #5b68cb;
   --ui-primary-soft: #eef0ff;
-  --ui-workspace: #f3f5f9;
+  --ui-workspace: #f1f2f5;
   --ui-surface: #ffffff;
   --ui-text: #1f2940;
   --ui-muted: #7d879c;
@@ -12,9 +12,9 @@
   --ui-warning: #f4b84a;
   --ui-danger: #f46f78;
   --ui-info: #4eb8ee;
-  --ui-radius: 8px;
+  --ui-radius: 10px;
   --ui-shadow: 0 12px 30px rgba(46, 58, 98, .08);
-  --ui-sidebar-width: 220px;
+  --ui-sidebar-width: 188px;
   --ui-sidebar-compact-width: 76px;
   --ui-header-height: 68px;
 }
@@ -174,6 +174,25 @@
 .module-context-band small { margin-bottom: 5px; color: var(--ui-muted); }
 .module-context-band strong { color: var(--ui-text); font-size: 18px; }
 .module-context-band > span { color: var(--ui-muted); font-size: 13px; }
+
+.course-filters { display: flex; gap: 12px; margin-bottom: 18px; padding: 14px; background: var(--ui-surface); border-radius: 12px; box-shadow: var(--ui-shadow); }
+.course-filters .el-input { width: min(360px, 100%); }
+.course-filters .el-select { width: 170px; }
+.course-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.course-item { min-width: 0; padding: 18px; background: var(--ui-surface); border: 1px solid rgba(230,233,241,.8); border-radius: 12px; box-shadow: var(--ui-shadow); }
+.course-item-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.course-item h2 { margin: 0; color: var(--ui-text); font-size: 18px; line-height: 1.35; }
+.course-item-head span { display: block; margin-top: 5px; color: var(--ui-muted); font-size: 12px; }
+.course-item > p { min-height: 42px; margin: 14px 0; color: var(--ui-muted); font-size: 13px; line-height: 1.6; }
+.resource-list { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+.resource-list button { display: grid; grid-template-columns: 28px minmax(0,1fr); align-items: center; gap: 8px; min-width: 0; padding: 9px; color: var(--ui-text); text-align: left; background: #f7f8fc; border: 1px solid transparent; border-radius: 9px; cursor: pointer; }
+.resource-list button:hover { border-color: var(--ui-primary); background: var(--ui-primary-soft); }
+.resource-list button i { display: grid; place-items: center; width: 28px; height: 28px; color: var(--ui-primary); background: #e9ecff; border-radius: 50%; }
+.resource-list button span, .resource-list button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resource-list button small { grid-column: 2; color: var(--ui-muted); font-size: 11px; }
+
+@media (max-width: 900px) { .course-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (max-width: 600px) { .course-filters { flex-direction: column; } .course-filters .el-input, .course-filters .el-select { width: 100%; } .course-grid { grid-template-columns: 1fr; } }
 
 @media (max-width: 720px) {
   .module-toolbar { align-items: stretch; }
