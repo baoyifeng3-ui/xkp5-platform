@@ -1,6 +1,6 @@
 <template>
   <section class="module-page module-composed-page">
-    <header class="module-heading module-toolbar action-heading"><div><h1>处理服务器</h1><p>添加服务器后，在目标服务器执行 Agent 注册请求接入平台。</p></div><div><el-button icon="el-icon-info" @click="helpDialog=true">如何添加</el-button><el-button type="primary" icon="el-icon-plus" @click="tokenDialog = true">添加服务器</el-button></div></header>
+    <header class="module-heading module-toolbar action-heading"><div><h1>处理服务器</h1><p>查看已接入服务器及其运行状态。</p></div></header>
     <AgentStatusTable :agents="agents" :loading="loading" @select="selectAgent" />
     <div v-if="selected" class="operations-bar module-toolbar">
       <strong>{{ selected.displayName || selected.hostname }}</strong><span class="grow" />
@@ -20,25 +20,20 @@
         <el-table-column prop="resultMessage" label="结果" min-width="240" show-overflow-tooltip />
       </el-table></div>
     </section>
-    <el-dialog title="添加服务器（生成注册码）" :visible.sync="tokenDialog" width="460px" @closed="clearToken">
-      <el-input v-model="label" placeholder="用途，例如：A 机房" maxlength="80" />
-      <div v-if="issuedToken" class="issued-token"><code>{{ issuedToken }}</code><el-button icon="el-icon-document-copy" @click="copyToken">复制注册码</el-button></div><div v-if="issuedToken" class="registration-hint"><p>在目标服务器 Agent 中提交：</p><code>POST /agent/v1/register</code><pre>{{ registrationPayload }}</pre></div>
-      <span slot="footer"><el-button @click="tokenDialog = false">关闭</el-button><el-button type="primary" :loading="issuing" @click="issueToken">生成注册码并显示注册请求</el-button></span>
-    </el-dialog>
-    <RootTerminalDialog v-if="terminalVisible" :visible.sync="terminalVisible" :session="terminalSession" :agent-name="selected && (selected.displayName || selected.hostname)" @closed="terminalSession = null" /><el-dialog title="添加处理服务器" :visible.sync="helpDialog" width="560px"><p>1. 点击“生成注册码”创建一次性注册码。</p><p>2. 在目标服务器安装并启动 XKP Agent。</p><p>3. 使用注册码执行 Agent 注册命令，注册成功后服务器会自动出现在列表中。</p><p>注册码只负责首次注册，不能直接当作服务器地址或登录密码使用。</p></el-dialog>
+    <RootTerminalDialog v-if="terminalVisible" :visible.sync="terminalVisible" :session="terminalSession" :agent-name="selected && (selected.displayName || selected.hostname)" @closed="terminalSession = null" />
   </section>
 </template>
 <script>
 import AgentStatusTable from '@/components/agents/AgentStatusTable.vue'
 import RootTerminalDialog from '@/components/agents/RootTerminalDialog.vue'
-import { listProcessingAgents, createRegistrationToken, enableProcessingAgent, disableProcessingAgent, removeProcessingAgent, listProcessingAgentCommands, wakeProcessingAgent, shutdownProcessingAgent } from '@/api/ProcessingAgents'
+import { listProcessingAgents, enableProcessingAgent, disableProcessingAgent, removeProcessingAgent, listProcessingAgentCommands, wakeProcessingAgent, shutdownProcessingAgent } from '@/api/ProcessingAgents'
 import { createTerminalSession } from '@/api/TerminalSessions'
 import { getRole } from '@/utils/auth'
 import { SUPER_ADMIN } from '@/navigation/roleNavigation'
 export default {
   name: 'ProcessingAgents', components: { AgentStatusTable, RootTerminalDialog },
-  data: () => ({ agents: [], selected: null, commands: [], loading: false, busyAction: '', tokenDialog: false, helpDialog: false, label: '', issuedToken: '', issuing: false, terminalVisible: false, terminalSession: null, terminalOpening: false }),
-  computed: { actionBusy () { return Boolean(this.busyAction) }, canOpenRootTerminal () { return getRole() === SUPER_ADMIN && Boolean(this.selected && this.selected.online && this.selected.enabled) }, registrationPayload () { return JSON.stringify({ token: this.issuedToken, displayName: 'XKP5 处理服务器', hostname: '<hostname>', primaryIp: '<server-ip>', agentVersion: '1.0.0' }, null, 2) } },
+  data: () => ({ agents: [], selected: null, commands: [], loading: false, busyAction: '', terminalVisible: false, terminalSession: null, terminalOpening: false }),
+  computed: { actionBusy () { return Boolean(this.busyAction) }, canOpenRootTerminal () { return getRole() === SUPER_ADMIN && Boolean(this.selected && this.selected.online && this.selected.enabled) } },
   mounted () { this.load() },
   methods: {
     async load () { this.loading = true; try { const result = await listProcessingAgents(); this.agents = result.data || [] } finally { this.loading = false } },
@@ -56,9 +51,6 @@ export default {
     },
     commandState (command) { return ({ PENDING: '等待 Agent 接收', LEASED: '已送达', RUNNING: '等待离线确认', SUCCEEDED: '已完成', FAILED: command.resultMessage || '执行失败' })[command.state] || command.state },
     commandTag (state) { return ({ PENDING: 'info', LEASED: '', RUNNING: 'warning', SUCCEEDED: 'success', FAILED: 'danger' })[state] || 'info' },
-    async issueToken () { this.issuing = true; try { const result = await createRegistrationToken({ label: this.label }); this.issuedToken = (result.data || {}).token || '' } finally { this.issuing = false } },
-    async copyToken () { await navigator.clipboard.writeText(this.issuedToken); this.$message.success('注册码已复制，请妥善保存') },
-    clearToken () { this.issuedToken = ''; this.label = '' },
     async disableProcessingAgentAction () { await this.confirmAction('停用后该服务器将不能继续上报，是否继续？', () => disableProcessingAgent(this.selected.agentId)) },
     async enableAgent () { await enableProcessingAgent(this.selected.agentId); await this.load() },
     async removeAgent () { await this.confirmAction('移除后需重新注册才能接入，历史监控数据会保留。', () => removeProcessingAgent(this.selected.agentId)) },
