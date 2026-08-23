@@ -1,0 +1,44 @@
+package com.match.course.service;
+
+import com.match.course.persistence.CourseMapper;
+import com.match.course.persistence.CourseProgressMapper;
+import com.match.course.persistence.CourseResourceMapper;
+import com.match.course.persistence.CourseResourceRecord;
+import org.junit.Test;
+
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+public class CourseLearningServiceTest {
+    private final CourseResourceMapper resources = mock(CourseResourceMapper.class);
+    private final CourseLearningService service = new CourseLearningService(mock(CourseMapper.class), resources,
+            mock(CourseProgressMapper.class));
+
+    @Test
+    public void rejectsProgressForDisabledResource() {
+        CourseResourceRecord resource = new CourseResourceRecord();
+        resource.setEnabled(false);
+        when(resources.selectById("resource-1")).thenReturn(resource);
+        try {
+            service.recordProgress(7, "resource-1", "PAGE", 20, false);
+            fail("disabled resource should be rejected");
+        } catch (IllegalArgumentException error) {
+            assertTrue(error.getMessage().contains("停用"));
+        }
+    }
+
+    @Test
+    public void rejectsUnknownProgressKind() {
+        CourseResourceRecord resource = new CourseResourceRecord();
+        resource.setEnabled(true);
+        when(resources.selectById("resource-1")).thenReturn(resource);
+        try {
+            service.recordProgress(7, "resource-1", "DOWNLOAD", 20, false);
+            fail("unknown progress kind should be rejected");
+        } catch (IllegalArgumentException error) {
+            assertTrue(error.getMessage().contains("类型"));
+        }
+    }
+}
