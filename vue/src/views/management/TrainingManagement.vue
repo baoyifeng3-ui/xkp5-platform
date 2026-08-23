@@ -1,6 +1,6 @@
 <template>
   <section class="module-page module-composed-page">
-    <header class="module-heading"><h1>实训管理</h1><p>查看用户环境状态，控制启动、停止和容器还原。</p></header>
+    <header class="module-heading"><div><h1>实训管理</h1><p>查看用户环境状态，控制启动、停止和容器还原。</p></div><el-button type="primary" icon="el-icon-plus" @click="createDialog=true">创建实训环境</el-button></header>
     <div class="module-table-wrap"><el-table v-loading="loading" :data="environments" empty-text="暂无实训环境">
       <el-table-column prop="userId" label="用户" width="90" />
       <el-table-column prop="courseId" label="课程" width="90" />
@@ -17,17 +17,19 @@
         </template>
       </el-table-column>
     </el-table></div>
+    <el-dialog title="创建实训环境" :visible.sync="createDialog" width="520px"><el-form :model="form" label-width="110px"><el-form-item label="用户编号"><el-input v-model.number="form.userId" type="number" /></el-form-item><el-form-item label="课程编号"><el-input v-model.number="form.courseId" type="number" /></el-form-item><el-form-item label="处理服务器"><el-input v-model="form.agentId" /></el-form-item><el-form-item label="槽位编号"><el-input v-model.number="form.slotNumber" type="number" /></el-form-item><el-form-item label="标注模板"><el-input v-model="form.annotationTemplateId" /></el-form-item><el-form-item label="标注版本"><el-input v-model.number="form.annotationTemplateVersion" type="number" /></el-form-item><el-form-item label="编辑模板"><el-input v-model="form.editorTemplateId" /></el-form-item><el-form-item label="编辑版本"><el-input v-model.number="form.editorTemplateVersion" type="number" /></el-form-item></el-form><span slot="footer"><el-button @click="createDialog=false">取消</el-button><el-button type="primary" :loading="creating" @click="create">创建</el-button></span></el-dialog>
   </section>
 </template>
 
 <script>
-import { listAdminTrainingEnvironments, startAdminTrainingEnvironment, stopAdminTrainingEnvironment, restoreAdminTrainingEnvironment, deleteAdminTrainingEnvironment } from '@/api/TrainingEnvironments'
+import { listAdminTrainingEnvironments, createAdminTrainingEnvironment, startAdminTrainingEnvironment, stopAdminTrainingEnvironment, restoreAdminTrainingEnvironment, deleteAdminTrainingEnvironment } from '@/api/TrainingEnvironments'
 
 export default {
-  data: () => ({ loading: false, busyId: '', environments: [] }),
+  data: () => ({ loading: false, busyId: '', creating: false, createDialog: false, environments: [], form: { userId: null, courseId: null, agentId: '', slotNumber: null, annotationTemplateId: '', annotationTemplateVersion: null, editorTemplateId: '', editorTemplateVersion: null } }),
   created () { this.load() },
   methods: {
     async load () { this.loading = true; try { const result = await listAdminTrainingEnvironments(); this.environments = result.data || [] } finally { this.loading = false } },
+    async create () { this.creating = true; try { await createAdminTrainingEnvironment(this.form); this.createDialog = false; this.$message.success('实训环境创建任务已提交'); await this.load() } finally { this.creating = false } },
     async operate (row, action) { this.busyId = row.environmentId; try { const call = action === 'start' ? startAdminTrainingEnvironment : stopAdminTrainingEnvironment; await call(row.environmentId); this.$message.info('操作已提交，请等待处理服务器确认'); await this.load() } finally { this.busyId = '' } },
     async restore (row) { await this.$confirm('将重建两个容器，宿主机共享目录中的课程数据会保留。是否继续？', '确认还原', { type: 'warning' }); this.busyId = row.environmentId; try { await restoreAdminTrainingEnvironment(row.environmentId); this.$message.info('还原请求已提交，请等待处理服务器确认'); await this.load() } finally { this.busyId = '' } },
     async remove (row) { try { await this.$confirm('删除后将移除环境记录，是否继续？', '确认删除', { type: 'warning' }); await deleteAdminTrainingEnvironment(row.environmentId); this.$message.success('实训环境已删除'); await this.load() } catch (error) {} },
