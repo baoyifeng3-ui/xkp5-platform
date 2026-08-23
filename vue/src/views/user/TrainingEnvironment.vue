@@ -1,40 +1,9 @@
-<template>
-  <section class="module-page module-composed-page">
-    <header class="module-heading"><h1>实训环境</h1><p>选择课程环境并启动图像标注与代码编辑工作区。</p></header>
-    <ParticipantPreviewNotice v-if="previewOnly" />
-    <div class="module-table-wrap"><el-table v-loading="loading" :data="environments" empty-text="暂无已分配环境">
-      <el-table-column label="课程" min-width="100">
-        <template slot-scope="scope">{{ scope.row.courseLabel || scope.row.courseId }}</template>
-      </el-table-column>
-      <el-table-column prop="actualState" label="运行状态" min-width="120">
-        <template slot-scope="scope"><el-tag size="small" :type="tagType(scope.row.actualState)">{{ stateText(scope.row.actualState) }}</el-tag></template>
-      </el-table-column>
-      <el-table-column label="操作" width="140" align="right">
-        <template slot-scope="scope"><el-button type="primary" size="small" :loading="busyId === scope.row.environmentId" :disabled="previewOnly || isPending(scope.row)" @click="start(scope.row)">一键上课</el-button></template>
-      </el-table-column>
-    </el-table></div>
-  </section>
-</template>
-
+<template><section class="module-page module-composed-page"><header class="module-heading"><h1>实训环境</h1><p>启动课程环境并把课程资源发送到自己的容器。</p></header><ParticipantPreviewNotice v-if="previewOnly" /><div class="module-table-wrap"><el-table v-loading="loading" :data="environments" empty-text="暂无已分配环境"><el-table-column label="课程" min-width="100"><template slot-scope="s">{{ s.row.courseLabel || s.row.courseId }}</template></el-table-column><el-table-column prop="actualState" label="运行状态" min-width="110"><template slot-scope="s"><el-tag size="small" :type="tagType(s.row.actualState)">{{ stateText(s.row.actualState) }}</el-tag></template></el-table-column><el-table-column label="课程资源" min-width="240"><template slot-scope="s"><el-button v-for="resource in resourcesFor(s.row.courseId)" :key="resource.resourceId" size="mini" :disabled="previewOnly" :loading="sendingId===resource.resourceId" @click="send(resource,s.row)">{{ resource.name }}</el-button><span v-if="!resourcesFor(s.row.courseId).length">暂无资源</span></template></el-table-column><el-table-column label="操作" width="130" align="right"><template slot-scope="s"><el-button type="primary" size="small" :loading="busyId===s.row.environmentId" :disabled="previewOnly||isPending(s.row)" @click="start(s.row)">一键上课</el-button></template></el-table-column></el-table></div></section></template>
 <script>
 import { adminParticipantPreviewTrainingEnvironmentsApi, listUserTrainingEnvironments, startUserTrainingEnvironment } from '@/api/TrainingEnvironments'
+import { listUserCourses, deliverCourseResource } from '@/api/Courses'
 import ParticipantPreviewNotice from '@/components/ParticipantPreviewNotice.vue'
 import { getRole } from '@/utils/auth'
 const { isPreviewRoute } = require('@/services/participantPreview')
-
-export default {
-  components: { ParticipantPreviewNotice },
-  data: () => ({ loading: false, busyId: '', environments: [] }),
-  computed: {
-    previewOnly () { return isPreviewRoute(this.$route, getRole()) }
-  },
-  created () { this.load() },
-  methods: {
-    async load () { this.loading = true; try { const request = this.previewOnly ? adminParticipantPreviewTrainingEnvironmentsApi : listUserTrainingEnvironments; const result = await request(); const all = result.data || []; const courseId = this.$route.query && this.$route.query.courseId; this.environments = courseId ? all.filter(item => String(item.courseId) === String(courseId)) : all; if (courseId && !this.environments.length) this.$message.info('当前课程尚未分配实训环境') } finally { this.loading = false } },
-    async start (row) { if (this.previewOnly) return; this.busyId = row.environmentId; try { const result = await startUserTrainingEnvironment(row.environmentId); this.$message.info(result.data && result.data.state === 'SUCCEEDED' ? '环境已运行' : '启动请求已提交，请等待处理服务器确认'); await this.load() } finally { this.busyId = '' } },
-    isPending (row) { return ['CREATING', 'STARTING', 'STOPPING', 'RESTORING', 'WAITING_DEPENDENCY'].includes(row.actualState) },
-    stateText (state) { return ({ RUNNING: '运行中', STOPPED: '已停止', DEGRADED: '部分异常', ERROR: '异常', STARTING: '启动中', STOPPING: '停止中', RESTORING: '还原中', WAITING_DEPENDENCY: '等待切换' })[state] || state || '未知' },
-    tagType (state) { return state === 'RUNNING' ? 'success' : (state === 'ERROR' || state === 'DEGRADED' ? 'danger' : 'info') }
-  }
-}
+export default { components:{ParticipantPreviewNotice}, data:()=>({loading:false,busyId:'',sendingId:'',environments:[],courses:[]}), computed:{previewOnly(){return isPreviewRoute(this.$route,getRole())}}, created(){this.load();this.loadCourses()}, methods:{async load(){this.loading=true;try{const call=this.previewOnly?adminParticipantPreviewTrainingEnvironmentsApi:listUserTrainingEnvironments;const r=await call();const all=r.data||[];const id=this.$route.query&&this.$route.query.courseId;this.environments=id?all.filter(e=>String(e.courseId)===String(id)):all;if(id&&!this.environments.length)this.$message.info('当前课程尚未分配实训环境')}finally{this.loading=false}},async loadCourses(){const r=await listUserCourses();this.courses=r.data||[]},resourcesFor(courseId){const item=this.courses.find(c=>String(c.course.courseId)===String(courseId));return item?item.resources||[]:[]},async send(resource,environment){this.sendingId=resource.resourceId;try{await deliverCourseResource(resource.resourceId,environment.environmentId);this.$message.success('资源下发任务已提交')}finally{this.sendingId=''}},async start(row){if(this.previewOnly)return;this.busyId=row.environmentId;try{await startUserTrainingEnvironment(row.environmentId);await this.load()}finally{this.busyId=''}},isPending(r){return['CREATING','STARTING','STOPPING','RESTORING','WAITING_DEPENDENCY'].includes(r.actualState)},stateText(s){return({RUNNING:'运行中',STOPPED:'已停止',DEGRADED:'部分异常',ERROR:'异常',STARTING:'启动中',STOPPING:'停止中',RESTORING:'还原中',WAITING_DEPENDENCY:'等待切换'})[s]||s||'未知'},tagType(s){return s==='RUNNING'?'success':(s==='ERROR'||s==='DEGRADED'?'danger':'info')}} }
 </script>
