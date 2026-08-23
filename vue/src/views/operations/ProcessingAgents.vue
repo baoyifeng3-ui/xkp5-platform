@@ -20,10 +20,10 @@
         <el-table-column prop="resultMessage" label="结果" min-width="240" show-overflow-tooltip />
       </el-table></div>
     </section>
-    <el-dialog title="生成一次性注册码" :visible.sync="tokenDialog" width="460px" @closed="clearToken">
+    <el-dialog title="添加服务器（生成注册码）" :visible.sync="tokenDialog" width="460px" @closed="clearToken">
       <el-input v-model="label" placeholder="用途，例如：A 机房" maxlength="80" />
       <div v-if="issuedToken" class="issued-token"><code>{{ issuedToken }}</code><el-button icon="el-icon-document-copy" @click="copyToken">复制注册码</el-button></div><div v-if="issuedToken" class="registration-hint"><p>在目标服务器 Agent 中提交：</p><code>POST /agent/v1/register</code><pre>{{ registrationPayload }}</pre></div>
-      <span slot="footer"><el-button @click="tokenDialog = false">关闭</el-button><el-button type="primary" :loading="issuing" @click="issueToken">生成</el-button></span>
+      <span slot="footer"><el-button @click="tokenDialog = false">关闭</el-button><el-button type="primary" :loading="issuing" @click="issueToken">生成注册码并显示注册请求</el-button></span>
     </el-dialog>
     <RootTerminalDialog v-if="terminalVisible" :visible.sync="terminalVisible" :session="terminalSession" :agent-name="selected && (selected.displayName || selected.hostname)" @closed="terminalSession = null" /><el-dialog title="添加处理服务器" :visible.sync="helpDialog" width="560px"><p>1. 点击“生成注册码”创建一次性注册码。</p><p>2. 在目标服务器安装并启动 XKP Agent。</p><p>3. 使用注册码执行 Agent 注册命令，注册成功后服务器会自动出现在列表中。</p><p>注册码只负责首次注册，不能直接当作服务器地址或登录密码使用。</p></el-dialog>
   </section>
