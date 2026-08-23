@@ -5,6 +5,7 @@ const USER_BASE = '/user/training-environments'
 
 export const listAdminTrainingEnvironments = () => request.get(ADMIN_BASE)
 export const createAdminTrainingEnvironment = payload => request.post(ADMIN_BASE, payload)
+export const listAdminTrainingSlots = () => request.get(`${ADMIN_BASE}/slots`)
 export const startAdminTrainingEnvironment = id => request.post(`${ADMIN_BASE}/${id}/start`)
 export const stopAdminTrainingEnvironment = id => request.post(`${ADMIN_BASE}/${id}/stop`)
 export const restoreAdminTrainingEnvironment = id => request.post(`${ADMIN_BASE}/${id}/restore`)

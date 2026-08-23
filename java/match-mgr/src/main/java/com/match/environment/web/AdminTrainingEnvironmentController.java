@@ -3,6 +3,7 @@ package com.match.environment.web;
 import com.match.entity.User;
 import com.match.environment.service.EnvironmentOperationService;
 import com.match.environment.service.TrainingEnvironmentService;
+import com.match.environment.persistence.ProcessingEnvironmentSlotMapper;
 import com.match.environment.model.CreateTrainingEnvironmentRequest;
 import com.match.security.RoleGuard;
 import com.match.util.result.Response;
@@ -22,25 +23,34 @@ public class AdminTrainingEnvironmentController {
     private final RoleGuard roleGuard;
     private final EnvironmentOperationService operationService;
     private final TrainingEnvironmentService environmentService;
+    private final ProcessingEnvironmentSlotMapper slotMapper;
 
     public AdminTrainingEnvironmentController(RoleGuard roleGuard,
                                               EnvironmentOperationService operationService) {
-        this(roleGuard, operationService, null);
+        this(roleGuard, operationService, null, null);
     }
 
     @Autowired
     public AdminTrainingEnvironmentController(RoleGuard roleGuard,
                                               EnvironmentOperationService operationService,
-                                              TrainingEnvironmentService environmentService) {
+                                              TrainingEnvironmentService environmentService,
+                                              ProcessingEnvironmentSlotMapper slotMapper) {
         this.roleGuard = roleGuard;
         this.operationService = operationService;
         this.environmentService = environmentService;
+        this.slotMapper = slotMapper;
     }
 
     @GetMapping
     public ResponseResult<Object> list() {
         roleGuard.requireAnyAdmin();
         return Response.makeOKRsp(operationService.listAll());
+    }
+
+    @GetMapping("/slots")
+    public ResponseResult<Object> slots() {
+        roleGuard.requireAnyAdmin();
+        return Response.makeOKRsp(slotMapper == null ? java.util.Collections.emptyList() : slotMapper.selectAll());
     }
 
     @PostMapping
