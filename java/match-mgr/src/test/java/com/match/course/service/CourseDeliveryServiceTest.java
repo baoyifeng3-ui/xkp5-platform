@@ -66,4 +66,19 @@ public class CourseDeliveryServiceTest {
         assertTrue("SUCCEEDED".equals(delivery.getState()));
         verify(deliveries).updateById(delivery);
     }
+
+    @Test
+    public void commandFailureMovesDeliveryToFailedWithReason() {
+        com.match.course.persistence.CourseDeliveryRecord delivery = new com.match.course.persistence.CourseDeliveryRecord();
+        delivery.setDeliveryId("delivery-2");
+        delivery.setCommandId("command-2");
+        delivery.setState("DISPATCHED");
+        when(deliveries.selectByCommandId("command-2")).thenReturn(delivery);
+        service.onCommandFinished(new AgentCommandFinishedEvent("command-2", "agent-1",
+                "DELIVER_COURSE_RESOURCE", false, "RESOURCE_COPY_FAILED", "disk full"));
+        assertTrue("FAILED".equals(delivery.getState()));
+        assertTrue("RESOURCE_COPY_FAILED".equals(delivery.getFailureCode()));
+        assertTrue("disk full".equals(delivery.getFailureMessage()));
+        verify(deliveries).updateById(delivery);
+    }
 }
