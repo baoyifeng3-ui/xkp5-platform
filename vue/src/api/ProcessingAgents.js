@@ -10,7 +10,7 @@ export const listProcessingAgentCommands = id => request.get(`${ADMIN_BASE}/${id
 export const wakeProcessingAgent = id => request.post(`${ADMIN_BASE}/${id}/wake`)
 export const shutdownProcessingAgent = id => request.post(`${ADMIN_BASE}/${id}/shutdown`)
 export const listRegistrationTokens = () => request.get(`${SUPER_BASE}/registration-tokens`)
-export const createRegistrationToken = data => request.post(`${SUPER_BASE}/registration-tokens`, data)
+export const createRegistrationToken = data => request.post(`${SUPER_BASE}/registration-tokens`, data, { headers: { 'Content-Type': 'application/json' } })
 export const enableProcessingAgent = id => request.post(`${SUPER_BASE}/${id}/enable`)
 export const disableProcessingAgent = id => request.post(`${SUPER_BASE}/${id}/disable`)
 export const removeProcessingAgent = id => request.delete(`${SUPER_BASE}/${id}`)
