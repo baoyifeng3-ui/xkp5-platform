@@ -419,6 +419,16 @@ public class AgentCommandServiceTest {
     }
 
     @Test
+    public void normalUserCanDispatchCourseResourceDelivery() {
+        service.requestEnvironmentCommand(agent, "DELIVER_COURSE_RESOURCE", "{}",
+                21, "USER", "environment-1:RESOURCE:resource-1:digest");
+        ArgumentCaptor<ProcessingAgentCommandRecord> saved =
+                ArgumentCaptor.forClass(ProcessingAgentCommandRecord.class);
+        verify(mapper).insert(saved.capture());
+        assertEquals("DELIVER_COURSE_RESOURCE", saved.getValue().getCommandType());
+    }
+
+    @Test
     public void superAdminCanDispatchTaskFourCompetitionEnvironmentCommands() {
         for (String type : Arrays.asList("CREATE_COMPETITION_ENVIRONMENT",
                 "START_COMPETITION_ENVIRONMENT", "STOP_COMPETITION_ENVIRONMENT",
