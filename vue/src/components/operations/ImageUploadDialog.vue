@@ -136,6 +136,7 @@ export default {
         if (this.uploadId) {
           try { status = valueOf(await getImageUploadStatus(this.uploadId)) } catch (error) { this.uploadId = ''; localStorage.removeItem(this.resumeKey()) }
         }
+        if (status && status.state === 'PENDING_REVIEW') { this.finishUploaded(); return }
         if (!this.uploadId) {
           status = valueOf(await createImageUpload({
             groupId: this.form.groupId,
@@ -158,16 +159,19 @@ export default {
           const start = index * CHUNK_SIZE
           const chunk = this.file.slice(start, Math.min(start + CHUNK_SIZE, this.file.size))
           const checksum = await this.chunkHash(chunk)
-          const chunkResult = await this.uploadChunkWithRetry(index, chunk, checksum, start)
+          let chunkResult
+          try {
+            chunkResult = await this.uploadChunkWithRetry(index, chunk, checksum, start)
+          } catch (error) {
+            const recovered = valueOf(await getImageUploadStatus(this.uploadId).catch(() => null))
+            if (recovered && recovered.state === 'PENDING_REVIEW') { this.finishUploaded(); return }
+            throw error
+          }
           this.receivedBytes = Number(chunkResult.receivedBytes || start + chunk.size)
           this.progress = Math.min(99, Math.round(this.receivedBytes / this.file.size * 100))
         }
         await completeImageUpload(this.uploadId)
-        this.progress = 100
-        localStorage.removeItem(this.resumeKey())
-        this.$message.success('镜像归档已上传，等待超级管理员审批')
-        this.$emit('uploaded')
-        this.close(true)
+        this.finishUploaded()
       } finally { this.uploading = false }
     },
     validate () {
@@ -200,6 +204,13 @@ export default {
       this.retrying = false
       this.retryAttempt = 0
       throw lastError
+    },
+    finishUploaded () {
+      this.progress = 100
+      localStorage.removeItem(this.resumeKey())
+      this.$message.success('镜像归档已上传，等待超级管理员审批')
+      this.$emit('uploaded')
+      this.close(true)
     },
     async discardResume () { if (this.uploadId) { await cancelImageUpload(this.uploadId); localStorage.removeItem(this.resumeKey()) } this.uploadId = ''; this.receivedBytes = 0; this.progress = 0; this.retrying = false; this.retryAttempt = 0 },
     close (force = false) { if (this.uploading && !force) return; this.$emit('update:visible', false) },

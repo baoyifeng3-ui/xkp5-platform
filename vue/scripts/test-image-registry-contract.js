@@ -48,6 +48,8 @@ assert.ok(upload.includes('receivedBytes'), 'resume progress must use server rec
 assert.ok(upload.includes('uploadChunkWithRetry'), 'chunk uploads must retry transient failures')
 assert.ok(upload.includes('MAX_CHUNK_RETRIES'), 'chunk retry limit must be bounded')
 assert.ok(upload.includes('重试'), 'chunk retry state must be visible')
+assert.ok(upload.includes("state === 'PENDING_REVIEW'"), 'resume must recognize completed uploads')
+assert.ok(upload.includes('finishUploaded'), 'completed resume must close successfully')
 assert.ok(upload.includes('crypto.subtle.digest'), 'each chunk must have a SHA-256 checksum')
 assert.ok(upload.includes('hashing'), 'archive hash calculation state must be visible')
 assert.ok(upload.includes('hashComputed'), 'archive hash must be calculated before upload')
