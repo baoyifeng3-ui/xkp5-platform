@@ -23,7 +23,7 @@ export const uploadImageChunk = (uploadId, chunkIndex, chunk, checksum, onUpload
 }
 export const completeImageUpload = uploadId => request.post(`${UPLOADS}/${uploadId}/complete`)
 export const cancelImageUpload = uploadId => request.post(`${UPLOADS}/${uploadId}/cancel`)
-export const reviewImageArtifact = (artifactId, decision, reason = '') => request.post(`${ARTIFACTS}/${artifactId}/review`, { decision, reason })
+export const reviewImageArtifact = (artifactId, decision, reason = '') => request.post(`${ARTIFACTS}/${artifactId}/review`, { decision, reason }, { headers: { 'Content-Type': 'application/json' } })
 
 export const publishImageRelease = artifactId => request.post(`${RELEASES}/publish/${artifactId}`)
 export const deployImageRelease = (releaseId, data) => request.post(`${RELEASES}/${releaseId}/deploy`, data)

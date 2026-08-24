@@ -27,6 +27,7 @@ assert.ok(service.includes('getImageUploadStatus'), 'service must retrieve resum
 assert.ok(service.includes('uploadImageChunk'), 'service must upload individual chunks')
 assert.ok(service.includes('X-Chunk-SHA256'), 'chunk checksums must be sent')
 assert.ok(service.includes('reviewImageArtifact'), 'service must support review')
+assert.ok(service.includes("reviewImageArtifact = (artifactId, decision, reason = '') => request.post") && service.includes("'Content-Type': 'application/json'"), 'review must use JSON')
 assert.ok(service.includes('publishImageRelease'), 'service must publish immutable releases')
 assert.ok(service.includes('deployImageRelease'), 'service must deploy releases')
 assert.ok(service.includes('rollbackImageDeployment'), 'service must support rollback')
