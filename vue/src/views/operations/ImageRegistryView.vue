@@ -11,7 +11,7 @@
       <el-tab-pane label="镜像目录" name="catalog">
         <div v-loading="loading" class="catalog">
           <section v-for="group in filteredGroups" :key="group.groupId" class="group-section">
-            <header><div><strong>{{ group.name || group.groupName || group.groupId }}</strong><span>{{ group.groupType === 'CUSTOM' ? '自定义组合' : '标准镜像组' }}</span></div><small>{{ artifactsFor(group.groupId).length }} 个版本</small></header>
+            <header><div><strong>{{ group.name || group.groupName || group.groupId }}</strong><span>{{ group.groupType === 'PENDING' ? '待审批归档' : group.groupType === 'CUSTOM' ? '自定义组合' : '标准镜像组' }}</span></div><small>{{ artifactsFor(group.groupId).length }} 个版本</small></header>
             <div class="module-table-wrap"><el-table :data="artifactsFor(group.groupId)" size="small" empty-text="该组暂无镜像">
               <el-table-column label="组件" width="105"><template slot-scope="scope"><el-tag size="small" effect="plain">{{ componentLabel(scope.row.componentType) }}</el-tag></template></el-table-column>
               <el-table-column prop="version" label="版本" width="115" />
@@ -70,7 +70,12 @@ export default {
   data: () => ({ activeTab: 'catalog', query: '', componentFilter: '', loading: false, groups: [], artifacts: [], releases: [], deployments: [], uploadVisible: false, deploymentVisible: false, selectedRelease: null, poller: null }),
   computed: {
     canWrite () { return getRole() === SUPER_ADMIN },
-    filteredGroups () { const ids = new Set(this.filteredArtifacts.map(item => item.groupId)); const term = this.query.toLowerCase(); return this.groups.filter(group => ids.has(group.groupId) || !term && !this.componentFilter || `${group.name || ''} ${group.groupName || ''} ${group.groupId || ''}`.toLowerCase().includes(term)) },
+    displayGroups () {
+      const known = new Set(this.groups.map(group => group.groupId))
+      const pendingGroups = this.filteredArtifacts.filter(item => !known.has(item.groupId)).map(item => ({ groupId: item.groupId, name: item.groupId, groupType: 'PENDING' }))
+      return this.groups.concat(pendingGroups.filter((group, index, list) => list.findIndex(item => item.groupId === group.groupId) === index))
+    },
+    filteredGroups () { const ids = new Set(this.filteredArtifacts.map(item => item.groupId)); const term = this.query.toLowerCase(); return this.displayGroups.filter(group => ids.has(group.groupId) || !term && !this.componentFilter || `${group.name || ''} ${group.groupName || ''} ${group.groupId || ''}`.toLowerCase().includes(term)) },
     filteredArtifacts () { const term = this.query.toLowerCase(); return this.artifacts.filter(item => (!this.componentFilter || item.componentType === this.componentFilter) && (!term || `${item.version || ''} ${item.registryDigest || ''} ${item.originalFilename || ''} ${item.groupId || ''}`.toLowerCase().includes(term))) },
     filteredReleases () { const term = this.query.toLowerCase(); return this.releases.filter(item => (!this.componentFilter || item.componentType === this.componentFilter) && (!term || `${item.version || ''} ${item.registryDigest || ''} ${item.groupId || ''}`.toLowerCase().includes(term))) },
     filteredDeployments () { const term = this.query.toLowerCase(); return this.deployments.filter(item => (!this.componentFilter || item.componentType === this.componentFilter) && (!term || `${item.agentName || ''} ${item.agentId || ''} ${item.targetDigest || ''}`.toLowerCase().includes(term))) }
