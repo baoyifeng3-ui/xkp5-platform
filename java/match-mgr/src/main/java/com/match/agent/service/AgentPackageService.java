@@ -34,8 +34,17 @@ public class AgentPackageService {
 
     public PackageArtifact build(Integer actorUserId, AgentPackageRequest request) {
         validate(request);
-        if (!Files.isRegularFile(packageRoot.resolve("dist/xkp-agent-linux-amd64"))) {
+        Path binary = packageRoot.resolve("dist/xkp-agent-linux-amd64");
+        if (!Files.isRegularFile(binary)) {
             throw new IllegalArgumentException("Agent Linux 二进制不存在，请先配置 Agent 部署包目录");
+        }
+        try {
+            String binarySignature = new String(Files.readAllBytes(binary), StandardCharsets.ISO_8859_1);
+            if (binarySignature.contains("GLIBC_2.32") || binarySignature.contains("GLIBC_2.34")) {
+                throw new IllegalArgumentException("Agent 二进制需要过高 glibc，请使用 deploy/build-linux.sh 重新构建静态版本");
+            }
+        } catch (IOException exception) {
+            throw new IllegalStateException("Agent 二进制检查失败", exception);
         }
         if (!Files.isRegularFile(caFile)) {
             throw new IllegalArgumentException("Agent CA 证书不存在，请先配置管理平台 Agent CA");
@@ -49,6 +58,7 @@ public class AgentPackageService {
             addFile(gzip, "dist/xkp-agent-linux-amd64", packageRoot.resolve("dist/xkp-agent-linux-amd64"), 0755);
             addFile(gzip, "deploy/install.sh", packageRoot.resolve("deploy/install.sh"), 0755);
             addFile(gzip, "deploy/one-click-install.sh", packageRoot.resolve("deploy/one-click-install.sh"), 0755);
+            addFile(gzip, "deploy/build-linux.sh", packageRoot.resolve("deploy/build-linux.sh"), 0755);
             addFile(gzip, "deploy/verify.sh", packageRoot.resolve("deploy/verify.sh"), 0755);
             addFile(gzip, "deploy/xkp-agent-power.rules", packageRoot.resolve("deploy/xkp-agent-power.rules"), 0644);
             addFile(gzip, "deploy/xkp-agent.service", packageRoot.resolve("deploy/xkp-agent.service"), 0644);
