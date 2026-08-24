@@ -60,7 +60,7 @@ service.interceptors.response.use(
         if (error.code === 'ECONNABORTED') {
             message = '请求超时，请检查后端服务'
         } else if (!error.response) {
-            message = '无法连接后端服务，请确认 localhost:19141 已启动'
+            message = '无法连接后端服务，请确认当前平台后端服务已启动'
         } else if (error.response.status === 401) {
             handleUnauthorized(error.response.data)
             return Promise.reject(error)
