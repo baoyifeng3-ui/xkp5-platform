@@ -45,6 +45,9 @@ assert.ok(upload.includes('getImageUploadStatus'), 'upload dialog must resume fr
 assert.ok(upload.includes('localStorage'), 'unfinished upload identity must survive a reload')
 assert.ok(upload.includes('receivedBytes'), 'resume progress must use server received bytes')
 assert.ok(upload.includes('crypto.subtle.digest'), 'each chunk must have a SHA-256 checksum')
+assert.ok(upload.includes('hashing'), 'archive hash calculation state must be visible')
+assert.ok(upload.includes('hashComputed'), 'archive hash must be calculated before upload')
+assert.ok(upload.includes('正在计算 SHA-256'), 'archive hash progress must be visible')
 
 assert.ok(deployment.includes('listProcessingAgents'), 'deployment must select target Agents')
 assert.ok(deployment.includes("updatePolicy: 'UPDATE_CONTAINERS'"), 'container update must be the default')

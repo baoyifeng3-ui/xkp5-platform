@@ -6,7 +6,7 @@
       <el-form-item label="组件"><el-radio-group v-model="form.componentType" :disabled="uploading"><el-radio-button label="ANNOTATION">图像标注</el-radio-button><el-radio-button label="EDITOR">代码编辑</el-radio-button></el-radio-group></el-form-item>
       <el-form-item label="版本"><el-input v-model.trim="form.version" placeholder="例如 2026.08.1" :disabled="uploading" /></el-form-item>
       <el-form-item label="仓库名称"><el-input v-model.trim="form.imageRepository" placeholder="例如 xkp/annotation" :disabled="uploading" /></el-form-item>
-      <el-form-item label="归档 SHA-256"><el-input v-model.trim="form.expectedSha256" maxlength="64" placeholder="64 位小写 SHA-256" :disabled="uploading" /></el-form-item>
+      <el-form-item label="归档 SHA-256"><el-input v-model.trim="form.expectedSha256" maxlength="64" placeholder="选择文件后自动生成" :disabled="uploading || hashing" /><small class="hash-status" :class="{ 'is-ready': hashComputed }">{{ hashStatus }}</small></el-form-item>
       <el-form-item label="归档文件">
         <input ref="file" class="native-file" type="file" accept=".tar,.gz,.tgz,application/x-tar,application/gzip" :disabled="uploading" @change="selectFile">
         <el-button icon="el-icon-folder-opened" :disabled="uploading" @click="$refs.file.click()">选择文件</el-button><span class="file-name">{{ file ? `${file.name} · ${formatBytes(file.size)}` : '尚未选择' }}</span>
@@ -14,7 +14,7 @@
       <el-form-item v-if="uploadId" label="断点状态"><span>{{ uploadId }}</span><el-button type="text" :disabled="uploading" @click="discardResume">放弃并重建</el-button></el-form-item>
       <el-form-item v-if="uploading || progress" label="上传进度"><el-progress :percentage="progress" :status="progress === 100 ? 'success' : undefined" /><small>{{ formatBytes(receivedBytes) }} / {{ file ? formatBytes(file.size) : '--' }}</small></el-form-item>
     </el-form>
-    <span slot="footer"><el-button :disabled="uploading" @click="close">取消</el-button><el-button type="primary" :loading="uploading" @click="start">{{ uploadId ? '继续上传' : '开始上传' }}</el-button></span>
+    <span slot="footer"><el-button :disabled="uploading || hashing" @click="close">取消</el-button><el-button type="primary" :loading="uploading" :disabled="hashing || !hashComputed" @click="start">{{ uploadId ? '继续上传' : '开始上传' }}</el-button></span>
   </el-dialog>
 </template>
 
@@ -30,16 +30,39 @@ function hex (buffer) { return Array.from(new Uint8Array(buffer)).map(value => v
 export default {
   name: 'ImageUploadDialog',
   props: { visible: Boolean },
-  data: () => ({ file: null, uploadId: '', receivedBytes: 0, progress: 0, uploading: false, form: { groupId: '', componentType: 'ANNOTATION', version: '', imageRepository: '', expectedSha256: '' } }),
+  data: () => ({ file: null, uploadId: '', receivedBytes: 0, progress: 0, uploading: false, hashing: false, hashComputed: false, form: { groupId: '', componentType: 'ANNOTATION', version: '', imageRepository: '', expectedSha256: '' } }),
+  computed: {
+    hashStatus () {
+      if (this.hashing) return '正在计算 SHA-256...'
+      if (this.hashComputed) return '已自动计算，可直接上传'
+      return this.file ? '等待计算' : '请选择归档文件'
+    }
+  },
   methods: {
-    selectFile (event) {
+    async selectFile (event) {
       this.file = event.target.files[0] || null
       this.uploadId = ''
       this.receivedBytes = 0
       this.progress = 0
+      this.form.expectedSha256 = ''
+      this.hashComputed = false
       if (!this.file) return
       const stored = localStorage.getItem(this.resumeKey())
       if (stored) this.uploadId = stored
+      await this.computeFileHash()
+    },
+    async computeFileHash () {
+      if (!this.file) return
+      this.hashing = true
+      try {
+        if (!window.crypto || !window.crypto.subtle) throw new Error('Web Crypto unavailable')
+        const digest = await window.crypto.subtle.digest('SHA-256', await this.file.arrayBuffer())
+        this.form.expectedSha256 = hex(digest)
+        this.hashComputed = true
+      } catch (error) {
+        this.hashComputed = false
+        this.$message.error('无法自动计算 SHA-256，请使用 HTTPS 或 localhost 访问平台')
+      } finally { this.hashing = false }
     },
     resumeKey () { return `${RESUME_KEY}${this.file ? `${this.file.name}:${this.file.size}:${this.file.lastModified}` : ''}` },
     async start () {
@@ -89,8 +112,8 @@ export default {
     },
     validate () {
       const validFile = this.file && /\.(tar|tar\.gz|tgz)$/i.test(this.file.name)
-      if (!this.form.groupId || !this.form.version || !this.form.imageRepository || !/^[0-9a-f]{64}$/.test(this.form.expectedSha256) || !validFile) {
-        this.$message.warning('请完整填写信息，归档需为 tar/tar.gz 且 SHA-256 为 64 位小写字符')
+      if (!this.form.groupId || !this.form.version || !this.form.imageRepository || !this.hashComputed || !/^[0-9a-f]{64}$/.test(this.form.expectedSha256) || !validFile) {
+        this.$message.warning('请完整填写信息并选择归档文件，SHA-256 会自动生成')
         return false
       }
       return true
@@ -108,4 +131,6 @@ export default {
 .file-name { margin-left: 12px; color: #687986; }
 .el-progress { width: calc(100% - 90px); display: inline-block; vertical-align: middle; }
 .el-form-item small { margin-left: 10px; color: #7a8995; }
+.hash-status { display: block; margin: 5px 0 0 !important; }
+.hash-status.is-ready { color: #35a87c; }
 </style>

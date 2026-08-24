@@ -32,14 +32,14 @@ public class SuperAdminContainerTemplateController {
     }
 
     @PostMapping("/{templateId}/versions/{version}/disable")
-    public ResponseResult<Object> disable(@PathVariable String templateId, @PathVariable int version) {
+    public ResponseResult<Object> disable(@PathVariable("templateId") String templateId, @PathVariable("version") int version) {
         User actor = roleGuard.requireSuperAdmin();
         templateService.disable(templateId, version, actor.getUserId());
         return Response.makeOKRsp(null);
     }
 
     @org.springframework.web.bind.annotation.DeleteMapping("/{templateId}/versions/{version}")
-    public ResponseResult<Object> delete(@PathVariable String templateId, @PathVariable int version) {
+    public ResponseResult<Object> delete(@PathVariable("templateId") String templateId, @PathVariable("version") int version) {
         User actor = roleGuard.requireSuperAdmin();
         templateService.delete(templateId, version, actor.getUserId());
         return Response.makeOKRsp(null);
@@ -52,7 +52,7 @@ public class SuperAdminContainerTemplateController {
     }
 
     @GetMapping("/{templateId}/versions")
-    public ResponseResult<Object> versions(@PathVariable String templateId) {
+    public ResponseResult<Object> versions(@PathVariable("templateId") String templateId) {
         roleGuard.requireSuperAdmin();
         return Response.makeOKRsp(templateService.versions(templateId));
     }
