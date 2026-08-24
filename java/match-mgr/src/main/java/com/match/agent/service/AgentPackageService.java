@@ -50,6 +50,8 @@ public class AgentPackageService {
             addFile(gzip, "deploy/install.sh", packageRoot.resolve("deploy/install.sh"), 0755);
             addFile(gzip, "deploy/one-click-install.sh", packageRoot.resolve("deploy/one-click-install.sh"), 0755);
             addFile(gzip, "deploy/verify.sh", packageRoot.resolve("deploy/verify.sh"), 0755);
+            addFile(gzip, "deploy/xkp-agent-power.rules", packageRoot.resolve("deploy/xkp-agent-power.rules"), 0644);
+            addFile(gzip, "deploy/xkp-agent.service", packageRoot.resolve("deploy/xkp-agent.service"), 0644);
             addFile(gzip, "deploy/ca.crt", caFile, 0644);
             addText(gzip, "install-server.sh", wrapper(token.getToken(), displayName, workspace), 0755);
             addText(gzip, "INSTALL.txt", instructions(displayName, request.getServerIp()), 0644);
