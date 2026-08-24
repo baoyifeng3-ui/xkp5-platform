@@ -68,7 +68,7 @@ public class AgentPackageService {
                 + "  command -v apt-get >/dev/null || { echo 'ERROR: apt-get is required to install polkit' >&2; exit 1; }\n"
                 + "  apt-get update\n"
                 + "  DEBIAN_FRONTEND=noninteractive apt-get install -y policykit-1\n"
-                + "  if apt-cache show polkitd >/dev/null 2>&1; then DEBIAN_FRONTEND=noninteractive apt-get install -y polkitd; fi\n"
+                + "  if apt-cache show polkitd 2>/dev/null | grep -q '^Package: polkitd$'; then DEBIAN_FRONTEND=noninteractive apt-get install -y polkitd; fi\n"
                 + "  install -d -m 0755 /etc/polkit-1/rules.d\n"
                 + "fi\n"
                 + "exec bash deploy/install.sh --binary dist/xkp-agent-linux-amd64 "
