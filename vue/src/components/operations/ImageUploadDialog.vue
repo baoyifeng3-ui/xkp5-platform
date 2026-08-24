@@ -86,7 +86,7 @@ export default {
   data: () => ({ file: null, uploadId: '', receivedBytes: 0, progress: 0, uploading: false, hashing: false, hashComputed: false, form: { groupId: '', componentType: 'ANNOTATION', version: '', imageRepository: '', expectedSha256: '' } }),
   computed: {
     hashStatus () {
-      if (this.hashing) return '正在计算 SHA-256...'
+      if (this.hashing) return this.file && this.file.size > 64 * 1024 * 1024 ? '正在分块计算 SHA-256...' : '正在计算 SHA-256...'
       if (this.hashComputed) return '已自动计算，可直接上传'
       return this.file ? '等待计算' : '请选择归档文件'
     }
@@ -108,7 +108,7 @@ export default {
       if (!this.file) return
       this.hashing = true
       try {
-        if (window.crypto && window.crypto.subtle) {
+        if (this.file.size <= 64 * 1024 * 1024 && window.crypto && window.crypto.subtle) {
           this.form.expectedSha256 = hex(await window.crypto.subtle.digest('SHA-256', await readBuffer(this.file)))
         } else {
           const sha = new Sha256()
