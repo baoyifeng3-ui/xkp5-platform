@@ -26,6 +26,10 @@ const RESUME_KEY = 'xkp:image-upload:'
 
 function valueOf (result) { return result && result.data !== undefined ? result.data : result }
 function hex (buffer) { return Array.from(new Uint8Array(buffer)).map(value => value.toString(16).padStart(2, '0')).join('') }
+function readBuffer (blob) {
+  if (blob && typeof blob.arrayBuffer === 'function') return blob.arrayBuffer()
+  return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(reader.error || new Error('文件读取失败')); reader.readAsArrayBuffer(blob) })
+}
 const SHA256_K = [
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
   0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
@@ -100,21 +104,21 @@ export default {
       this.hashing = true
       try {
         if (window.crypto && window.crypto.subtle) {
-          this.form.expectedSha256 = hex(await window.crypto.subtle.digest('SHA-256', await this.file.arrayBuffer()))
+          this.form.expectedSha256 = hex(await window.crypto.subtle.digest('SHA-256', await readBuffer(this.file)))
         } else {
           const sha = new Sha256()
-          for (let offset = 0; offset < this.file.size; offset += CHUNK_SIZE) sha.update(await this.file.slice(offset, Math.min(offset + CHUNK_SIZE, this.file.size)).arrayBuffer())
+          for (let offset = 0; offset < this.file.size; offset += CHUNK_SIZE) sha.update(await readBuffer(this.file.slice(offset, Math.min(offset + CHUNK_SIZE, this.file.size))))
           this.form.expectedSha256 = hex(sha.digest())
         }
         this.hashComputed = true
       } catch (error) {
         this.hashComputed = false
-        this.$message.error('无法自动计算 SHA-256，请检查文件或浏览器权限')
+        this.$message.error(`无法自动计算 SHA-256：${error.message || '文件读取失败'}`)
       } finally { this.hashing = false }
     },
     async chunkHash (chunk) {
-      if (window.crypto && window.crypto.subtle) return hex(await window.crypto.subtle.digest('SHA-256', await chunk.arrayBuffer()))
-      const sha = new Sha256(); sha.update(await chunk.arrayBuffer()); return hex(sha.digest())
+      if (window.crypto && window.crypto.subtle) return hex(await window.crypto.subtle.digest('SHA-256', await readBuffer(chunk)))
+      const sha = new Sha256(); sha.update(await readBuffer(chunk)); return hex(sha.digest())
     },
     resumeKey () { return `${RESUME_KEY}${this.file ? `${this.file.name}:${this.file.size}:${this.file.lastModified}` : ''}` },
     async start () {
