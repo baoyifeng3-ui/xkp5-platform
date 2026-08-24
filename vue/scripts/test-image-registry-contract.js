@@ -22,6 +22,7 @@ assert.ok(navigation.includes('/operations/image-registry'), 'operations navigat
 assert.ok(!navigation.includes("route: '/course-platform/image-registry'"), 'participant navigation must not expose registry')
 
 assert.ok(service.includes('createImageUpload'), 'service must create resumable uploads')
+assert.ok(service.includes("Content-Type': 'application/json'"), 'upload creation must use JSON')
 assert.ok(service.includes('getImageUploadStatus'), 'service must retrieve resumable upload status')
 assert.ok(service.includes('uploadImageChunk'), 'service must upload individual chunks')
 assert.ok(service.includes('X-Chunk-SHA256'), 'chunk checksums must be sent')
