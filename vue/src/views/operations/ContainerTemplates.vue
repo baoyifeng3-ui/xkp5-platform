@@ -8,7 +8,7 @@
       <el-table-column prop="templateVersion" label="版本" width="80" />
       <el-table-column label="GPU 算力" width="100"><template slot-scope="scope">{{ scope.row.gpuEnabled ? `${scope.row.gpuComputePercent}%` : '-' }}</template></el-table-column>
       <el-table-column label="状态" width="90"><template slot-scope="scope"><el-tag size="small" :type="scope.row.enabled ? 'success' : 'info'">{{ scope.row.enabled ? '可用' : '停用' }}</el-tag></template></el-table-column>
-      <el-table-column label="操作" width="180" align="right"><template slot-scope="scope"><el-button size="small" @click="edit(scope.row)">发布新版本</el-button><el-button v-if="scope.row.enabled" size="small" type="danger" @click="disable(scope.row)">删除/停用</el-button></template></el-table-column>
+      <el-table-column label="操作" width="245" align="right"><template slot-scope="scope"><el-button size="small" @click="edit(scope.row)">发布新版本</el-button><el-button v-if="scope.row.enabled" size="small" type="danger" @click="disable(scope.row)">停用</el-button><el-button size="small" type="danger" plain @click="remove(scope.row)">删除</el-button></template></el-table-column>
     </el-table></div>
 
     <el-dialog title="发布容器模板" :visible.sync="dialog" width="620px">
@@ -28,7 +28,7 @@
 </template>
 
 <script>
-import { listContainerTemplates, publishContainerTemplate, disableContainerTemplate } from '@/api/ContainerTemplates'
+import { listContainerTemplates, publishContainerTemplate, disableContainerTemplate, deleteContainerTemplate } from '@/api/ContainerTemplates'
 
 const GiB = 1024 * 1024 * 1024
 export default {
@@ -40,7 +40,8 @@ export default {
     edit (row) { this.form = Object.assign({}, row, { templateVersion: null }); this.portsText = (row.ports || []).map(p => p.containerPort).join(',') || '8080'; this.memoryGiB = Math.max(1, Math.round((row.memoryLimitBytes || GiB * 2) / GiB)); this.dialog = true },
     applyBoundary (type) { const editor = type === 'EDITOR'; this.form.runtimeName = editor ? 'nvidia' : 'sysbox-runc'; this.form.mountTarget = editor ? '/home/student/data' : '/root/data'; this.form.gpuEnabled = editor; this.portsText = editor ? '9091,8881,5000' : '8081'; this.memoryGiB = editor ? 6 : 2 },
     async publish () { const ports = this.portsText.split(',').map(value => Number(value.trim())).filter(Boolean).map(containerPort => ({ containerPort, protocol: 'tcp' })); const payload = { ...this.form, ports, memoryLimitBytes: this.memoryGiB * GiB }; if (!payload.gpuEnabled) { payload.gpuComputePercent = null; payload.gpuMemoryLimitBytes = null } this.publishing = true; try { await publishContainerTemplate(payload); this.$message.success('模板版本已发布'); this.dialog = false; await this.load() } finally { this.publishing = false } },
-    async disable (row) { await this.$confirm('停用后不能再分配给新环境，已有环境仍使用固定版本。', '确认停用', { type: 'warning' }); await disableContainerTemplate(row.templateId, row.templateVersion); await this.load() }
+    async disable (row) { await this.$confirm('停用后不能再分配给新环境，已有环境仍使用固定版本。', '确认停用', { type: 'warning' }); await disableContainerTemplate(row.templateId, row.templateVersion); await this.load() },
+    async remove (row) { await this.$confirm('仅删除未被任何训练或比赛环境引用的模板版本，确认继续？', '确认删除', { type: 'warning' }); try { await deleteContainerTemplate(row.templateId, row.templateVersion); this.$message.success('模板版本已删除'); await this.load() } catch (error) {} }
   }
 }
 </script>

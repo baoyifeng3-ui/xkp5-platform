@@ -104,6 +104,22 @@ public class ContainerTemplateService {
         mapper.updateById(record);
     }
 
+    @Transactional
+    public void delete(String templateId, int version, int actorUserId) {
+        licenseGuard.requireActive();
+        String normalizedId = requireId(templateId);
+        int normalizedVersion = requireVersion(version);
+        ContainerTemplateRecord record = mapper.selectVersion(normalizedId, normalizedVersion);
+        if (record == null) {
+            throw new IllegalArgumentException("容器模板版本不存在");
+        }
+        if (mapper.countTrainingReferences(normalizedId, normalizedVersion) > 0
+                || mapper.countCompetitionReferences(normalizedId, normalizedVersion) > 0) {
+            throw new IllegalArgumentException("模板版本已被环境引用，只能停用，不能删除");
+        }
+        mapper.deleteById(record.getTemplateVersionId());
+    }
+
     @Transactional(readOnly = true)
     public ContainerTemplateRecord requireEnabledVersion(String templateId, int version,
                                                           String componentType) {

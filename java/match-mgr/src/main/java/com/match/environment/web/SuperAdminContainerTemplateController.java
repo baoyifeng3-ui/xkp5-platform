@@ -38,6 +38,13 @@ public class SuperAdminContainerTemplateController {
         return Response.makeOKRsp(null);
     }
 
+    @org.springframework.web.bind.annotation.DeleteMapping("/{templateId}/versions/{version}")
+    public ResponseResult<Object> delete(@PathVariable String templateId, @PathVariable int version) {
+        User actor = roleGuard.requireSuperAdmin();
+        templateService.delete(templateId, version, actor.getUserId());
+        return Response.makeOKRsp(null);
+    }
+
     @GetMapping
     public ResponseResult<Object> list() {
         roleGuard.requireSuperAdmin();
