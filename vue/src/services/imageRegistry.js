@@ -10,7 +10,7 @@ export const listImageArtifacts = params => request.get(ARTIFACTS, { params })
 export const listImageReleases = params => request.get(RELEASES, { params })
 export const listImageDeployments = params => request.get(`${RELEASES}/deployments`, { params })
 
-export const createImageUpload = data => request.post(UPLOADS, data, { headers: { 'Content-Type': 'application/json' } })
+export const createImageUpload = data => request.post(UPLOADS, data, { silentError: true, headers: { 'Content-Type': 'application/json' } })
 export const getImageUploadStatus = uploadId => request.get(`${UPLOADS}/${uploadId}`)
 export const uploadImageChunk = (uploadId, chunkIndex, chunk, checksum, onUploadProgress) => {
   const data = new FormData()

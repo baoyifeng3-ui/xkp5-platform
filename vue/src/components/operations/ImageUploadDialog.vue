@@ -138,17 +138,26 @@ export default {
         }
         if (status && status.state === 'PENDING_REVIEW') { this.finishUploaded(); return }
         if (!this.uploadId) {
-          status = valueOf(await createImageUpload({
-            groupId: this.form.groupId,
-            componentType: this.form.componentType,
-            originalFilename: this.file.name,
-            totalSize: this.file.size,
-            chunkSize: CHUNK_SIZE,
-            expectedSha256: this.form.expectedSha256,
-            version: this.form.version,
-            imageRepository: this.form.imageRepository,
-            imageTag: this.form.version
-          }))
+          try {
+            status = valueOf(await createImageUpload({
+              groupId: this.form.groupId,
+              componentType: this.form.componentType,
+              originalFilename: this.file.name,
+              totalSize: this.file.size,
+              chunkSize: CHUNK_SIZE,
+              expectedSha256: this.form.expectedSha256,
+              version: this.form.version,
+              imageRepository: this.form.imageRepository,
+              imageTag: this.form.version
+            }))
+          } catch (error) {
+            const message = error.response && error.response.data && (error.response.data.msg || error.response.data.message)
+            if (String(message || error.message || '').toLowerCase().includes('already exists')) {
+              this.finishUploaded('该镜像归档已存在，等待超级管理员审批')
+              return
+            }
+            throw error
+          }
           this.uploadId = status.uploadId
           localStorage.setItem(this.resumeKey(), this.uploadId)
         }
@@ -205,10 +214,10 @@ export default {
       this.retryAttempt = 0
       throw lastError
     },
-    finishUploaded () {
+    finishUploaded (message = '镜像归档已上传，等待超级管理员审批') {
       this.progress = 100
       localStorage.removeItem(this.resumeKey())
-      this.$message.success('镜像归档已上传，等待超级管理员审批')
+      this.$message.success(message)
       this.$emit('uploaded')
       this.close(true)
     },

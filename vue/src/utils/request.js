@@ -78,7 +78,7 @@ service.interceptors.response.use(
         } else if (error.response.status === 403) {
             message = '没有权限执行此操作'
         }
-        Message({ message, type: 'error', duration: 5000 })
+        if (!error.config || !error.config.silentError) Message({ message, type: 'error', duration: 5000 })
         return Promise.reject(error)
     }
 )

@@ -114,5 +114,10 @@ export default {
 .group-section header span, .group-section header small, .muted { margin-top: 3px; color: #7a8995; font-size: 12px; }
 code { color: var(--ui-text); font: 12px/1.5 monospace; overflow-wrap: anywhere; }
 .danger-text, .failure { color: #c75454; }
+::v-deep .el-tabs__header { margin: 0 0 18px; background: transparent; border-bottom: 1px solid #dfe7ed; }
+::v-deep .el-tabs__nav-wrap::after { height: 1px; background: #dfe7ed; }
+::v-deep .el-tabs__item { height: 44px; padding: 0 28px; color: #6d7d91; font-size: 15px; line-height: 44px; }
+::v-deep .el-tabs__item.is-active { color: #2f6fed; font-weight: 600; }
+::v-deep .el-tabs__active-bar { height: 3px; background: #5b7cf3; }
 @media (max-width: 760px) { .action-heading { align-items: flex-start; flex-direction: column; } .toolbar { align-items: stretch; flex-wrap: wrap; } .toolbar .el-input { width: 100%; } .read-only { margin-left: 0; } }
 </style>
