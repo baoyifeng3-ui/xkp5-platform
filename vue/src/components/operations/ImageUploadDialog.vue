@@ -22,6 +22,7 @@
 import { createImageUpload, getImageUploadStatus, uploadImageChunk, completeImageUpload, cancelImageUpload } from '@/services/imageRegistry'
 
 const CHUNK_SIZE = 8 * 1024 * 1024
+const MAX_CHUNK_RETRIES = 3
 const RESUME_KEY = 'xkp:image-upload:'
 
 function valueOf (result) { return result && result.data !== undefined ? result.data : result }
@@ -83,9 +84,10 @@ class Sha256 {
 export default {
   name: 'ImageUploadDialog',
   props: { visible: Boolean },
-  data: () => ({ file: null, uploadId: '', receivedBytes: 0, progress: 0, uploading: false, hashing: false, hashComputed: false, form: { groupId: '', componentType: 'ANNOTATION', version: '', imageRepository: '', expectedSha256: '' } }),
+  data: () => ({ file: null, uploadId: '', receivedBytes: 0, progress: 0, uploading: false, hashing: false, hashComputed: false, retrying: false, retryAttempt: 0, form: { groupId: '', componentType: 'ANNOTATION', version: '', imageRepository: '', expectedSha256: '' } }),
   computed: {
     hashStatus () {
+      if (this.retrying) return `网络波动，正在重试第 ${this.retryAttempt} 次`
       if (this.hashing) return this.file && this.file.size > 64 * 1024 * 1024 ? '正在分块计算 SHA-256...' : '正在计算 SHA-256...'
       if (this.hashComputed) return '已自动计算，可直接上传'
       return this.file ? '等待计算' : '请选择归档文件'
@@ -156,10 +158,7 @@ export default {
           const start = index * CHUNK_SIZE
           const chunk = this.file.slice(start, Math.min(start + CHUNK_SIZE, this.file.size))
           const checksum = await this.chunkHash(chunk)
-          const chunkResult = valueOf(await uploadImageChunk(this.uploadId, index, chunk, checksum, event => {
-            const sent = event.total ? event.loaded : 0
-            this.progress = Math.min(99, Math.round((start + sent) / this.file.size * 100))
-          }))
+          const chunkResult = await this.uploadChunkWithRetry(index, chunk, checksum, start)
           this.receivedBytes = Number(chunkResult.receivedBytes || start + chunk.size)
           this.progress = Math.min(99, Math.round(this.receivedBytes / this.file.size * 100))
         }
@@ -179,7 +178,30 @@ export default {
       }
       return true
     },
-    async discardResume () { if (this.uploadId) { await cancelImageUpload(this.uploadId); localStorage.removeItem(this.resumeKey()) } this.uploadId = ''; this.receivedBytes = 0; this.progress = 0 },
+    async uploadChunkWithRetry (index, chunk, checksum, start) {
+      let lastError
+      for (let attempt = 0; attempt <= MAX_CHUNK_RETRIES; attempt++) {
+        this.retrying = attempt > 0
+        this.retryAttempt = attempt
+        try {
+          const result = valueOf(await uploadImageChunk(this.uploadId, index, chunk, checksum, event => {
+            const sent = event.total ? event.loaded : 0
+            this.progress = Math.min(99, Math.round((start + sent) / this.file.size * 100))
+          }))
+          this.retrying = false
+          this.retryAttempt = 0
+          return result
+        } catch (error) {
+          lastError = error
+          if (attempt === MAX_CHUNK_RETRIES) break
+          await new Promise(resolve => window.setTimeout(resolve, 1000 * Math.pow(2, attempt)))
+        }
+      }
+      this.retrying = false
+      this.retryAttempt = 0
+      throw lastError
+    },
+    async discardResume () { if (this.uploadId) { await cancelImageUpload(this.uploadId); localStorage.removeItem(this.resumeKey()) } this.uploadId = ''; this.receivedBytes = 0; this.progress = 0; this.retrying = false; this.retryAttempt = 0 },
     close (force = false) { if (this.uploading && !force) return; this.$emit('update:visible', false) },
     formatBytes (bytes) { if (!Number.isFinite(bytes)) return '--'; if (bytes < 1024) return `${bytes} B`; const units = ['KiB', 'MiB', 'GiB', 'TiB']; let value = bytes / 1024; let unit = units[0]; for (let i = 1; value >= 1024 && i < units.length; i++) { value /= 1024; unit = units[i] } return `${value.toFixed(value >= 10 ? 1 : 2)} ${unit}` }
   }
