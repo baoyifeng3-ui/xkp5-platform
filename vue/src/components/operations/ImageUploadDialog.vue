@@ -27,7 +27,12 @@ const RESUME_KEY = 'xkp:image-upload:'
 function valueOf (result) { return result && result.data !== undefined ? result.data : result }
 function hex (buffer) { return Array.from(new Uint8Array(buffer)).map(value => value.toString(16).padStart(2, '0')).join('') }
 function readBuffer (blob) {
-  if (blob && typeof blob.arrayBuffer === 'function') return blob.arrayBuffer()
+  if (blob && typeof blob.arrayBuffer === 'function') {
+    return blob.arrayBuffer().catch(() => readWithFileReader(blob))
+  }
+  return readWithFileReader(blob)
+}
+function readWithFileReader (blob) {
   return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(reader.error || new Error('文件读取失败')); reader.readAsArrayBuffer(blob) })
 }
 const SHA256_K = [
