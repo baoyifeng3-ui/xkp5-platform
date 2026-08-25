@@ -39,6 +39,7 @@ public class RegistryImportTool {
     private final long terminationWaitMillis;
     private final long collectorJoinMillis;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public RegistryImportTool(
             @Value("${xkp.registry.import.executable:skopeo}") String executable,
             @Value("${xkp.registry.url:${REGISTRY_URL:https://registry:5000}}") String registryUrl,

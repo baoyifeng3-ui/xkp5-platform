@@ -19,6 +19,7 @@ mgr/java/match-mgr/target/
 .env
 .env.local
 backups/
+runtime/
 
 fastdfs/tracker_data/
 fastdfs/storage_data/
