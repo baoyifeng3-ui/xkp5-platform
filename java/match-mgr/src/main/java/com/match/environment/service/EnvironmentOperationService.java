@@ -88,6 +88,9 @@ public class EnvironmentOperationService {
             return active;
         }
         if (isStopped(target)) {
+            if (!"STOPPED".equals(target.getActualState())) {
+                updateState(target, "STOPPED", "STOPPED", null, actorUserId);
+            }
             return noOperation(target, "SUCCEEDED");
         }
         return createDispatchedOperation(target, "STOP", "STOPPED", "STOPPING",
@@ -263,7 +266,13 @@ public class EnvironmentOperationService {
 
     private boolean isStopped(TrainingEnvironmentRecord environment) {
         return "STOPPED".equals(environment.getDesiredState())
-                && "STOPPED".equals(environment.getActualState());
+                && ("STOPPED".equals(environment.getActualState())
+                || safeStoppedComponent(environment.getAnnotationContainerState())
+                && safeStoppedComponent(environment.getEditorContainerState()));
+    }
+
+    private boolean safeStoppedComponent(String state) {
+        return "STOPPED".equals(state) || "MISSING".equals(state);
     }
 
     private TrainingEnvironmentOperationView noOperation(TrainingEnvironmentRecord environment, String state) {

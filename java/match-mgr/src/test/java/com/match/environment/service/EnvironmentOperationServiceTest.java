@@ -27,6 +27,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -119,6 +120,21 @@ public class EnvironmentOperationServiceTest {
         verify(licenseGuard, never()).requireActive();
         verify(commandService).requestEnvironmentCommand(eq(agent), eq("STOP_TRAINING_ENVIRONMENT"),
                 eq("{}"), eq(9), eq("ADMIN"), eq("env-selected:STOP"));
+    }
+
+    @Test
+    public void stopNormalizesDegradedEnvironmentWhenBothComponentsAreAlreadyStoppedOrMissing() {
+        TrainingEnvironmentRecord selected = environment("env-selected", 21, 32, "STOPPED", "DEGRADED", 7L);
+        selected.setAnnotationContainerState("STOPPED");
+        selected.setEditorContainerState("MISSING");
+        when(environmentMapper.selectUserId("env-selected")).thenReturn(21);
+        when(environmentMapper.selectUserEnvironmentsForUpdate(21)).thenReturn(Collections.singletonList(selected));
+
+        service.stop("env-selected", 9, "ADMIN");
+
+        verify(environmentMapper).compareAndSetState(eq("env-selected"), eq(7L), eq("STOPPED"),
+                eq("STOPPED"), isNull(), eq(9), any(LocalDateTime.class));
+        verify(commandService, never()).requestEnvironmentCommand(any(), any(), any(), any(), any(), any());
     }
 
     @Test
