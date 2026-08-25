@@ -20,6 +20,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -36,6 +37,8 @@ public class ContainerTemplateServiceTest {
         license = mock(LicenseGuard.class);
         service = new ContainerTemplateService(mapper, license,
                 Clock.fixed(Instant.parse("2026-08-19T03:00:00Z"), ZoneOffset.UTC));
+        when(mapper.selectPublishedDigest(anyString(), anyString()))
+                .thenReturn("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
     }
 
     @Test
@@ -50,6 +53,8 @@ public class ContainerTemplateServiceTest {
         assertEquals("ANNOTATION", saved.getValue().getComponentType());
         assertEquals("sysbox-runc", saved.getValue().getRuntimeName());
         assertEquals("/root/data", saved.getValue().getMountTarget());
+        assertEquals("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                saved.getValue().getImageReference());
         assertEquals(7, saved.getValue().getCreatedBy().intValue());
         assertNotNull(saved.getValue().getPublishedAt());
         assertEquals(saved.getValue().getTemplateVersionId(), published.getTemplateVersionId());
@@ -129,6 +134,7 @@ public class ContainerTemplateServiceTest {
 
     private ContainerTemplateRequest annotation() {
         ContainerTemplateRequest request = new ContainerTemplateRequest();
+        request.setReleaseId("annotation-release");
         request.setTemplateName("Annotation");
         request.setComponentType("ANNOTATION");
         request.setImageReference("zy-anno:latest");
@@ -143,6 +149,7 @@ public class ContainerTemplateServiceTest {
 
     private ContainerTemplateRequest editor() {
         ContainerTemplateRequest request = new ContainerTemplateRequest();
+        request.setReleaseId("editor-release");
         request.setTemplateName("Editor");
         request.setComponentType("EDITOR");
         request.setImageReference("zy-contestv2:latest");

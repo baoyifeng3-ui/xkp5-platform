@@ -47,7 +47,14 @@ public class ContainerTemplateService {
     @Transactional
     public ContainerTemplateRecord publish(ContainerTemplateRequest request, int actorUserId) {
         licenseGuard.requireActive();
+        if (request.getReleaseId() == null || request.getReleaseId().trim().isEmpty()) {
+            throw new IllegalArgumentException("必须选择已发布镜像版本");
+        }
         NormalizedTemplate normalized = normalize(request);
+        String publishedDigest = mapper.selectPublishedDigest(request.getReleaseId().trim(), normalized.componentType);
+        if (publishedDigest == null || !publishedDigest.matches("^sha256:[0-9a-f]{64}$")) {
+            throw new IllegalArgumentException("镜像发布版本不可用或组件类型不匹配");
+        }
         LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
 
         String templateId = trimToNull(request.getTemplateId());
@@ -69,7 +76,7 @@ public class ContainerTemplateService {
         record.setTemplateName(normalized.name);
         record.setComponentType(normalized.componentType);
         record.setEnabled(true);
-        record.setImageReference(normalized.imageReference);
+        record.setImageReference(publishedDigest);
         record.setRuntimeName(normalized.runtimeName);
         record.setRestartPolicy(normalized.restartPolicy);
         record.setPortsJson(writeJson(normalized.ports));

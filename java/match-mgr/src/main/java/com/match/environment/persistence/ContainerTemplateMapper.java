@@ -7,6 +7,8 @@ import org.apache.ibatis.annotations.Select;
 import java.util.List;
 
 public interface ContainerTemplateMapper extends BaseMapper<ContainerTemplateRecord> {
+    @Select("SELECT registry_digest FROM image_release WHERE release_id = #{releaseId} AND component_type = #{componentType} AND state = 'PUBLISHED'")
+    String selectPublishedDigest(@Param("releaseId") String releaseId, @Param("componentType") String componentType);
     @Select("SELECT COUNT(1) FROM training_environment WHERE (annotation_template_id = #{templateId} AND annotation_template_version = #{version}) OR (editor_template_id = #{templateId} AND editor_template_version = #{version})")
     int countTrainingReferences(@Param("templateId") String templateId, @Param("version") int version);
 
