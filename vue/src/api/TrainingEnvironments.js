@@ -4,7 +4,7 @@ const ADMIN_BASE = '/admin/training-environments'
 const USER_BASE = '/user/training-environments'
 
 export const listAdminTrainingEnvironments = () => request.get(ADMIN_BASE)
-export const createAdminTrainingEnvironment = payload => request.post(ADMIN_BASE, payload)
+export const createAdminTrainingEnvironment = payload => request.post(ADMIN_BASE, payload, { headers: { 'Content-Type': 'application/json' } })
 export const listAdminTrainingSlots = () => request.get(`${ADMIN_BASE}/slots`)
 export const startAdminTrainingEnvironment = id => request.post(`${ADMIN_BASE}/${id}/start`)
 export const stopAdminTrainingEnvironment = id => request.post(`${ADMIN_BASE}/${id}/stop`)

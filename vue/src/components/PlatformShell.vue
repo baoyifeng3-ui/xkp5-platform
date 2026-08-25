@@ -36,20 +36,13 @@
       </div>
 
       <el-menu :default-active="activeRoute" class="shell-menu" @select="selectItem">
-        <el-tooltip
-          v-for="(item, index) in items"
-          :key="item.key"
-          :content="item.label"
-          placement="right"
-          :open-delay="500"
-        >
-          <el-menu-item :index="item.activeKey || item.route || item.key">
-            <span :class="['shell-menu-icon', `shell-menu-icon--${index % 4}`]">
-              <i :class="item.icon || 'el-icon-menu'" aria-hidden="true" />
-            </span>
-            <span class="menu-text">{{ item.label }}</span>
-          </el-menu-item>
-        </el-tooltip>
+        <template v-for="(item, index) in items">
+          <el-submenu v-if="item.children && item.children.length" :key="item.key" :index="item.key">
+            <template slot="title"><span :class="['shell-menu-icon', `shell-menu-icon--${index % 4}`]"><i :class="item.icon || 'el-icon-menu'" /></span><span class="menu-text">{{ item.label }}</span></template>
+            <el-menu-item v-for="child in item.children" :key="child.key" :index="child.route">{{ child.label }}</el-menu-item>
+          </el-submenu>
+          <el-menu-item v-else :key="item.key" :index="item.activeKey || item.route || item.key"><span :class="['shell-menu-icon', `shell-menu-icon--${index % 4}`]"><i :class="item.icon || 'el-icon-menu'" /></span><span class="menu-text">{{ item.label }}</span></el-menu-item>
+        </template>
       </el-menu>
     </aside>
 
@@ -125,14 +118,15 @@ export default {
     searchResults () {
       const query = this.searchQuery.toLowerCase()
       if (!query) return []
-      return this.items.filter(item => item.label.toLowerCase().includes(query)).slice(0, 6)
+      return this.flatItems.filter(item => item.label.toLowerCase().includes(query)).slice(0, 6)
     },
     drawerHidden () {
       return this.mobileViewport && !this.drawerOpen
     },
     userInitial () {
       return String(this.userName || '用户').trim().slice(0, 1).toUpperCase()
-    }
+    },
+    flatItems () { return this.items.reduce((all, item) => all.concat(item.children || [item]), []) }
   },
   watch: {
     '$route.fullPath' () {
@@ -176,7 +170,7 @@ export default {
       }
     },
     selectItem (index) {
-      const item = this.items.find(candidate => (candidate.activeKey || candidate.route || candidate.key) === index)
+      const item = this.flatItems.find(candidate => (candidate.activeKey || candidate.route || candidate.key) === index)
       if (item) this.navigate(item, true)
     },
     navigate (item, restoreDrawerFocus = false) {

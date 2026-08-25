@@ -148,7 +148,7 @@ managementPages.forEach(file => {
 const workspacePages = composedPages.filter(file => /\/(management|operations|user)\//.test(file))
 workspacePages.forEach(file => {
   const source = read(file)
-  assert.match(source, file.includes('ManagementHome') ? /reference-home|module-composed-page/ : /module-composed-page/, `${file} must opt into the refreshed workspace composition`)
+  assert.match(source, file.includes('ManagementHome') ? /reference-home|module-composed-page/ : /module-composed-page|operations-dashboard/, `${file} must opt into the refreshed workspace composition`)
   assert.doesNotMatch(source, /#(?:17324d|294152|318063|216c54|9a7517|1e587e|25745b|356d95)\b/i, `${file} must use shared theme tokens instead of the legacy page palette`)
 })
 
@@ -198,8 +198,8 @@ contextPages.forEach(file => {
   assert.match(source, /module-page/, `${file} must render a module page`)
   assert.doesNotMatch(source, /待接入|暂无课程数据/, `${file} must not remain a placeholder`)
 })
-assert.match(read('src/views/operations/OperationsHome.vue'), /module-toolbar/)
-assert.match(read('src/views/operations/OperationsHome.vue'), /to="\/operations\/administrators"/)
+assert.match(read('src/views/operations/OperationsHome.vue'), /operations-dashboard/)
+assert.match(read('src/views/operations/OperationsHome.vue'), /需要处理/)
 assert.match(read('src/views/operations/OperationsHome.vue'), /to="\/operations\/processing-agents"/)
 
 const agentTable = read('src/components/agents/AgentStatusTable.vue')
@@ -211,7 +211,7 @@ assert.doesNotMatch(participantCss, /#(?:010d3b|012292|091722|1e65b9|083e81|173d
 const competitionHub = read('src/views/management/CompetitionManagement.vue')
 const { competitionItems } = require('../src/navigation/roleNavigation')
 assert.deepStrictEqual(competitionItems.map(item => item.label), [
-  '模式与环境', '参赛端预览', '比赛控制', '赛程赛规', '试卷题目', '试卷评分', '比赛账号'
+  '模式与环境', '参赛端预览', '比赛控制', '赛程赛规', '试卷题目', '试卷评分', '比赛账号与容器绑定'
 ])
 assert.strictEqual(competitionItems.length, 7)
 assert.ok(!competitionHub.includes('比赛设备'))

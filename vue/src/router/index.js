@@ -22,6 +22,7 @@ import CourseManagement from '@/views/management/CourseManagement.vue'
 import ResourceManagement from '@/views/management/ResourceManagement.vue'
 import TrainingManagement from '@/views/management/TrainingManagement.vue'
 import CompetitionManagement from '@/views/management/CompetitionManagement.vue'
+import CompetitionAccounts from '@/views/management/CompetitionAccounts.vue'
 import UserManagement from '@/views/management/UserManagement.vue'
 import DeviceManagement from '@/views/management/DeviceManagement.vue'
 import PlatformSettings from '@/views/management/PlatformSettings.vue'
@@ -73,6 +74,7 @@ const routes = [
       { path: 'resources', name: 'ResourceManagement', component: ResourceManagement },
       { path: 'training', name: 'TrainingManagement', component: TrainingManagement },
       { path: 'competition-mode', name: 'CompetitionMode', component: CompetitionMode },
+      { path: 'competition-accounts', name: 'CompetitionAccounts', component: CompetitionAccounts },
       { path: 'users', name: 'UserManagement', component: UserManagement },
       { path: 'devices', name: 'DeviceManagement', component: DeviceManagement },
       { path: 'platform-settings', name: 'PlatformSettings', component: PlatformSettings },

@@ -10,10 +10,10 @@ assert.deepStrictEqual(navigation.userItems.map(item => item.label), [
   '课程平台', '资源中心', '实训环境', '模型验证'
 ])
 assert.deepStrictEqual(navigation.managementItems.map(item => item.label), [
-  '主页', '竞赛管理', '课程管理', '资源管理', '实训管理', '用户管理', '设备管理', '平台设置', '镜像仓库'
+  '主页', '竞赛管理', '课程与资源', '实训管理', '平台管理'
 ])
 assert.deepStrictEqual(navigation.competitionItems.map(item => item.label), [
-  '模式与环境', '参赛端预览', '比赛控制', '赛程赛规', '试卷题目', '试卷评分', '比赛账号'
+  '模式与环境', '参赛端预览', '比赛控制', '赛程赛规', '试卷题目', '试卷评分', '比赛账号与容器绑定'
 ])
 assert.deepStrictEqual(navigation.competitionItems.map(item => item.route), [
   '/management/competition-mode',
@@ -22,13 +22,13 @@ assert.deepStrictEqual(navigation.competitionItems.map(item => item.route), [
   '/Admin?tab=rules',
   '/Admin?tab=subjects',
   '/Admin?tab=grading',
-  '/Admin?tab=users'
+  '/management/competition-accounts'
 ])
 const competitionManagement = navigation.managementItems.find(item => item.label === '竞赛管理')
-assert.strictEqual(competitionManagement.route, '/management/competition')
-assert.strictEqual(competitionManagement.children, undefined)
-const platformSettings = navigation.managementItems.find(item => item.label === '平台设置')
-assert.strictEqual(platformSettings.route, '/management/platform-settings')
+assert.strictEqual(competitionManagement.children, navigation.competitionItems)
+const platformManagement = navigation.managementItems.find(item => item.label === '平台管理')
+assert.ok(platformManagement.children.some(item => item.route === '/management/platform-settings'))
+assert.ok(!navigation.userItems.some(item => item.label === '镜像仓库'))
 assert.strictEqual(typeof navigation.legacyAdminRoute, 'function')
 assert.deepStrictEqual(navigation.legacyAdminRoute('training'), { path: '/management/devices', replace: true })
 assert.deepStrictEqual(navigation.legacyAdminRoute('settings'), { path: '/management/platform-settings', replace: true })

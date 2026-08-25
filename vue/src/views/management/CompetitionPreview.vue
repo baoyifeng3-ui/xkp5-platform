@@ -2,7 +2,7 @@
   <section v-loading="loading" class="module-page preview-page">
     <header class="module-heading">
       <h1>参赛端预览</h1>
-      <p>按平台当前模式显示普通用户登录后的界面。</p>
+      <p>固定显示比赛模式下普通用户登录后的参赛界面。</p>
     </header>
     <div v-if="loadError" class="preview-error" role="alert">
       <i class="el-icon-warning-outline" />
@@ -16,12 +16,11 @@
   </section>
 </template>
 <script>
-import { getPlatformMode } from '@/api/PlatformMode'
 const { previewHome } = require('@/services/participantPreview')
 
 export default {
   name: 'CompetitionPreview',
-  data: () => ({ loading: false, loadError: false, mode: '', homePath: '' }),
+  data: () => ({ loading: false, loadError: false, mode: 'COMPETITION', homePath: '' }),
   computed: {
     frameUrl () { return `${window.location.origin}${window.location.pathname}#${this.homePath}?preview=1` },
     frameTitle () { return this.mode === 'COMPETITION' ? '比赛模式普通用户界面预览' : '实训模式普通用户界面预览' }
@@ -32,17 +31,9 @@ export default {
       if (this.loading) return
       this.loading = true
       this.loadError = false
-      this.homePath = ''
-      try {
-        const response = await getPlatformMode()
-        const value = response && response.data
-        this.mode = value && value.mode === 'COMPETITION' ? 'COMPETITION' : 'TRAINING'
-        this.homePath = previewHome(this.mode)
-      } catch (error) {
-        this.loadError = true
-      } finally {
-        this.loading = false
-      }
+      this.mode = 'COMPETITION'
+      this.homePath = previewHome('COMPETITION')
+      this.loading = false
     }
   }
 }

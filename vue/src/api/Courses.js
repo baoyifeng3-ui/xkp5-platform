@@ -1,13 +1,14 @@
 import request from '@/utils/request.js'
 export const listAdminCourses = () => request.get('/admin/courses')
-export const createCourse = payload => request.post('/admin/courses', payload)
-export const updateCourse = (id, payload) => request.put(`/admin/courses/${id}`, payload)
+const json = { headers: { 'Content-Type': 'application/json' } }
+export const createCourse = payload => request.post('/admin/courses', payload, json)
+export const updateCourse = (id, payload) => request.put(`/admin/courses/${id}`, payload, json)
 export const setCourseEnabled = (id, enabled) => request.post(`/admin/courses/${id}/enabled`, null, { params: { enabled } })
-export const addCourseResource = (id, payload) => request.post(`/admin/courses/${id}/resources`, payload)
+export const addCourseResource = (id, payload) => request.post(`/admin/courses/${id}/resources`, payload, json)
 export const setCourseResourceEnabled = (id, enabled) => request.post(`/admin/courses/resources/${id}/enabled`, null, { params: { enabled } })
 export const uploadCourseResource = file => { const data = new FormData(); data.append('file', file); return request.post('/admin/course-resources/upload', data) }
 export const listUserCourses = () => request.get('/user/courses')
-export const recordCourseProgress = payload => request.post('/user/courses/progress', payload)
+export const recordCourseProgress = payload => request.post('/user/courses/progress', payload, json)
 export const listCourseProgress = () => request.get('/user/courses/progress')
 export const getCourseResourcePreviewUrl = resourceId => request.get(`/user/courses/resources/${resourceId}/preview-url`)
 export const getCourseCoverUrl = courseId => request.get(`/user/courses/${courseId}/cover-url`)
