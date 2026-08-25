@@ -90,7 +90,7 @@ public class ImageUploadService {
     public ImageUploadService(ImageUploadMapper uploadMapper, ImageUploadChunkMapper chunkMapper,
                               ImageArtifactMapper artifactMapper,
                               @Value("${xkp.registry.staging-dir:${java.io.tmpdir}/xkp-registry-staging}") String staging,
-                              @Value("${xkp.registry.max-file-bytes:21474836480}") long maxFileBytes,
+                              @Value("${xkp.registry.max-file-bytes:53687091200}") long maxFileBytes,
                               @Value("${xkp.registry.max-staging-bytes:107374182400}") long maxStagingBytes) {
         this(uploadMapper, chunkMapper, artifactMapper, java.nio.file.Paths.get(staging),
                 maxFileBytes, maxStagingBytes, Clock.systemUTC());

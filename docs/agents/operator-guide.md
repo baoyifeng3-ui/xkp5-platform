@@ -85,7 +85,7 @@ sudo ./deploy/agent-ca.sh \
 | --- | --- | --- |
 | `XKP_REGISTRY_STAGING_DIR` | `runtime/registry/staging` | 管理服务接收断点分块的持久目录。 |
 | `XKP_REGISTRY_IMPORT_DIR` | `runtime/registry/import` | 导入器工作目录。 |
-| `XKP_REGISTRY_MAX_FILE_BYTES` | `21474836480`（20 GiB） | 单个 Docker 归档上限。 |
+| `XKP_REGISTRY_MAX_FILE_BYTES` | `53687091200`（50 GiB） | 单个 Docker 归档上限。可按磁盘容量下调。 |
 | `XKP_REGISTRY_MAX_STAGING_BYTES` | `107374182400`（100 GiB） | 所有未清理归档的总容量上限。 |
 
 上传前用 `sha256sum` 计算 Docker `save` 归档的小写 SHA-256。页面按固定分块上传，网络

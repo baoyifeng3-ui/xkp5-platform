@@ -1,6 +1,6 @@
 <template>
   <el-dialog title="上传镜像归档" :visible="visible" width="640px" :close-on-click-modal="!uploading" @close="close">
-    <el-alert title="仅支持 Docker save 生成的 .tar 或 .tar.gz；上传中断后可选择同一文件继续。" type="info" :closable="false" show-icon />
+    <el-alert title="仅支持 Docker save 生成的 .tar 或 .tar.gz，单个归档最大 50 GiB；上传中断后可选择同一文件继续。" type="info" :closable="false" show-icon />
     <el-form class="upload-form" label-width="112px">
       <el-form-item label="镜像组 ID"><el-input v-model.trim="form.groupId" placeholder="已有镜像组标识" :disabled="uploading" /></el-form-item>
       <el-form-item label="组件"><el-radio-group v-model="form.componentType" :disabled="uploading"><el-radio-button label="ANNOTATION">图像标注</el-radio-button><el-radio-button label="EDITOR">代码编辑</el-radio-button></el-radio-group></el-form-item>
