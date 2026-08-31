@@ -1,5 +1,6 @@
 <template>
   <div class="q-box module-page">
+    <div class="competition-answer-layout">
     <main v-loading="loading" class="question-content">
       <header class="paper-heading module-heading">
         <div>
@@ -98,6 +99,12 @@
         <span v-else class="submitted-state"><i :class="submissionState.status === 'GRADED' ? 'el-icon-circle-check' : 'el-icon-time'" />{{ submissionState.status === 'GRADED' ? '判分已完成' : '已提交，等待判分' }}</span>
       </div>
     </main>
+    <aside v-if="!previewOnly" class="competition-status-panel">
+      <div class="status-panel-score"><small>当前完成度</small><strong>{{ totalSubjects - unansweredCount }} / {{ totalSubjects }}</strong><el-progress :percentage="progressPercent" :show-text="false" /></div>
+      <div class="status-panel-list"><div><span>答案保存</span><b class="status-ok">{{ savingCount ? '保存中' : '正常' }}</b></div><div><span>成果验证</span><b>{{ validationState }}</b></div><div><span>试卷状态</span><b>{{ submissionLocked ? '已锁定' : '可编辑' }}</b></div></div>
+      <el-button class="status-panel-action" icon="el-icon-circle-check" @click="$router.push({ path: '/Detect' })">进入成果验证</el-button>
+    </aside>
+    </div>
 
     <aside class="btn-list">
       <button class="help-button" title="比赛帮助" @click="handleTips">
@@ -163,6 +170,15 @@ export default {
         }
         return Array.isArray(item.value) ? item.value.length === 0 : !String(item.value || '').trim()
       }).length
+    },
+    progressPercent () {
+      return this.totalSubjects ? Math.round((this.totalSubjects - this.unansweredCount) * 100 / this.totalSubjects) : 0
+    },
+    savingCount () {
+      return this.allItems().filter(item => item.saving).length
+    },
+    validationState () {
+      return this.submissionLocked ? '待判分' : '未验证'
     }
   },
   mounted () {
@@ -402,6 +418,18 @@ export default {
   box-sizing: border-box;
   padding: 24px clamp(18px, 4vw, 56px) 50px;
 }
+.competition-answer-layout { display: grid; grid-template-columns: minmax(0, 1fr) 220px; align-items: start; gap: 16px; }
+.competition-status-panel { position: sticky; top: 84px; padding: 14px; background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-card-radius); box-shadow: var(--ui-shadow); }
+.status-panel-score { padding: 12px; color: #fff; background: var(--ui-primary-strong); border-radius: var(--ui-control-radius); }
+.status-panel-score small { display: block; color: rgba(255,255,255,.72); font-size: 11px; }
+.status-panel-score strong { display: block; margin: 6px 0 10px; font-size: 21px; font-variant-numeric: tabular-nums; }
+.status-panel-score .el-progress-bar__outer { background: rgba(255,255,255,.22); }
+.status-panel-score .el-progress-bar__inner { background: #dce8ff; }
+.status-panel-list { display: grid; gap: 1px; margin: 12px 0; background: var(--ui-border); border: 1px solid var(--ui-border); }
+.status-panel-list > div { display: flex; align-items: center; justify-content: space-between; padding: 10px; background: var(--ui-surface); font-size: 12px; }
+.status-panel-list b { color: var(--ui-muted); font-size: 11px; font-weight: 600; }
+.status-panel-list .status-ok { color: #2f7a55; }
+.status-panel-action { width: 100%; }
 
 .paper-heading {
   display: flex;
@@ -453,6 +481,8 @@ export default {
 .user-help-copy { padding: 8px 24px 24px; color: #435568; font-size: 14px; line-height: 1.85; white-space: pre-wrap; word-break: break-word; }
 
 @media (max-width: 760px) {
+  .competition-answer-layout { display: block; }
+  .competition-status-panel { position: static; margin: 0 12px 14px; }
   .question-content { width: 100%; padding: 16px 12px 80px; }
   .btn-list { right: 12px; bottom: 12px; width: 50px; height: 50px; }
   .help-button { width: 56px; height: 56px; margin: 0; }
