@@ -54,4 +54,15 @@ grep -q 'apt-get.*download\|apt-get.*--download-only' "$offline_release" || fail
 grep -q 'docker save\|match-v2-images.tar.gz' "$offline_release" || fail 'Offline release must contain Docker images'
 grep -q 'deploy/offline/build-release.sh' "$offline_release" || fail 'Offline release must reuse the existing release builder'
 
+quick_scripts=("$quick_install" "$online_install" "$offline_install" "$offline_release")
+if grep -Eqi 'license.*private[_ -]?key|XKP_LICENSE_PRIVATE|docker[[:space:]]+(-H|--host)[[:space:]]+tcp://' "${quick_scripts[@]}"; then
+  fail 'Quick deployment scripts contain forbidden private-key or Docker TCP configuration'
+fi
+if grep -Eq 'docker compose .*down .*-(v|-v)|rm -rf[[:space:]]+["'"']?(/|/opt|/root|\$install_dir)["'"']?([[:space:]]|$)' "${quick_scripts[@]}"; then
+  fail 'Quick deployment scripts contain a destructive operation'
+fi
+if grep -Eq 'printf.*(db_password|competition_key|registry_password)|echo.*(db_password|competition_key|registry_password)' "${quick_scripts[@]}"; then
+  fail 'Generated secrets must not be printed'
+fi
+
 printf 'Quick deployment static tests passed.\n'

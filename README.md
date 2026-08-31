@@ -177,6 +177,16 @@ python/b/annotations.xml
 
 ## Ubuntu 22.04 部署
 
+首次部署只需选择一种方式：
+
+```bash
+# 联网服务器
+sudo ./install-xkp5-online.sh
+
+# 完全离线服务器（传入构建好的发布包）
+sudo ./install-xkp5-offline.sh xkp5-offline-20260901-01.tar.gz
+```
+
 ### 在线一键安装
 
 在全新的 Ubuntu 22.04 amd64 服务器下载 `install-xkp5-online.sh` 后执行：
