@@ -1,0 +1,13 @@
+const assert = require('assert')
+const fs = require('fs')
+
+const page = fs.readFileSync('src/views/management/ManagementHome.vue', 'utf8')
+assert.match(page, /status-strip/)
+assert.match(page, /平台总用户/)
+assert.match(page, /当前在线/)
+assert.match(page, /服务器资源监控/)
+assert.match(page, /快捷入口/)
+assert.match(page, /var\(--ui-surface\)/)
+assert.match(page, /var\(--ui-primary\)/)
+assert.match(page, /focus-visible/)
+console.log('management home UI contract passed')
