@@ -1,8 +1,9 @@
 <template>
     <div :class="['login-box', { 'has-background': hasLoginBackground }]" :style="loginStyle">
         <header class="login-brand">
-            <span class="login-brand-mark" aria-hidden="true">X</span>
-            <div><strong>{{ loginBrandName }}</strong><small>XKP5.0 MANAGEMENT PLATFORM</small></div>
+            <img v-if="platformLogoUrl" class="login-brand-logo" :src="platformLogoUrl" alt="平台 Logo">
+            <span v-else class="login-brand-mark" aria-hidden="true">X</span>
+            <div><strong>{{ loginBrandName }}</strong><small>{{ loginEnglishSubtitle }}</small></div>
         </header>
         <main class="login-shell">
             <el-card class="login-card" shadow="never">
@@ -25,6 +26,7 @@
                     </div>
                 </el-form>
             </el-card>
+            <div class="login-context-note"><strong>课程 · 实训 · 比赛</strong><span>一个入口，按账号权限进入对应工作台</span></div>
         </main>
         <footer class="login-c">&copy; {{ loginCopyright }}</footer>
     </div>
@@ -50,6 +52,8 @@ export default {
     },
     computed: {
         loginBrandName () { return this.$store.state.Match.loginBrandName },
+        loginEnglishSubtitle () { return this.$store.state.Match.loginEnglishSubtitle },
+        platformLogoUrl () { return this.$store.state.Match.platformLogoUrl },
         loginTitle () { return this.$store.state.Match.loginTitle },
         loginDescription () { return this.$store.state.Match.loginDescription },
         loginCopyright () { return this.$store.state.Match.loginCopyright },
