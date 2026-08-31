@@ -41,6 +41,7 @@
     font-size: 19px;
     font-weight: 700;
 }
+.login-brand-logo { display: block; flex: 0 0 42px; width: 42px; height: 42px; object-fit: contain; }
 
 .login-brand > div {
     display: flex;
