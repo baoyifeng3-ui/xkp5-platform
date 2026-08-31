@@ -16,6 +16,7 @@
     "test:preview": "node scripts/test-participant-preview-contract.js",
     "test:platform-ui": "node scripts/test-platform-ui-contract.js"
     ,"test:course-platform": "node scripts/test-course-platform-contract.js"
+    ,"test:competition-shell": "node scripts/test-competition-shell-contract.js"
   },
   "engines": {
     "node": ">=16 <23"

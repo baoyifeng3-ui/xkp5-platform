@@ -1,0 +1,16 @@
+const assert = require('assert')
+const fs = require('fs')
+
+const shell = fs.readFileSync('src/components/CompetitionShell.vue', 'utf8')
+const layout = fs.readFileSync('src/views/Layout.vue', 'utf8')
+
+assert.match(shell, /competition-clock/)
+assert.match(shell, /tabs/)
+assert.match(layout, /当前赛卷/)
+assert.match(layout, /赛规赛程/)
+assert.match(layout, /实操环境/)
+assert.match(layout, /成果验证/)
+assert.match(shell, /aria-live/)
+assert.match(shell, /prefers-reduced-motion/)
+assert.match(layout, /CompetitionShell/)
+console.log('competition shell contract passed')
