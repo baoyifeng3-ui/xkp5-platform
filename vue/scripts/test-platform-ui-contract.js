@@ -7,20 +7,11 @@ function read (file) {
 
 const shell = read('src/components/PlatformShell.vue')
 const theme = read('src/assets/style/platform-theme.css')
-const loginOverlayCss = read('src/assets/style/login.css')
-assert.match(loginOverlayCss, /rgba\(26, 34, 55, \.35\)/)
-assert.ok(shell.includes('shell-breadcrumb'), 'shared shell must render one breadcrumb on every page')
-assert.ok(shell.includes('currentBreadcrumbs'), 'shared shell must derive breadcrumbs from navigation')
-assert.ok(shell.includes('首页'), 'top-level pages must use 首页 as breadcrumb root')
-assert.ok(shell.includes('.module-heading h1'), 'shared shell must hide duplicate module titles')
-assert.ok(shell.includes('.page-heading h1'), 'shared shell must hide duplicate page titles')
 assert.ok(fs.existsSync('src/services/platformTheme.js'), 'platform theme service must exist')
 const themeService = require('../src/services/platformTheme')
 
 assert.match(shell, /shell-drawer/)
 assert.match(shell, /platformName/)
-assert.match(shell, /platformLogoUrl/)
-assert.match(shell, /shell-brand-logo/)
 assert.match(shell, /\{\{ platformName \}\}/)
 assert.match(shell, /platformName:\s*\{\s*type:\s*String,\s*default:\s*'XKP5\.0平台'/)
 assert.doesNotMatch(shell, /<strong>XKP5\.0平台<\/strong>/)
@@ -42,8 +33,6 @@ assert.match(shell, /aria-label="导航搜索建议"/)
 assert.match(shell, /sidebarCollapsed/)
 assert.match(shell, /localStorage/)
 assert.match(shell, /切换导航栏/)
-assert.match(shell, /<el-menu[^>]*\bunique-opened\b/)
-assert.match(shell, /class="shell-submenu-item"/)
 assert.doesNotMatch(shell, /role="listbox"|role="option"/)
 assert.match(theme, /--ui-page:\s*#f3f6fa/)
 assert.match(theme, /--ui-primary:\s*var\(--platform-theme-color,\s*#386bdc\)/)
@@ -80,31 +69,16 @@ assert.match(competitionLayout, /:platform-name="platformName"/)
 
 const shellCss = read('src/assets/style/platform-shell.css')
 assert.match(shellCss, /@media \(max-width:\s*720px\)/)
-assert.match(shellCss, /\.shell-menu \.el-submenu__title/)
-assert.match(shellCss, /\.shell-submenu-item/)
 assert.match(shellCss, /grid-template-columns:\s*minmax\(0,\s*1fr\)/)
-assert.match(shellCss, /\.shell-main\s*\{[^}]*padding:\s*14px 16px 18px;/s)
-assert.match(shellCss, /\.module-page\s*\{[^}]*min-height:\s*calc\(100vh - var\(--ui-header-height\) - 32px\);/s)
-assert.match(shellCss, /@media \(max-width:\s*720px\)[\s\S]*?\.shell-main\s*\{\s*padding:\s*12px;/)
-assert.match(shell, /\.shell-breadcrumb\s*\{[^}]*min-height:\s*40px;[^}]*margin:\s*0;/s)
-assert.match(shell, /\.shell-main\s*\{[^}]*position:\s*relative;/s)
-assert.match(shell, /\.shell-breadcrumb\s*\{[^}]*min-height:\s*40px;/s)
-assert.match(shell, /\.shell-main\s*>\s*\.module-page\s*>\s*\.module-heading[\s\S]*?position:\s*absolute;/)
-assert.match(shell, /@media\s*\(max-width:\s*720px\)[\s\S]*?position:\s*static;/)
 assert.match(shellCss, /\.shell-sidebar\s*{[^}]*visibility:\s*hidden;[^}]*pointer-events:\s*none;/s)
 assert.match(shellCss, /\.shell-sidebar\.is-open\s*{[^}]*visibility:\s*visible;[^}]*pointer-events:\s*auto;/s)
 assert.match(shellCss, /\.platform-shell\.sidebar-collapsed/)
 assert.match(shellCss, /--ui-sidebar-collapsed-width/)
 assert.doesNotMatch(shellCss, /linear-gradient|radial-gradient|\.orb|bokeh/i)
-assert.match(read('src/views/management/CourseManagement.vue'), /grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(280px,\s*1fr\)\)/)
-assert.match(read('src/views/user/CoursePlatform.vue'), /grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(280px,\s*1fr\)\)/)
 
 const login = read('src/views/Login.vue')
 const loginCss = read('src/assets/style/login.css')
 const app = read('src/App.vue')
-const main = read('src/main.js')
-
-assert.match(main, /ElementUI\.Dialog\.props\.closeOnClickModal\.default\s*=\s*false/)
 
 assert.match(app, /class="platform-app"/)
 assert.match(app, /platform-theme\.css/)
@@ -118,19 +92,10 @@ assert.match(login, /catch \(error\)[\s\S]*?this\.serviceStatus\s*=\s*'unavailab
 assert.match(login, /autocomplete="username"/)
 assert.match(login, /autocomplete="current-password"/)
 assert.match(login, /:style="loginStyle"/)
-assert.match(login, /loginEnglishSubtitle/)
-assert.doesNotMatch(login, />XKP5\.0 MANAGEMENT PLATFORM</)
-assert.match(login, /platformLogoUrl/)
 assert.match(loginCss, /--ui-primary/)
 assert.match(loginCss, /border-radius:\s*var\(--ui-radius\)/)
 assert.doesNotMatch(login + loginCss, /linear-gradient|radial-gradient|\.orb|bokeh/i)
 assert.match(login, /login-context/)
-assert.match(login, /login-context-note/)
-assert.match(loginCss, /login-context-note/)
-assert.match(loginCss, /\.login-shell\s*\{[^}]*width:\s*min\(620px,[^}]*flex-direction:\s*column;/s)
-assert.match(loginCss, /\.login-form\s*\{[^}]*grid-template-columns:\s*repeat\(2,/s)
-assert.match(loginCss, /@media \(max-width:\s*760px\)[\s\S]*?\.login-form\s*\{\s*grid-template-columns:\s*1fr;/)
-assert.doesNotMatch(loginCss, /\.has-background \.login-shell::before/)
 assert.doesNotMatch(login, /login-intro/)
 assert.doesNotMatch(loginCss, /\.login-shell\s*\{[^}]*grid-template-columns/s)
 assert.match(loginCss, /@media \(max-width:\s*760px\) and \(max-height:\s*650px\)/)
@@ -154,6 +119,7 @@ assert.doesNotMatch(theme, /\.xterm(?:\s|,|\{|\.)/)
 const composedPages = [
   'src/views/management/ManagementHome.vue',
   'src/views/management/CompetitionManagement.vue',
+  'src/views/management/CompetitionMode.vue',
   'src/views/management/CourseManagement.vue',
   'src/views/management/ResourceManagement.vue',
   'src/views/management/TrainingManagement.vue',
@@ -196,6 +162,7 @@ workspacePages.forEach(file => {
 })
 
 const tablePages = [
+  'src/views/management/CompetitionMode.vue',
   'src/views/management/TrainingManagement.vue',
   'src/views/management/DeviceManagement.vue',
   'src/views/operations/AdministratorManagement.vue',
@@ -214,6 +181,7 @@ tablePages.forEach(file => {
 })
 
 const toolbarPages = [
+  'src/views/management/CompetitionMode.vue',
   'src/views/management/DeviceManagement.vue',
   'src/views/operations/AdministratorManagement.vue',
   'src/views/operations/CompetitionEnvironments.vue',

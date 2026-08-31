@@ -14,7 +14,7 @@
     position: absolute;
     inset: 0;
     content: '';
-    background: rgba(26, 34, 55, .35);
+    background: rgba(26, 34, 55, .7);
 }
 
 .login-brand {
@@ -23,7 +23,7 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    width: min(620px, calc(100% - 48px));
+    width: min(1120px, calc(100% - 48px));
     height: 76px;
     margin: 0 auto;
 }
@@ -41,7 +41,6 @@
     font-size: 19px;
     font-weight: 700;
 }
-.login-brand-logo { display: block; width: 42px; height: 42px; object-fit: contain; }
 
 .login-brand > div {
     display: flex;
@@ -72,19 +71,13 @@
     position: relative;
     z-index: 1;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
-    width: min(620px, calc(100% - 48px));
-    flex-direction: column;
+    width: min(440px, calc(100% - 48px));
     min-height: calc(100vh - 132px);
     margin: 0 auto;
     padding: 64px 0 72px;
 }
-.login-context-note { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 14px; padding-top: 13px; border-top: 1px solid rgba(126, 145, 174, .28); color: var(--ui-muted); font-size: 11px; }
-.login-context-note strong { color: var(--ui-primary-strong); font-weight: 650; }
-.login-context-note span { color: var(--ui-muted); }
-.has-background .login-context-note { color: #e3eaf5; border-top-color: rgba(255,255,255,.28); }
-.has-background .login-context-note strong, .has-background .login-context-note span { color: #f1f5fb; }
 
 .login-context {
     padding-bottom: 22px;
@@ -132,15 +125,14 @@
     background: var(--ui-surface) !important;
     box-shadow: var(--ui-shadow) !important;
 }
-.login-card .el-card__body { padding: 30px 34px !important; }
-.login-card-heading { display: none; }
+.login-card .el-card__body { padding: 30px !important; }
+.login-card-heading { display: flex; flex-direction: column; gap: 6px; margin-bottom: 24px; }
 .login-card-heading span { color: var(--ui-text); font-size: 18px; font-weight: 700; }
 .login-card-heading small { color: var(--ui-muted); font-size: 12px; }
-.login-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
-.login-form .el-form-item { min-width: 0; margin-bottom: 16px !important; }
+.login-form .el-form-item { margin-bottom: 20px !important; }
 .login-form .el-form-item__label { padding-bottom: 7px; color: #465269; font-size: 13px; font-weight: 600; line-height: 20px; }
 .login-form .el-input__inner { height: 42px; }
-.button-list { display: grid; grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) 96px; gap: 10px; margin-top: 8px; }
+.button-list { display: grid; grid-template-columns: minmax(0, 1fr) 88px; gap: 10px; margin-top: 26px; }
 .button-list .el-button { height: 42px; margin-left: 0; }
 .button-list .el-button--primary { background: var(--ui-primary); border-color: var(--ui-primary); }
 .button-list .el-button--primary:hover,
@@ -167,9 +159,6 @@
         padding: 28px 0 64px;
     }
     .login-card { max-width: 420px; }
-    .login-context-note { align-items: flex-start; flex-direction: column; gap: 3px; padding-left: 4px; }
-    .login-form { grid-template-columns: 1fr; }
-    .button-list { grid-column: auto; }
     .login-card .el-card__body { padding: 24px 20px !important; }
     .login-context h1 { font-size: 22px; }
     .login-c { bottom: 9px; }
