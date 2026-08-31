@@ -1,24 +1,5 @@
 <template>
   <section class="grading-page">
-    <header class="grading-heading">
-      <div>
-        <h1>试卷判分</h1>
-        <p>当前启用试卷：{{ paper ? `${paper} 卷` : '未选择' }} · 核对自动判分并完成实操题评分</p>
-      </div>
-      <div class="grading-heading-actions">
-        <el-tooltip :content="exportTip" placement="bottom">
-          <span>
-            <el-button type="primary" size="small" icon="el-icon-download" class="grading-primary-action" :disabled="!exportAllowed" :loading="exporting" @click="createExport">
-              导出全部试卷
-            </el-button>
-          </span>
-        </el-tooltip>
-        <el-button size="small" icon="el-icon-time" class="grading-secondary-action" :disabled="!paper" @click="openExportHistory">
-          导出历史
-        </el-button>
-      </div>
-    </header>
-
     <div class="grading-summary" aria-label="判分状态概览">
       <button type="button" :class="{ active: status === '' }" @click="setStatus('')"><small>已提交</small><strong>{{ summary.submitted || 0 }}</strong></button>
       <button type="button" :class="{ active: status === 'PENDING_GRADING' }" @click="setStatus('PENDING_GRADING')"><small>待判分</small><strong>{{ summary.pending || 0 }}</strong></button>
@@ -35,6 +16,10 @@
       <el-input v-model="keyword" size="small" clearable prefix-icon="el-icon-search" placeholder="搜索用户名" @keyup.enter.native="loadSubmissions" @clear="loadSubmissions" />
       <el-button size="small" icon="el-icon-search" @click="loadSubmissions">查询</el-button>
       <span class="grading-result-count">共 {{ submissions.length }} 份</span>
+      <div class="grading-heading-actions">
+        <el-tooltip :content="exportTip" placement="bottom"><span><el-button type="primary" size="small" icon="el-icon-download" class="grading-primary-action" :disabled="!exportAllowed" :loading="exporting" @click="createExport">导出全部试卷</el-button></span></el-tooltip>
+        <el-button size="small" icon="el-icon-time" class="grading-secondary-action" :disabled="!paper" @click="openExportHistory">导出历史</el-button>
+      </div>
     </div>
 
     <el-table v-loading="loading" :data="submissions" class="grading-table" empty-text="当前筛选条件下暂无试卷">
@@ -369,7 +354,7 @@ export default {
   --grading-green: #2f7d61;
   color: var(--grading-ink);
 }
-.grading-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 20px; }
+.grading-heading { display: flex; align-items: center; justify-content: flex-end; gap: 20px; margin-bottom: 12px; }
 .grading-heading h1 { margin: 0 0 6px; color: #172d44; font-size: 25px; font-weight: 700; line-height: 1.25; letter-spacing: 0; }
 .grading-heading p, .export-history-title p { margin: 0; color: var(--grading-muted); font-size: 13px; }
 .grading-heading-actions { display: flex; align-items: center; gap: 10px; }

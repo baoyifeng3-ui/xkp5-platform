@@ -194,18 +194,6 @@
             <span>试卷题目</span>
           </span>
           <section class="workspace-page subject-panel">
-            <header class="workspace-heading">
-              <div class="subject-heading-actions">
-                <div class="subject-clear-actions">
-                  <el-button type="danger" plain icon="el-icon-delete" :loading="subjectAnswersClearing" :disabled="subjectsClearing" @click="clearSubjectAnswers">清空作答记录</el-button>
-                  <el-button type="danger" plain icon="el-icon-delete" :loading="subjectsClearing" :disabled="subjectAnswersClearing" @click="clearAllSubjects">清空全部题目</el-button>
-                </div>
-                <div class="subject-main-actions">
-                  <el-button icon="el-icon-question" @click="openCompetitionHelp">比赛帮助</el-button>
-                  <el-button type="primary" icon="el-icon-plus" :disabled="subjectAnswersClearing || subjectsClearing" @click="openSubjectCreateDialog">新增题目</el-button>
-                </div>
-              </div>
-            </header>
             <div class="admin-filterbar subject-toolbar">
               <el-radio-group v-model="subjectPaper" size="small" class="paper-selector">
                 <el-radio-button v-for="paper in availablePapers" :key="paper" :label="paper">{{ paper }} 卷</el-radio-button>
@@ -216,6 +204,12 @@
               <el-input v-model="subjectKeyword" size="small" clearable prefix-icon="el-icon-search" placeholder="搜索题干" class="subject-search" @keyup.enter.native="loadSubjects" @clear="loadSubjects" />
               <el-button size="small" icon="el-icon-search" @click="loadSubjects">查询</el-button>
               <span class="filter-result">共 {{ subjects.length }} 题</span>
+              <div class="subject-toolbar-actions">
+                <el-button size="small" icon="el-icon-question" @click="openCompetitionHelp">比赛帮助</el-button>
+                <el-button size="small" type="danger" plain icon="el-icon-delete" :loading="subjectAnswersClearing" :disabled="subjectsClearing" @click="clearSubjectAnswers">清空作答</el-button>
+                <el-button size="small" type="danger" plain icon="el-icon-delete" :loading="subjectsClearing" :disabled="subjectAnswersClearing" @click="clearAllSubjects">清空题目</el-button>
+                <el-button size="small" type="primary" icon="el-icon-plus" :disabled="subjectAnswersClearing || subjectsClearing" @click="openSubjectCreateDialog">新增题目</el-button>
+              </div>
             </div>
             <div v-loading="subjectLoading" class="subject-switcher">
               <section v-for="module in subjectModules" :key="module.key" class="subject-module-row">
@@ -2596,6 +2590,8 @@ export default {
   border-radius: 7px;
 }
 .subject-toolbar { padding: 12px; }
+.subject-toolbar-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.subject-toolbar-actions .el-button + .el-button { margin-left: 0; }
 .subject-search { width: 240px; }
 .account-search { width: 270px; }
 .account-filter { width: 140px; }
