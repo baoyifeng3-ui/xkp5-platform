@@ -1,0 +1,13 @@
+const assert = require('assert')
+const fs = require('fs')
+
+const admin = fs.readFileSync('src/views/Admin.vue', 'utf8')
+const shellCss = fs.readFileSync('src/assets/style/platform-shell.css', 'utf8')
+
+assert.doesNotMatch(admin, /刷新比赛状态/)
+assert.match(admin, /content-editor-toolbar[\s\S]*competitionContentTabs[\s\S]*保存内容/)
+assert.match(admin, /\.content-editor-toolbar\s*\{[^}]*display:\s*flex;[^}]*justify-content:\s*space-between;/s)
+assert.match(shellCss, /\.shell-brand-copy strong\s*\{[^}]*-webkit-line-clamp:\s*2;/s)
+assert.match(shellCss, /\.shell-sidebar-toggle\s*\{[^}]*position:\s*absolute;[^}]*right:\s*-15px;/s)
+assert.match(shellCss, /\.shell-submenu-item\s*\{[^}]*height:\s*38px;/s)
+console.log('competition admin layout contract passed')

@@ -15,12 +15,6 @@
             <span>比赛控制</span>
           </span>
           <section class="workspace-page control-page">
-            <header class="workspace-heading">
-              <el-tooltip content="刷新比赛状态" placement="bottom">
-                <el-button class="icon-command" icon="el-icon-refresh" circle aria-label="刷新比赛状态" @click="loadPublicState" />
-              </el-tooltip>
-            </header>
-
             <div class="summary-band competition-summary" aria-label="比赛状态概览">
               <div class="summary-item summary-paper">
                 <span class="summary-icon"><i class="el-icon-document" /></span>
@@ -134,15 +128,13 @@
         <el-tab-pane name="rules">
           <span slot="label" class="admin-tab-label" title="赛规赛程编辑"><i class="el-icon-edit-outline" /><span>赛规赛程编辑</span></span>
           <section class="workspace-page content-editor-page">
-            <header class="workspace-heading">
-              <el-button type="primary" icon="el-icon-check" :loading="competitionContentSaving" @click="saveCompetitionContent">保存内容</el-button>
-            </header>
             <el-tabs v-model="rulesTab" class="rules-tabs">
               <el-tab-pane label="赛规赛程" name="rules">
             <div class="content-editor-toolbar">
               <el-radio-group v-model="competitionContentKey" size="small">
                 <el-radio-button v-for="item in competitionContentTabs" :key="item.key" :label="item.key">{{ item.label }}</el-radio-button>
               </el-radio-group>
+              <el-button type="primary" icon="el-icon-check" :loading="competitionContentSaving" @click="saveCompetitionContent">保存内容</el-button>
             </div>
             <div class="content-editor-grid">
               <section class="admin-panel content-editor-input">
@@ -2106,7 +2098,9 @@ export default {
 .help-editor-column .el-button { margin-top: 12px; }
 .help-preview-column { padding: 16px; background: #f7f9fa; border: 1px solid #dce4e9; border-radius: 6px; box-sizing: border-box; }
 .help-preview-copy { color: #435568; font-size: 14px; line-height: 1.85; white-space: pre-wrap; word-break: break-word; }
-.content-editor-toolbar { margin-bottom: 16px; overflow-x: auto; }
+.content-editor-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.content-editor-toolbar .el-radio-group { min-width: 0; overflow-x: auto; white-space: nowrap; }
+.content-editor-toolbar > .el-button { flex: 0 0 auto; }
 .content-editor-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 1fr); gap: 18px; align-items: start; }
 .content-editor-input .panel-body { padding-bottom: 4px; }
 .content-editor-input::v-deep .el-textarea__inner { resize: vertical; line-height: 1.7; }
