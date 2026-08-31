@@ -14,7 +14,15 @@
         <el-input v-model="platformForm.platformName" maxlength="30" show-word-limit placeholder="请输入平台名称" @input="platformEditing = true" />
       </el-form-item>
       <el-form-item label="主题色"><el-color-picker v-model="platformForm.themeColor" @change="platformEditing = true" /></el-form-item>
+      <el-form-item label="平台 Logo">
+        <el-upload action="#" accept="image/jpeg,image/png,image/webp,image/svg+xml" :auto-upload="false" :show-file-list="false" :on-change="selectPlatformLogo" :disabled="logoUploading || !initialized || loading">
+          <el-button icon="el-icon-picture" :loading="logoUploading">选择 Logo</el-button>
+        </el-upload>
+        <div v-if="platformForm.platformLogoUrl" class="logo-preview"><img :src="platformForm.platformLogoUrl" alt="平台 Logo 预览" @error="assetLoadError('Logo')" /></div>
+        <el-button v-if="platformForm.platformLogoUrl" type="text" icon="el-icon-delete" @click="removePlatformLogo">移除 Logo</el-button>
+      </el-form-item>
       <el-form-item label="登录页顶部名称"><el-input v-model="platformForm.loginBrandName" maxlength="60" show-word-limit @input="platformEditing = true" /></el-form-item>
+      <el-form-item label="登录页英文副标题"><el-input v-model="platformForm.loginEnglishSubtitle" maxlength="100" show-word-limit @input="platformEditing = true" /></el-form-item>
       <el-form-item label="登录页主标题"><el-input v-model="platformForm.loginTitle" maxlength="60" show-word-limit @input="platformEditing = true" /></el-form-item>
       <el-form-item label="登录页说明文字"><el-input v-model="platformForm.loginDescription" type="textarea" :rows="3" maxlength="300" show-word-limit @input="platformEditing = true" /></el-form-item>
       <el-form-item label="登录页版权文字"><el-input v-model="platformForm.loginCopyright" maxlength="100" show-word-limit @input="platformEditing = true" /></el-form-item>
@@ -22,7 +30,7 @@
         <el-upload action="#" accept="image/jpeg,image/png,image/webp" :auto-upload="false" :show-file-list="false" :on-change="selectLoginBackground" :disabled="backgroundUploading || !initialized || loading">
           <el-button icon="el-icon-picture-outline" :loading="backgroundUploading">选择本地图片</el-button>
         </el-upload>
-        <div v-if="platformForm.loginBackgroundUrl" class="background-preview"><img :src="platformForm.loginBackgroundUrl" alt="登录背景预览" /></div>
+        <div v-if="platformForm.loginBackgroundUrl" class="background-preview"><img :src="platformForm.loginBackgroundUrl" alt="登录背景预览" @error="assetLoadError('背景图片')" /></div>
         <el-button v-if="platformForm.loginBackgroundUrl" type="text" icon="el-icon-delete" @click="removeLoginBackground">移除背景图片</el-button>
       </el-form-item>
       <div class="settings-actions">
@@ -34,15 +42,15 @@
 </template>
 
 <script>
-import { competitionApi, updatePlatformSettingsApi, uploadLoginBackgroundApi } from '@/api/Match'
+import { competitionApi, updatePlatformSettingsApi, uploadLoginBackgroundApi, uploadPlatformLogoApi } from '@/api/Match'
 
-const DEFAULT_THEME_COLOR = '#6f7ff7'
+const DEFAULT_THEME_COLOR = '#386bdc'
 
 export default {
   name: 'PlatformSettings',
   data () {
     return {
-      platformForm: { platformName: '', themeColor: DEFAULT_THEME_COLOR, loginBackgroundUrl: '', loginBrandName: '', loginTitle: '', loginDescription: '', loginCopyright: '' },
+      platformForm: { platformName: '', themeColor: DEFAULT_THEME_COLOR, loginBackgroundUrl: '', platformLogoUrl: '', loginEnglishSubtitle: '', loginBrandName: '', loginTitle: '', loginDescription: '', loginCopyright: '' },
       defaultThemeColor: DEFAULT_THEME_COLOR,
       loading: true,
       loadError: false,
@@ -50,6 +58,7 @@ export default {
       platformSaving: false,
       platformEditing: false,
       backgroundUploading: false,
+      logoUploading: false,
       platformRules: {
         platformName: [{
           validator: (rule, value, callback) => {
@@ -91,6 +100,8 @@ export default {
         platformName: this.platformName,
         themeColor: state.themeColor,
         loginBackgroundUrl: state.loginBackgroundUrl,
+        platformLogoUrl: state.platformLogoUrl,
+        loginEnglishSubtitle: state.loginEnglishSubtitle,
         loginBrandName: state.loginBrandName,
         loginTitle: state.loginTitle,
         loginDescription: state.loginDescription,
@@ -107,6 +118,8 @@ export default {
           platformName: String(this.platformForm.platformName || '').trim(),
           themeColor: String(this.platformForm.themeColor || DEFAULT_THEME_COLOR).trim(),
           loginBackgroundUrl: String(this.platformForm.loginBackgroundUrl || '').trim(),
+          platformLogoUrl: String(this.platformForm.platformLogoUrl || '').trim(),
+          loginEnglishSubtitle: String(this.platformForm.loginEnglishSubtitle || '').trim(),
           loginBrandName: String(this.platformForm.loginBrandName || '').trim(),
           loginTitle: String(this.platformForm.loginTitle || '').trim(),
           loginDescription: String(this.platformForm.loginDescription || '').trim(),
@@ -148,6 +161,18 @@ export default {
       }
     },
     removeLoginBackground () { this.platformForm.loginBackgroundUrl = ''; this.platformEditing = true },
+    async selectPlatformLogo (uploadFile) {
+      const file = uploadFile && uploadFile.raw
+      if (!file) return
+      if (!['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'].includes(file.type) || file.size > 2 * 1024 * 1024) return this.$message.error('Logo 仅支持 JPEG、PNG、WebP 或 SVG，且不能超过 2 MB')
+      this.logoUploading = true
+      try {
+        const result = await uploadPlatformLogoApi(file)
+        if (result.code === 200) { this.platformForm.platformLogoUrl = result.data.platformLogoUrl; this.platformEditing = true; this.$message.success('Logo 已上传，请保存设置') }
+      } finally { this.logoUploading = false }
+    },
+    removePlatformLogo () { this.platformForm.platformLogoUrl = ''; this.platformEditing = true },
+    assetLoadError (name) { this.$message.error(`${name}加载失败，请重新上传`) },
     restoreDefaultTheme () {
       this.platformForm.themeColor = DEFAULT_THEME_COLOR
       this.platformEditing = true
@@ -158,12 +183,14 @@ export default {
 </script>
 
 <style scoped>
-.settings-form { max-width: 680px; padding-top: 18px; border-top: 1px solid #dce4e9; }
-.settings-error { display: flex; align-items: center; justify-content: space-between; gap: 16px; max-width: 680px; margin-bottom: 14px; padding: 10px 12px; color: #934444; background: #fff7f7; border: 1px solid #ead5d5; border-radius: 5px; box-sizing: border-box; }
+.settings-form { max-width: 840px; padding-top: 18px; border-top: 1px solid #dce4e9; }
+.settings-error { display: flex; align-items: center; justify-content: space-between; gap: 16px; max-width: 840px; margin-bottom: 14px; padding: 10px 12px; color: #934444; background: #fff7f7; border: 1px solid #ead5d5; border-radius: 5px; box-sizing: border-box; }
 .settings-form::v-deep .el-form-item { margin-bottom: 22px; }
 .settings-form::v-deep .el-form-item__label { color: #405267; font-size: 13px; font-weight: 600; }
 .background-preview { width: 100%; max-width: 360px; height: 120px; margin-top: 10px; overflow: hidden; background: #f3f5f6; border: 1px solid #e3e8eb; border-radius: 6px; }
 .background-preview img { width: 100%; height: 100%; object-fit: cover; }
+.logo-preview { display: grid; place-items: center; width: 120px; height: 80px; margin-top: 10px; background: #f3f5f6; border: 1px solid #e3e8eb; border-radius: 6px; }
+.logo-preview img { max-width: 100px; max-height: 64px; object-fit: contain; }
 .settings-actions { display: flex; justify-content: flex-end; gap: 10px; }
 .settings-actions .el-button + .el-button { margin-left: 0; }
 @media (max-width: 600px) { .settings-actions { align-items: stretch; flex-direction: column-reverse; } .settings-actions .el-button { width: 100%; margin: 0; } }
