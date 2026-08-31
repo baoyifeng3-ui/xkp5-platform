@@ -3,6 +3,8 @@
 .shell-brand { display: flex; align-items: center; gap: 11px; height: 74px; padding: 0 18px; border-bottom: 0; }
 .shell-brand-mark, .shell-avatar { display: inline-grid; place-items: center; flex: 0 0 34px; width: 34px; height: 34px; color: #fff; background: var(--ui-primary); border-radius: 50%; font-weight: 700; }
 .shell-brand-copy, .shell-heading { min-width: 0; }
+.shell-sidebar-toggle { display: inline-grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px; margin-left: auto; color: #657086; background: #f0f3f9; border: 0; border-radius: 50%; cursor: pointer; }
+.shell-sidebar-toggle:hover, .shell-sidebar-toggle:focus-visible { color: var(--ui-primary-strong); background: var(--ui-primary-soft); outline: none; }
 .shell-brand-copy strong, .shell-heading strong { display: block; overflow: hidden; color: var(--ui-text); font-size: 16px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .shell-brand-copy small, .shell-heading small { display: block; margin-top: 3px; overflow: hidden; color: var(--ui-muted); font-size: 11px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .shell-menu { padding: 14px 12px; background: transparent !important; border-right: 0 !important; }
@@ -12,6 +14,11 @@
 .shell-menu .el-menu-item.is-active { color: #fff !important; background: var(--ui-primary) !important; box-shadow: 0 8px 18px rgba(113,132,248,.28); font-weight: 600; }
 .shell-menu-icon { display: inline-grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px; border-radius: 50%; }
 .shell-menu-icon i { width: auto !important; margin: 0 !important; color: inherit !important; font-size: 15px !important; }
+.platform-shell.sidebar-collapsed { grid-template-columns: var(--ui-sidebar-collapsed-width) minmax(0, 1fr); }
+.platform-shell.sidebar-collapsed .shell-sidebar { width: var(--ui-sidebar-collapsed-width); }
+.platform-shell.sidebar-collapsed .shell-brand-copy, .platform-shell.sidebar-collapsed .menu-text { display: none; }
+.platform-shell.sidebar-collapsed .shell-brand, .platform-shell.sidebar-collapsed .el-menu-item { justify-content: center; }
+.platform-shell.sidebar-collapsed .shell-sidebar-toggle { margin-left: 0; }
 .shell-menu-icon--0 { color: #586cf0; background: #e9ecff; }
 .shell-menu-icon--1 { color: #d95865; background: #ffeaec; }
 .shell-menu-icon--2 { color: #159d7b; background: #e2f7f1; }
@@ -62,6 +69,9 @@
   .shell-workspace { grid-template-rows: var(--ui-header-height) minmax(0, 1fr); }
   .shell-sidebar { position: fixed; left: 0; width: min(86vw, 300px); visibility: hidden; box-shadow: var(--ui-shadow); pointer-events: none; transform: translateX(-105%); transition: transform .2s ease, visibility 0s linear .2s; }
   .shell-sidebar.is-open { visibility: visible; pointer-events: auto; transform: translateX(0); transition-delay: 0s; }
+  .platform-shell.sidebar-collapsed { display: block; }
+  .platform-shell.sidebar-collapsed .shell-sidebar { width: min(86vw, 300px); }
+  .shell-sidebar-toggle { display: none; }
   .shell-drawer-trigger { position: fixed; z-index: 22; top: 14px; left: 12px; display: inline-grid; }
   .shell-drawer-close { display: inline-grid; margin-left: auto; }
   .shell-drawer-backdrop { position: fixed; z-index: 29; inset: 0; display: block; width: 100%; height: 100%; padding: 0; background: rgba(31, 41, 64, .28); border: 0; }
