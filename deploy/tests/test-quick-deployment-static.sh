@@ -41,4 +41,17 @@ grep -q 'git clone' "$online_install" || fail 'Online installer must clone the r
 grep -q 'deploy/quick-install.sh' "$online_install" || fail 'Online installer must call the shared core'
 grep -q -- '--non-interactive' "$online_install" || fail 'Online installer must support non-interactive mode'
 
+offline_install="$repo_root/install-xkp5-offline.sh"
+offline_release="$repo_root/deploy/quick-offline-release.sh"
+[[ -f "$offline_install" ]] || fail 'install-xkp5-offline.sh is missing'
+[[ -f "$offline_release" ]] || fail 'deploy/quick-offline-release.sh is missing'
+bash -n "$offline_install" || fail 'install-xkp5-offline.sh has invalid syntax'
+bash -n "$offline_release" || fail 'deploy/quick-offline-release.sh has invalid syntax'
+grep -q 'sha256sum -c' "$offline_install" || fail 'Offline installer must verify checksums'
+grep -q 'docker load' "$offline_install" || fail 'Offline installer must load packaged images'
+grep -q 'deploy/quick-install.sh\|quick-install.sh' "$offline_install" || fail 'Offline installer must call the shared core'
+grep -q 'apt-get.*download\|apt-get.*--download-only' "$offline_release" || fail 'Offline release must collect Docker packages'
+grep -q 'docker save\|match-v2-images.tar.gz' "$offline_release" || fail 'Offline release must contain Docker images'
+grep -q 'deploy/offline/build-release.sh' "$offline_release" || fail 'Offline release must reuse the existing release builder'
+
 printf 'Quick deployment static tests passed.\n'
