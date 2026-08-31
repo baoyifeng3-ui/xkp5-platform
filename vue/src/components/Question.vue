@@ -296,19 +296,32 @@ export default {
         item.saving = false
       }
     },
-    onAnswerEnvironment (item) {
+    async onAnswerEnvironment (item) {
       if (this.previewOnly) return
-      const urlByPoint = {
-        code: item.subject.vscodeUrl,
-        cvat: item.subject.cvatUrl,
-        t100: item.subject.t100Url
+      const environmentWindow = window.open('', '_blank')
+      if (!environmentWindow) {
+        this.$message.error('浏览器阻止了环境窗口，请允许本站打开新窗口')
+        return
       }
-      const target = urlByPoint[item.subject.point]
+      let environment
+      try {
+        environment = await this.$store.dispatch('Match/trainUrl')
+      } catch (error) {
+        environmentWindow.close()
+        this.$message.error((error && error.message) || '比赛实训环境启动失败')
+        return
+      }
+      const target = {
+        code: environment.editorUrl,
+        cvat: environment.annotationUrl,
+        t100: environment.t100Url
+      }[item.subject.point]
       if (!target) {
+        environmentWindow.close()
         this.$message.error('当前题目没有可用的答题环境')
         return
       }
-      window.open(/^https?:\/\//.test(target) ? target : `http://${target}`)
+      environmentWindow.location.href = /^https?:\/\//.test(target) ? target : `http://${target}`
     },
     handleTips () {
       this.isShowTips = !this.isShowTips
@@ -396,11 +409,11 @@ export default {
   justify-content: space-between;
   gap: 16px;
   padding-bottom: 18px;
-  border-bottom: 1px solid #dcdfe6;
+  border-bottom: 1px solid var(--ui-border);
 }
 
 .paper-heading h1 { margin: 4px 0 0; text-align: left; font-size: 24px; letter-spacing: 0; }
-.paper-kicker { color: #909399; font-size: 12px; }
+.paper-kicker { color: var(--ui-muted); font-size: 12px; }
 .question-module { margin-top: 30px; }
 .module-heading { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
 .module-heading span { color: #909399; font-size: 12px; }
@@ -409,10 +422,10 @@ export default {
 .question-item {
   margin-bottom: 14px;
   padding: 18px 20px;
-  border: 1px solid #dcdfe6;
-  border-left: 3px solid #409eff;
-  border-radius: 4px;
-  background: #fff;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-card-radius);
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow);
 }
 
 .question-meta { display: flex; align-items: center; gap: 10px; }
@@ -427,13 +440,13 @@ export default {
 .question-actions { display: flex; justify-content: flex-end; margin-top: 14px; }
 .practical-control { max-width: 760px; }
 .question-environment { margin: 12px 0; }
-.question-empty { padding: 80px 20px; color: #909399; text-align: center; }
+.question-empty { padding: 80px 20px; color: var(--ui-muted); text-align: center; }
 .question-empty i { font-size: 42px; }
 .question-empty p { margin-top: 12px; }
 .submission-alert { margin-top: 16px; }
 .submit-zone { display: flex; justify-content: flex-end; margin: 24px 0 0; }
 .submit-zone .el-button { min-width: 132px; }
-.submitted-state { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px; color: #2f6f5e; font-size: 13px; font-weight: 600; border: 1px solid #cde0da; background: #f0f7f5; border-radius: 4px; }
+.submitted-state { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px; color: #2f6f5e; font-size: 13px; font-weight: 600; border: 1px solid #cde0da; background: #f0f7f5; border-radius: var(--ui-control-radius); }
 .btn-list { position: fixed; z-index: 1200; right: 18px; bottom: 22px; left: auto; width: 54px; height: 54px; }
 .help-button { display: inline-flex; align-items: center; justify-content: center; width: 54px; height: 54px; margin: 0; color: #fff; font-size: 23px; border: 0; border-radius: 7px; background: var(--platform-theme-color, #162d45); box-shadow: 0 9px 24px rgba(22, 42, 60, .22); cursor: pointer; }
 .help-button:hover { filter: brightness(.94); }
