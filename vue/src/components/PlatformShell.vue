@@ -25,7 +25,8 @@
       :inert="drawerHidden ? '' : null"
     >
       <div class="shell-brand">
-        <span class="shell-brand-mark" aria-hidden="true">X</span>
+        <img v-if="platformLogoUrl" class="shell-brand-logo" :src="platformLogoUrl" alt="平台 Logo">
+        <span v-else class="shell-brand-mark" aria-hidden="true">X</span>
         <div class="shell-brand-copy">
           <strong>{{ platformName }}</strong>
           <small>{{ brandCaption }}</small>
@@ -38,11 +39,11 @@
         </button>
       </div>
 
-      <el-menu :default-active="activeRoute" class="shell-menu" @select="selectItem">
+      <el-menu :default-active="activeRoute" class="shell-menu" unique-opened @select="selectItem">
         <template v-for="(item, index) in items">
           <el-submenu v-if="item.children && item.children.length" :key="item.key" :index="item.key">
             <template slot="title"><span :class="['shell-menu-icon', `shell-menu-icon--${index % 4}`]"><i :class="item.icon || 'el-icon-menu'" /></span><span class="menu-text">{{ item.label }}</span></template>
-            <el-menu-item v-for="child in item.children" :key="child.key" :index="child.route">{{ child.label }}</el-menu-item>
+            <el-menu-item v-for="child in item.children" :key="child.key" :index="child.route" class="shell-submenu-item">{{ child.label }}</el-menu-item>
           </el-submenu>
           <el-menu-item v-else :key="item.key" :index="item.activeKey || item.route || item.key"><span :class="['shell-menu-icon', `shell-menu-icon--${index % 4}`]"><i :class="item.icon || 'el-icon-menu'" /></span><span class="menu-text">{{ item.label }}</span></el-menu-item>
         </template>
@@ -96,6 +97,13 @@
       </header>
 
       <main class="shell-main">
+        <nav class="shell-breadcrumb" aria-label="当前位置">
+          <template v-for="(label, index) in currentBreadcrumbs">
+            <i v-if="index" :key="`separator-${index}`">/</i>
+            <strong v-if="index === currentBreadcrumbs.length - 1" :key="`current-${index}`">{{ label }}</strong>
+            <span v-else :key="`parent-${index}`">{{ label }}</span>
+          </template>
+        </nav>
         <slot />
       </main>
     </section>
@@ -112,6 +120,7 @@ export default {
     workspaceCaption: { type: String, default: '' },
     userName: { type: String, default: '用户' },
     platformName: { type: String, default: 'XKP5.0平台' },
+    platformLogoUrl: { type: String, default: '' },
     activeRoute: { type: String, default: '' }
   },
   data () {
@@ -129,7 +138,31 @@ export default {
     userInitial () {
       return String(this.userName || '用户').trim().slice(0, 1).toUpperCase()
     },
-    flatItems () { return this.items.reduce((all, item) => all.concat(item.children || [item]), []) }
+    flatItems () { return this.items.reduce((all, item) => all.concat(item.children || [item]), []) },
+    currentBreadcrumbs () {
+      const path = this.$route.path
+      const fullPath = this.$route.fullPath
+      const aliases = {
+        '/management/competition': ['竞赛管理'],
+        '/management/course-platform': ['课程与资源', '课程平台'],
+        '/management/demo/courses': ['课程与资源', '课程平台'],
+        '/management/demo/resources': ['课程与资源', '资源中心'],
+        '/management/demo/training': ['实训管理', '实训环境'],
+        '/management/demo/validation': ['实训管理', '模型验证'],
+        '/management/license': ['平台管理', '平台授权'],
+        '/competition-preview': ['竞赛管理', '参赛端预览']
+      }
+      if (aliases[path]) return aliases[path]
+      for (const item of this.items) {
+        const children = item.children || []
+        const child = children.find(value => value.route && (fullPath === value.route || (!value.route.includes('?') && path === value.route)))
+        if (child) return [item.label, child.label]
+        if (!children.length && item.route && path === item.route.split('?')[0]) {
+          return item.key === 'home' ? ['首页', this.workspaceTitle] : [item.label]
+        }
+      }
+      return ['首页', this.$route.meta && this.$route.meta.title ? this.$route.meta.title : this.workspaceTitle]
+    }
   },
   watch: {
     '$route.fullPath' () {
@@ -198,4 +231,69 @@ export default {
 <style>
 @import url(../assets/style/platform-theme.css);
 @import url(../assets/style/platform-shell.css);
+.shell-main {
+  position: relative;
+}
+.shell-breadcrumb {
+  display: flex;
+  min-height: 40px;
+  margin: 0;
+  padding: 0 148px 0 2px;
+  align-items: center;
+  gap: 9px;
+  color: var(--ui-muted);
+  font-size: 13px;
+}
+.shell-breadcrumb i {
+  color: #a7b1ba;
+  font-style: normal;
+}
+.shell-breadcrumb strong {
+  color: var(--ui-text);
+  font-weight: 500;
+}
+.shell-main > .module-page > .module-heading,
+.shell-main > .module-page > .page-heading,
+.shell-main > .module-composed-page > .module-heading,
+.shell-main > .module-page > .file-heading,
+.shell-main > .module-page > .course-heading:not(.detail-heading) {
+  position: absolute;
+  z-index: 2;
+  top: 14px;
+  right: 16px;
+  min-height: 40px;
+  margin: 0;
+  align-items: center;
+  background: #f7f8fb;
+}
+.shell-main > .module-page > .module-heading h1,
+.shell-main > .module-page > .page-heading h1,
+.shell-main > .module-composed-page > .module-heading h1,
+.shell-main > .module-page > .file-heading h1,
+.shell-main > .module-page > .course-heading:not(.detail-heading) h1 {
+  display: none;
+}
+.shell-main > .module-page > .module-heading p,
+.shell-main > .module-page > .page-heading p,
+.shell-main > .module-composed-page > .module-heading p,
+.shell-main > .module-page > .file-heading p,
+.shell-main > .module-page > .course-heading:not(.detail-heading) p {
+  display: none;
+}
+@media (max-width: 720px) {
+  .shell-breadcrumb {
+    min-height: 36px;
+    padding-right: 2px;
+  }
+  .shell-main > .module-page > .module-heading,
+  .shell-main > .module-page > .page-heading,
+  .shell-main > .module-composed-page > .module-heading,
+  .shell-main > .module-page > .file-heading,
+  .shell-main > .module-page > .course-heading:not(.detail-heading) {
+    position: static;
+    min-height: 0;
+    margin-bottom: 8px;
+    background: transparent;
+  }
+}
 </style>

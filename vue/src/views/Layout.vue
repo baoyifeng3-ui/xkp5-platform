@@ -76,16 +76,12 @@ export default {
       return this.previewOnly ? '参赛端预览' : (getUserName() || (this.isAdmin ? '管理员' : '参赛用户'))
     },
     participantItems () {
-      const participantItems = [
+      return [
         { key: 'home', activeKey: 'home', label: '首页', icon: 'el-icon-house', destination: 1 },
         { key: 'schedule', activeKey: 'schedule', label: '赛规赛程', icon: 'el-icon-date', destination: 2 },
         { key: 'paper', activeKey: 'paper', label: '当前赛卷', icon: 'el-icon-document', destination: 3 },
         { key: 'verification', activeKey: 'verification', label: '成果验证', icon: 'el-icon-circle-check', destination: 4 }
       ]
-      if (!this.isAdmin || this.previewOnly) {
-        participantItems.push({ key: 'practical', activeKey: 'practical', label: '比赛实操', icon: 'el-icon-monitor', destination: 5 })
-      }
-      return participantItems
     },
     activePaperLabel () {
       const paper = this.$store.state.Match.activePaper
@@ -93,8 +89,7 @@ export default {
     },
     shellItems () {
       if (!this.showAdminNavigation) return this.participantItems
-      const participantItems = this.participantItems
-      return participantItems.concat([
+      return this.participantItems.concat([
         { key: 'admin-timer', activeKey: 'admin-timer', label: '比赛控制', icon: 'el-icon-odometer', adminTab: 'timer' },
         { key: 'admin-rules', activeKey: 'admin-rules', label: '赛规赛程编辑', icon: 'el-icon-edit-outline', adminTab: 'rules' },
         { key: 'admin-subjects', activeKey: 'admin-subjects', label: '试卷题目', icon: 'el-icon-reading', adminTab: 'subjects' },
@@ -105,7 +100,7 @@ export default {
       ])
     },
     preStartLocked () {
-      return !this.isAdmin && this.countdownSnapshot && this.countdownSnapshot.accessPhase === 'PRE_START'
+      return !this.isAdmin && this.countdownSnapshot && ['BEFORE_LOGIN', 'PRE_START', 'UNSCHEDULED'].includes(this.countdownSnapshot.accessPhase)
     },
     preStartTimeText () {
       if (!this.countdownSnapshot || !this.countdownSnapshot.scheduledStartTime) return '00:00:00'
