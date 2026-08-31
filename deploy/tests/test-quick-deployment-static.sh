@@ -32,4 +32,13 @@ if grep -Eq 'docker compose .*down .*-(v|-v)' "$quick_install"; then
   fail 'Installer must not remove Docker volumes'
 fi
 
+online_install="$repo_root/install-xkp5-online.sh"
+[[ -f "$online_install" ]] || fail 'install-xkp5-online.sh is missing'
+bash -n "$online_install" || fail 'install-xkp5-online.sh has invalid syntax'
+grep -q 'download.docker.com/linux/ubuntu' "$online_install" || fail 'Online installer must use the official Docker repository'
+grep -q 'docker-ce' "$online_install" || fail 'Online installer must install Docker Engine'
+grep -q 'git clone' "$online_install" || fail 'Online installer must clone the requested repository'
+grep -q 'deploy/quick-install.sh' "$online_install" || fail 'Online installer must call the shared core'
+grep -q -- '--non-interactive' "$online_install" || fail 'Online installer must support non-interactive mode'
+
 printf 'Quick deployment static tests passed.\n'

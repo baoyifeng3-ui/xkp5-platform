@@ -177,6 +177,30 @@ python/b/annotations.xml
 
 ## Ubuntu 22.04 部署
 
+### 在线一键安装
+
+在全新的 Ubuntu 22.04 amd64 服务器下载 `install-xkp5-online.sh` 后执行：
+
+```bash
+chmod +x install-xkp5-online.sh
+sudo ./install-xkp5-online.sh
+```
+
+脚本只询问仓库地址、固定管理 IP 和生产授权公钥，自动安装 Docker、生成运行密钥与内部证书、构建并启动平台。自动化安装可使用：
+
+```bash
+sudo ./install-xkp5-online.sh \
+  --repo 'https://example.com/your/xkp5-platform.git' \
+  --ref main \
+  --server-ip 192.168.1.20 \
+  --license-public-keys 'production-2026-01=Base64公钥' \
+  --non-interactive
+```
+
+首次安装会拒绝覆盖已有容器、数据卷或非空安装目录。升级已有服务器不要再次运行首次安装脚本，使用下方“服务器日常更新”流程。
+
+### 高级/手工部署
+
 服务器安装 Docker 与 Compose，创建生产配置，填写强密码和注册码工具生成的
 Ed25519 公钥，然后初始化主机身份：
 
