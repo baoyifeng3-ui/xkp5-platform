@@ -1,10 +1,20 @@
 :root {
-  --platform-theme-color: #6f7ff7;
-  --ui-primary: var(--platform-theme-color, #7184f8);
-  --ui-primary-strong: #5b68cb;
-  --ui-primary-soft: #eef0ff;
-  --ui-workspace: #f1f2f5;
-  --ui-surface: #ffffff;
+  --platform-theme-color: #386bdc;
+  --ui-page: #f3f6fa;
+  --ui-primary: var(--platform-theme-color, #386bdc);
+  --ui-primary-strong: #2d5bb5;
+  --ui-primary-soft: #e8efff;
+  --ui-space-unit: 4px;
+  --ui-card-radius: 8px;
+  --ui-control-radius: 6px;
+  --ui-sidebar-collapsed-width: 76px;
+  --ui-type-xs: 12px;
+  --ui-type-sm: 14px;
+  --ui-type-md: 16px;
+  --ui-type-lg: 20px;
+  --ui-type-xl: 24px;
+  --ui-workspace: #f3f6fa;
+  --ui-surface: #fbfcfe;
   --ui-text: #1f2940;
   --ui-muted: #7d879c;
   --ui-border: #e6e9f1;
@@ -12,11 +22,18 @@
   --ui-warning: #f4b84a;
   --ui-danger: #f46f78;
   --ui-info: #4eb8ee;
-  --ui-radius: 10px;
+  --ui-radius: 8px;
   --ui-shadow: 0 12px 30px rgba(46, 58, 98, .08);
-  --ui-sidebar-width: 188px;
+  --ui-sidebar-width: 184px;
   --ui-sidebar-compact-width: 76px;
   --ui-header-height: 68px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
 }
 
 *,
