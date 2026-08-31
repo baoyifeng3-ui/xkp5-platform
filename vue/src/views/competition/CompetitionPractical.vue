@@ -95,22 +95,22 @@ export default {
 </script>
 
 <style scoped>
-.competition-practical { min-height: calc(100vh - 116px); padding: 28px; color: #24384a; background: #f4f7f9; box-sizing: border-box; }
+.competition-practical { min-height: calc(100vh - 116px); padding: 28px; color: var(--ui-text); background: var(--ui-page); box-sizing: border-box; }
 .practical-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; max-width: 980px; margin: 0 auto 20px; }
 .practical-preview-notice { max-width: 980px; margin-right: auto; margin-left: auto; box-sizing: border-box; }
 .practical-heading h1 { margin: 0; font-size: 24px; letter-spacing: 0; }
-.practical-heading p { margin: 7px 0 0; color: #72808d; font-size: 13px; }
-.practical-state, .practical-ready { max-width: 980px; min-height: 190px; margin: 0 auto; padding: 34px 8px; border-top: 1px solid #dce4ea; border-bottom: 1px solid #dce4ea; box-sizing: border-box; }
+.practical-heading p { margin: 7px 0 0; color: var(--ui-muted); font-size: 13px; }
+.practical-state, .practical-ready { max-width: 980px; min-height: 190px; margin: 0 auto; padding: 34px 24px; border: 1px solid var(--ui-border); border-radius: var(--ui-card-radius); background: var(--ui-surface); box-shadow: var(--ui-shadow); box-sizing: border-box; }
 .practical-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; }
-.practical-state i { color: #56768f; font-size: 28px; }
+.practical-state i { color: var(--ui-primary); font-size: 28px; }
 .practical-state strong { font-size: 18px; }
-.practical-state span { max-width: 580px; color: #71808d; font-size: 13px; line-height: 1.7; }
+.practical-state span { max-width: 580px; color: var(--ui-muted); font-size: 13px; line-height: 1.7; }
 .practical-state.is-error i { color: #c45656; }
 .practical-ready { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
 .ready-copy { display: flex; align-items: center; gap: 13px; }
 .ready-copy strong, .ready-copy small { display: block; }
 .ready-copy strong { font-size: 18px; }
-.ready-copy small { margin-top: 6px; color: #71808d; }
+.ready-copy small { margin-top: 6px; color: var(--ui-muted); }
 .ready-dot { width: 10px; height: 10px; background: #2f9d68; border-radius: 50%; box-shadow: 0 0 0 5px #dcf1e7; }
 .ready-actions { display: flex; gap: 10px; }
 @media (max-width: 720px) { .competition-practical { padding: 18px 14px; } .practical-ready { align-items: stretch; flex-direction: column; } .ready-actions { flex-direction: column; } .ready-actions .el-button { width: 100%; margin-left: 0; } }
