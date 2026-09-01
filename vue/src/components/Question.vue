@@ -1,5 +1,6 @@
 <template>
   <div class="q-box module-page">
+    <div class="competition-answer-layout">
     <main v-loading="loading" class="question-content">
       <header class="paper-heading module-heading">
         <div>
@@ -98,6 +99,12 @@
         <span v-else class="submitted-state"><i :class="submissionState.status === 'GRADED' ? 'el-icon-circle-check' : 'el-icon-time'" />{{ submissionState.status === 'GRADED' ? '判分已完成' : '已提交，等待判分' }}</span>
       </div>
     </main>
+    <aside v-if="!previewOnly" class="competition-status-panel">
+      <div class="status-panel-score"><small>当前完成度</small><strong>{{ totalSubjects - unansweredCount }} / {{ totalSubjects }}</strong><el-progress :percentage="progressPercent" :show-text="false" /></div>
+      <div class="status-panel-list"><div><span>答案保存</span><b class="status-ok">{{ savingCount ? '保存中' : '正常' }}</b></div><div><span>成果验证</span><b>{{ validationState }}</b></div><div><span>试卷状态</span><b>{{ submissionLocked ? '已锁定' : '可编辑' }}</b></div></div>
+      <el-button class="status-panel-action" icon="el-icon-circle-check" @click="$router.push({ path: '/Detect' })">进入成果验证</el-button>
+    </aside>
+    </div>
 
     <aside class="btn-list">
       <button class="help-button" title="比赛帮助" @click="handleTips">
@@ -163,6 +170,15 @@ export default {
         }
         return Array.isArray(item.value) ? item.value.length === 0 : !String(item.value || '').trim()
       }).length
+    },
+    progressPercent () {
+      return this.totalSubjects ? Math.round((this.totalSubjects - this.unansweredCount) * 100 / this.totalSubjects) : 0
+    },
+    savingCount () {
+      return this.allItems().filter(item => item.saving).length
+    },
+    validationState () {
+      return this.submissionLocked ? '待判分' : '未验证'
     }
   },
   mounted () {
@@ -402,6 +418,18 @@ export default {
   box-sizing: border-box;
   padding: 24px clamp(18px, 4vw, 56px) 50px;
 }
+.competition-answer-layout { display: grid; grid-template-columns: minmax(0, 1fr) 220px; align-items: start; gap: 16px; }
+.competition-status-panel { position: sticky; top: 84px; padding: 14px; background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-card-radius); box-shadow: var(--ui-shadow); }
+.status-panel-score { padding: 12px; color: #fff; background: var(--ui-primary-strong); border-radius: var(--ui-control-radius); }
+.status-panel-score small { display: block; color: rgba(255,255,255,.72); font-size: 11px; }
+.status-panel-score strong { display: block; margin: 6px 0 10px; font-size: 21px; font-variant-numeric: tabular-nums; }
+.status-panel-score .el-progress-bar__outer { background: rgba(255,255,255,.22); }
+.status-panel-score .el-progress-bar__inner { background: #dce8ff; }
+.status-panel-list { display: grid; gap: 1px; margin: 12px 0; background: var(--ui-border); border: 1px solid var(--ui-border); }
+.status-panel-list > div { display: flex; align-items: center; justify-content: space-between; padding: 10px; background: var(--ui-surface); font-size: 12px; }
+.status-panel-list b { color: var(--ui-muted); font-size: 11px; font-weight: 600; }
+.status-panel-list .status-ok { color: #2f7a55; }
+.status-panel-action { width: 100%; }
 
 .paper-heading {
   display: flex;
@@ -409,11 +437,11 @@ export default {
   justify-content: space-between;
   gap: 16px;
   padding-bottom: 18px;
-  border-bottom: 1px solid #dcdfe6;
+  border-bottom: 1px solid var(--ui-border);
 }
 
 .paper-heading h1 { margin: 4px 0 0; text-align: left; font-size: 24px; letter-spacing: 0; }
-.paper-kicker { color: #909399; font-size: 12px; }
+.paper-kicker { color: var(--ui-muted); font-size: 12px; }
 .question-module { margin-top: 30px; }
 .module-heading { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
 .module-heading span { color: #909399; font-size: 12px; }
@@ -422,10 +450,10 @@ export default {
 .question-item {
   margin-bottom: 14px;
   padding: 18px 20px;
-  border: 1px solid #dcdfe6;
-  border-left: 3px solid #409eff;
-  border-radius: 4px;
-  background: #fff;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-card-radius);
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow);
 }
 
 .question-meta { display: flex; align-items: center; gap: 10px; }
@@ -440,19 +468,21 @@ export default {
 .question-actions { display: flex; justify-content: flex-end; margin-top: 14px; }
 .practical-control { max-width: 760px; }
 .question-environment { margin: 12px 0; }
-.question-empty { padding: 80px 20px; color: #909399; text-align: center; }
+.question-empty { padding: 80px 20px; color: var(--ui-muted); text-align: center; }
 .question-empty i { font-size: 42px; }
 .question-empty p { margin-top: 12px; }
 .submission-alert { margin-top: 16px; }
 .submit-zone { display: flex; justify-content: flex-end; margin: 24px 0 0; }
 .submit-zone .el-button { min-width: 132px; }
-.submitted-state { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px; color: #2f6f5e; font-size: 13px; font-weight: 600; border: 1px solid #cde0da; background: #f0f7f5; border-radius: 4px; }
+.submitted-state { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px; color: #2f6f5e; font-size: 13px; font-weight: 600; border: 1px solid #cde0da; background: #f0f7f5; border-radius: var(--ui-control-radius); }
 .btn-list { position: fixed; z-index: 1200; right: 18px; bottom: 22px; left: auto; width: 54px; height: 54px; }
 .help-button { display: inline-flex; align-items: center; justify-content: center; width: 54px; height: 54px; margin: 0; color: #fff; font-size: 23px; border: 0; border-radius: 7px; background: var(--platform-theme-color, #162d45); box-shadow: 0 9px 24px rgba(22, 42, 60, .22); cursor: pointer; }
 .help-button:hover { filter: brightness(.94); }
 .user-help-copy { padding: 8px 24px 24px; color: #435568; font-size: 14px; line-height: 1.85; white-space: pre-wrap; word-break: break-word; }
 
 @media (max-width: 760px) {
+  .competition-answer-layout { display: block; }
+  .competition-status-panel { position: static; margin: 0 12px 14px; }
   .question-content { width: 100%; padding: 16px 12px 80px; }
   .btn-list { right: 12px; bottom: 12px; width: 50px; height: 50px; }
   .help-button { width: 56px; height: 56px; margin: 0; }

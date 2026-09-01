@@ -2,6 +2,41 @@
 
 本发布包用于 Ubuntu x86_64/amd64 服务器。目标服务器必须已安装 Docker Engine 和 Docker Compose v2，不需要互联网、源码、Maven 或 Node.js。
 
+## 两文件快速部署
+
+在联网的 Ubuntu 22.04 amd64 构建服务器执行：
+
+```bash
+sudo ./deploy/quick-offline-release.sh --version 20260901-01 --env-file .env
+```
+
+`dist/` 中会生成且只需传输以下两个文件：
+
+```text
+xkp5-offline-20260901-01.tar.gz
+install-xkp5-offline.sh
+```
+
+在全新的离线 Ubuntu 22.04 amd64 服务器执行：
+
+```bash
+chmod +x install-xkp5-offline.sh
+sudo ./install-xkp5-offline.sh xkp5-offline-20260901-01.tar.gz
+```
+
+脚本自动安装包内 Docker、加载镜像、生成密码与内部证书并启动平台。默认创建空数据库；若确实要恢复发布服务器的数据快照，首次安装时增加 `--restore-snapshot`。该参数在发现任何已有平台数据时会拒绝执行。
+
+非交互安装：
+
+```bash
+sudo ./install-xkp5-offline.sh xkp5-offline-20260901-01.tar.gz \
+  --server-ip 192.168.1.20 \
+  --license-public-keys 'production-2026-01=Base64公钥' \
+  --non-interactive
+```
+
+以下原有流程保留用于高级手工安装和升级。
+
 ## 首次安装
 
 在发布包外创建服务器专用配置，避免以后替换发布目录时丢失密码：

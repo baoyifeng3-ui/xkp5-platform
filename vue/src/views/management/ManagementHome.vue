@@ -695,7 +695,7 @@ export default {
 .status-strip > div {
   min-height: 108px;
   padding: 18px;
-  background: #fff;
+  background: var(--ui-surface);
 }
 .status-strip small,
 .status-strip span {
@@ -710,7 +710,7 @@ export default {
 }
 .status-strip .mode-status {
   color: #fff;
-  background: #6078ed;
+  background: var(--ui-primary);
 }
 .status-strip .mode-status.competition {
   background: #e85d61;
@@ -727,9 +727,10 @@ export default {
 .business-layout > aside {
   margin-bottom: 18px;
   padding: 18px;
-  background: #fff;
+  background: var(--ui-surface);
   border: 1px solid var(--ui-border);
   border-radius: 8px;
+  box-shadow: var(--ui-shadow);
 }
 .section-heading {
   align-items: center;
@@ -788,10 +789,16 @@ export default {
   min-width: 0;
   padding: 14px;
   text-align: left;
-  background: #f8f9fc;
-  border: 1px solid #e9edf3;
+  background: var(--ui-page);
+  border: 1px solid var(--ui-border);
   border-radius: 7px;
   cursor: pointer;
+}
+.category-grid button:hover,
+.category-grid button:focus-visible {
+  background: var(--ui-primary-soft);
+  border-color: var(--ui-primary);
+  outline: none;
 }
 .category-grid button > span {
   display: grid;
@@ -806,13 +813,13 @@ export default {
   background: #ff7279;
 }
 .category-grid .blue {
-  background: #4bb7ee;
+  background: var(--ui-primary);
 }
 .category-grid .green {
   background: #39c9aa;
 }
 .category-grid .purple {
-  background: #d78bee;
+  background: #7184c9;
 }
 .category-grid strong,
 .category-grid small,

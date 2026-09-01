@@ -50,6 +50,8 @@ export default {
         };
     },
     computed: {
+        platformLogoUrl () { return this.$store.state.Match.platformLogoUrl },
+        loginEnglishSubtitle () { return this.$store.state.Match.loginEnglishSubtitle },
         loginBrandName () { return this.$store.state.Match.loginBrandName },
         loginEnglishSubtitle () { return this.$store.state.Match.loginEnglishSubtitle },
         platformLogoUrl () { return this.$store.state.Match.platformLogoUrl },

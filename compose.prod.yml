@@ -29,6 +29,7 @@ services:
       MATCH_DB_NAME: ${MATCH_DB_NAME:-match}
       MATCH_DB_USER: ${MATCH_DB_USER:-root}
       MATCH_DB_PASSWORD: ${MATCH_DB_PASSWORD:?Set MATCH_DB_PASSWORD}
+      MATCH_COMPETITION_PASSWORD_KEY: ${MATCH_COMPETITION_PASSWORD_KEY:?Set MATCH_COMPETITION_PASSWORD_KEY}
       REGISTRY_CA_FILE: /etc/xkp/registry-tls/ca.crt
       REGISTRY_USERNAME_FILE: /run/xkp/registry-secrets/username
       REGISTRY_PASSWORD_FILE: /run/xkp/registry-secrets/password
@@ -121,7 +122,7 @@ services:
       XKP_HOST_IDENTITY_FILE: /etc/xkp/host-identity.json
       XKP_AGENT_PACKAGE_ROOT: /opt/xkp-agent-package
       XKP_AGENT_CA_FILE: /etc/xkp/agent-tls/ca.crt
-      XKP_AGENT_MANAGEMENT_URL: ${XKP_AGENT_MANAGEMENT_URL:-https://172.16.33.182:19443}
+      XKP_AGENT_MANAGEMENT_URL: ${XKP_AGENT_MANAGEMENT_URL:?Set XKP_AGENT_MANAGEMENT_URL}
     volumes:
       - ./download/dataset:/data/dataset
       - ./python:/data/scoring

@@ -1,6 +1,20 @@
 <template>
   <div :class="['console-layout', { 'admin-layout': isAdminRoute }]">
+    <CompetitionShell
+      v-if="!showAdminNavigation"
+      :brand-name="platformName"
+      :paper-label="activePaperLabel"
+      :remaining-text="clearTimeText"
+      :user-name="userName"
+      :active-key="sideNav"
+      :tabs="participantItems"
+      @select="handleShellNavigation"
+      @logout="logout"
+    >
+      <router-view />
+    </CompetitionShell>
     <PlatformShell
+      v-else
       :items="shellItems"
       :active-route="sideNav"
       :brand-caption="showAdminNavigation ? '竞赛管理' : '参赛工作台'"
@@ -30,12 +44,13 @@
 import { getClearTime } from '@/api/Match'
 import { mapState } from 'vuex'
 import PlatformShell from '@/components/PlatformShell.vue'
+import CompetitionShell from '@/components/CompetitionShell.vue'
 import { clearSession, getRole, getUserName, setCompetitionAccessPhase } from '@/utils/auth'
 import { logoutUser, startUserActivity, stopUserActivity } from '@/services/userActivity'
 const { isPreviewRoute } = require('@/services/participantPreview')
 
 export default {
-  components: { PlatformShell },
+  components: { PlatformShell, CompetitionShell },
   data () {
     return {
       clearTimeText: '比赛时间未设置',
@@ -60,15 +75,21 @@ export default {
     userName () {
       return this.previewOnly ? '参赛端预览' : (getUserName() || (this.isAdmin ? '管理员' : '参赛用户'))
     },
-    shellItems () {
-      const participantItems = [
+    participantItems () {
+      return [
         { key: 'home', activeKey: 'home', label: '首页', icon: 'el-icon-house', destination: 1 },
         { key: 'schedule', activeKey: 'schedule', label: '赛规赛程', icon: 'el-icon-date', destination: 2 },
         { key: 'paper', activeKey: 'paper', label: '当前赛卷', icon: 'el-icon-document', destination: 3 },
-        { key: 'verification', activeKey: 'verification', label: '成果验证', icon: 'el-icon-circle-check', destination: 4 }
+        { key: 'verification', activeKey: 'verification', label: '成果验证', icon: 'el-icon-circle-check', destination: 4 },
+        { key: 'practical', activeKey: 'practical', label: '比赛实操', icon: 'el-icon-monitor', destination: 5 }
       ]
-      if (!this.showAdminNavigation) return participantItems
-      return participantItems.concat([
+    },
+    activePaperLabel () {
+      return this.$store.state.Match.activePaper ? `${this.$store.state.Match.activePaper} 卷 · 进行中` : '当前赛卷未选择'
+    },
+    shellItems () {
+      if (!this.showAdminNavigation) return this.participantItems
+      return this.participantItems.concat([
         { key: 'admin-timer', activeKey: 'admin-timer', label: '比赛控制', icon: 'el-icon-odometer', adminTab: 'timer' },
         { key: 'admin-rules', activeKey: 'admin-rules', label: '赛规赛程编辑', icon: 'el-icon-edit-outline', adminTab: 'rules' },
         { key: 'admin-subjects', activeKey: 'admin-subjects', label: '试卷题目', icon: 'el-icon-reading', adminTab: 'subjects' },

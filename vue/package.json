@@ -16,6 +16,9 @@
     "test:preview": "node scripts/test-participant-preview-contract.js",
     "test:platform-ui": "node scripts/test-platform-ui-contract.js"
     ,"test:course-platform": "node scripts/test-course-platform-contract.js"
+    ,"test:competition-shell": "node scripts/test-competition-shell-contract.js"
+    ,"test:competition-admin-layout": "node scripts/test-competition-admin-layout-contract.js"
+    ,"test:management-home-ui": "node scripts/test-management-home-ui-contract.js"
     ,"test:image-registry": "node scripts/test-image-registry-contract.js"
     ,"test:t100": "node scripts/test-t100-paper.js"
     ,"test:training-environment": "node scripts/test-training-environment-creation-contract.js"

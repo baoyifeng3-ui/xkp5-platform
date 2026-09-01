@@ -1,5 +1,5 @@
 <template>
-  <div class="platform-shell">
+  <div :class="['platform-shell', { 'sidebar-collapsed': sidebarCollapsed }]">
     <button
       ref="drawerTrigger"
       type="button"
@@ -31,6 +31,9 @@
           <strong>{{ platformName }}</strong>
           <small>{{ brandCaption }}</small>
         </div>
+        <button v-if="!mobileViewport" type="button" class="shell-sidebar-toggle" aria-label="切换导航栏" :aria-pressed="sidebarCollapsed ? 'true' : 'false'" @click="toggleSidebar">
+          <i :class="sidebarCollapsed ? 'el-icon-arrow-right' : 'el-icon-arrow-left'" aria-hidden="true" />
+        </button>
         <button type="button" class="shell-drawer-close" aria-label="关闭导航" @click="closeDrawer">
           <i class="el-icon-close" aria-hidden="true" />
         </button>
@@ -121,7 +124,7 @@ export default {
     activeRoute: { type: String, default: '' }
   },
   data () {
-    return { drawerOpen: false, mobileViewport: false, drawerMedia: null, searchQuery: '' }
+    return { drawerOpen: false, sidebarCollapsed: localStorage.getItem('platform-sidebar-collapsed') === '1', mobileViewport: false, drawerMedia: null, searchQuery: '' }
   },
   computed: {
     searchResults () {
@@ -181,6 +184,11 @@ export default {
     else this.drawerMedia.removeListener(this.updateMobileViewport)
   },
   methods: {
+    toggleSidebar () {
+      if (this.mobileViewport) return this.openDrawer()
+      this.sidebarCollapsed = !this.sidebarCollapsed
+      localStorage.setItem('platform-sidebar-collapsed', this.sidebarCollapsed ? '1' : '0')
+    },
     openDrawer () {
       this.drawerOpen = true
     },

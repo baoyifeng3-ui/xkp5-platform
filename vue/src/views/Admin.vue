@@ -15,12 +15,6 @@
             <span>比赛控制</span>
           </span>
           <section class="workspace-page control-page">
-            <header class="workspace-heading">
-              <el-tooltip content="刷新比赛状态" placement="bottom">
-                <el-button class="icon-command" icon="el-icon-refresh" circle aria-label="刷新比赛状态" @click="loadPublicState" />
-              </el-tooltip>
-            </header>
-
             <div class="summary-band competition-summary" aria-label="比赛状态概览">
               <div class="summary-item summary-paper">
                 <span class="summary-icon"><i class="el-icon-document" /></span>
@@ -134,15 +128,13 @@
         <el-tab-pane name="rules">
           <span slot="label" class="admin-tab-label" title="赛规赛程编辑"><i class="el-icon-edit-outline" /><span>赛规赛程编辑</span></span>
           <section class="workspace-page content-editor-page">
-            <header class="workspace-heading">
-              <el-button type="primary" icon="el-icon-check" :loading="competitionContentSaving" @click="saveCompetitionContent">保存内容</el-button>
-            </header>
             <el-tabs v-model="rulesTab" class="rules-tabs">
               <el-tab-pane label="赛规赛程" name="rules">
             <div class="content-editor-toolbar">
               <el-radio-group v-model="competitionContentKey" size="small">
                 <el-radio-button v-for="item in competitionContentTabs" :key="item.key" :label="item.key">{{ item.label }}</el-radio-button>
               </el-radio-group>
+              <el-button type="primary" icon="el-icon-check" :loading="competitionContentSaving" @click="saveCompetitionContent">保存内容</el-button>
             </div>
             <div class="content-editor-grid">
               <section class="admin-panel content-editor-input">
@@ -202,18 +194,6 @@
             <span>试卷题目</span>
           </span>
           <section class="workspace-page subject-panel">
-            <header class="workspace-heading">
-              <div class="subject-heading-actions">
-                <div class="subject-clear-actions">
-                  <el-button type="danger" plain icon="el-icon-delete" :loading="subjectAnswersClearing" :disabled="subjectsClearing" @click="clearSubjectAnswers">清空作答记录</el-button>
-                  <el-button type="danger" plain icon="el-icon-delete" :loading="subjectsClearing" :disabled="subjectAnswersClearing" @click="clearAllSubjects">清空全部题目</el-button>
-                </div>
-                <div class="subject-main-actions">
-                  <el-button icon="el-icon-question" @click="openCompetitionHelp">比赛帮助</el-button>
-                  <el-button type="primary" icon="el-icon-plus" :disabled="subjectAnswersClearing || subjectsClearing" @click="openSubjectCreateDialog">新增题目</el-button>
-                </div>
-              </div>
-            </header>
             <div class="admin-filterbar subject-toolbar">
               <el-radio-group v-model="subjectPaper" size="small" class="paper-selector">
                 <el-radio-button v-for="paper in availablePapers" :key="paper" :label="paper">{{ paper }} 卷</el-radio-button>
@@ -224,6 +204,12 @@
               <el-input v-model="subjectKeyword" size="small" clearable prefix-icon="el-icon-search" placeholder="搜索题干" class="subject-search" @keyup.enter.native="loadSubjects" @clear="loadSubjects" />
               <el-button size="small" icon="el-icon-search" @click="loadSubjects">查询</el-button>
               <span class="filter-result">共 {{ subjects.length }} 题</span>
+              <div class="subject-toolbar-actions">
+                <el-button size="small" icon="el-icon-question" @click="openCompetitionHelp">比赛帮助</el-button>
+                <el-button size="small" type="danger" plain icon="el-icon-delete" :loading="subjectAnswersClearing" :disabled="subjectsClearing" @click="clearSubjectAnswers">清空作答</el-button>
+                <el-button size="small" type="danger" plain icon="el-icon-delete" :loading="subjectsClearing" :disabled="subjectAnswersClearing" @click="clearAllSubjects">清空题目</el-button>
+                <el-button size="small" type="primary" icon="el-icon-plus" :disabled="subjectAnswersClearing || subjectsClearing" @click="openSubjectCreateDialog">新增题目</el-button>
+              </div>
             </div>
             <div v-loading="subjectLoading" class="subject-switcher">
               <section v-for="module in subjectModules" :key="module.key" class="subject-module-row">
@@ -2106,7 +2092,9 @@ export default {
 .help-editor-column .el-button { margin-top: 12px; }
 .help-preview-column { padding: 16px; background: #f7f9fa; border: 1px solid #dce4e9; border-radius: 6px; box-sizing: border-box; }
 .help-preview-copy { color: #435568; font-size: 14px; line-height: 1.85; white-space: pre-wrap; word-break: break-word; }
-.content-editor-toolbar { margin-bottom: 16px; overflow-x: auto; }
+.content-editor-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.content-editor-toolbar .el-radio-group { min-width: 0; overflow-x: auto; white-space: nowrap; }
+.content-editor-toolbar > .el-button { flex: 0 0 auto; }
 .content-editor-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 1fr); gap: 18px; align-items: start; }
 .content-editor-input .panel-body { padding-bottom: 4px; }
 .content-editor-input::v-deep .el-textarea__inner { resize: vertical; line-height: 1.7; }
@@ -2602,6 +2590,8 @@ export default {
   border-radius: 7px;
 }
 .subject-toolbar { padding: 12px; }
+.subject-toolbar-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.subject-toolbar-actions .el-button + .el-button { margin-left: 0; }
 .subject-search { width: 240px; }
 .account-search { width: 270px; }
 .account-filter { width: 140px; }

@@ -1,4 +1,4 @@
-const DEFAULT_THEME_COLOR = '#6f7ff7'
+const DEFAULT_THEME_COLOR = '#386bdc'
 
 function normalizeThemeColor (value) {
   const color = String(value || '').trim().toLowerCase()

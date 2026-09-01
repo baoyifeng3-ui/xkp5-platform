@@ -1,20 +1,5 @@
 <template>
   <section class="grading-page">
-    <header class="grading-heading">
-      <div class="grading-heading-actions">
-        <el-tooltip :content="exportTip" placement="bottom">
-          <span>
-            <el-button type="primary" size="small" icon="el-icon-download" class="grading-primary-action" :disabled="!exportAllowed" :loading="exporting" @click="createExport">
-              导出全部试卷
-            </el-button>
-          </span>
-        </el-tooltip>
-        <el-button size="small" icon="el-icon-time" class="grading-secondary-action" :disabled="!paper" @click="openExportHistory">
-          导出历史
-        </el-button>
-      </div>
-    </header>
-
     <div class="grading-summary" aria-label="判分状态概览">
       <button type="button" :class="{ active: status === '' }" @click="setStatus('')"><small>已提交</small><strong>{{ summary.submitted || 0 }}</strong></button>
       <button type="button" :class="{ active: status === 'PENDING_GRADING' }" @click="setStatus('PENDING_GRADING')"><small>待判分</small><strong>{{ summary.pending || 0 }}</strong></button>
@@ -31,6 +16,10 @@
       <el-input v-model="keyword" size="small" clearable prefix-icon="el-icon-search" placeholder="搜索用户名" @keyup.enter.native="loadSubmissions" @clear="loadSubmissions" />
       <el-button size="small" icon="el-icon-search" @click="loadSubmissions">查询</el-button>
       <span class="grading-result-count">共 {{ submissions.length }} 份</span>
+      <div class="grading-heading-actions">
+        <el-tooltip :content="exportTip" placement="bottom"><span><el-button type="primary" size="small" icon="el-icon-download" class="grading-primary-action" :disabled="!exportAllowed" :loading="exporting" @click="createExport">导出全部试卷</el-button></span></el-tooltip>
+        <el-button size="small" icon="el-icon-time" class="grading-secondary-action" :disabled="!paper" @click="openExportHistory">导出历史</el-button>
+      </div>
     </div>
 
     <el-table v-loading="loading" :data="submissions" class="grading-table" empty-text="当前筛选条件下暂无试卷">

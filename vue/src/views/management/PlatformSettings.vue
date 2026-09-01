@@ -44,7 +44,7 @@
 <script>
 import { competitionApi, updatePlatformSettingsApi, uploadLoginBackgroundApi, uploadPlatformLogoApi } from '@/api/Match'
 
-const DEFAULT_THEME_COLOR = '#6f7ff7'
+const DEFAULT_THEME_COLOR = '#386bdc'
 
 export default {
   name: 'PlatformSettings',
