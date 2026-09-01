@@ -9,9 +9,21 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public interface ProcessingAgentMapper extends BaseMapper<ProcessingAgentRecord> {
+    @Update("UPDATE processing_agent SET credential_digest = #{credentialDigest}, display_name = #{displayName}, hostname = #{hostname}, primary_ip = #{primaryIp}, mac_address = #{macAddress}, agent_version = #{agentVersion}, enabled = 1, removed_at = NULL, updated_at = #{updatedAt} WHERE agent_id = #{agentId}")
+    int refreshRegistration(@Param("agentId") String agentId,
+                            @Param("credentialDigest") String credentialDigest,
+                            @Param("displayName") String displayName,
+                            @Param("hostname") String hostname,
+                            @Param("primaryIp") String primaryIp,
+                            @Param("macAddress") String macAddress,
+                            @Param("agentVersion") String agentVersion,
+                            @Param("updatedAt") LocalDateTime updatedAt);
     @Select("SELECT * FROM processing_agent WHERE machine_digest = #{machineDigest} "
             + "AND removed_at IS NULL LIMIT 1")
     ProcessingAgentRecord selectByMachineDigest(@Param("machineDigest") String machineDigest);
+
+    @Select("SELECT * FROM processing_agent WHERE machine_digest = #{machineDigest} LIMIT 1")
+    ProcessingAgentRecord selectByMachineDigestIncludingRemoved(@Param("machineDigest") String machineDigest);
 
     @Select("SELECT * FROM processing_agent WHERE credential_digest = #{credentialDigest} "
             + "AND removed_at IS NULL LIMIT 1")

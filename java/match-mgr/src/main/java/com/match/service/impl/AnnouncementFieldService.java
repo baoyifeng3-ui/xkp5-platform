@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -74,6 +75,14 @@ public class AnnouncementFieldService {
     }
 
     public Map<Integer, Map<String, String>> valuesByUserIds(List<Integer> userIds) {
+        return valuesByUserIds(userIds, false);
+    }
+
+    public Map<Integer, Map<String, String>> valuesByUserIdsByName(List<Integer> userIds) {
+        return valuesByUserIds(userIds, true);
+    }
+
+    private Map<Integer, Map<String, String>> valuesByUserIds(List<Integer> userIds, boolean names) {
         if (userIds == null || userIds.isEmpty()) return Collections.emptyMap();
         List<AnnouncementFieldValue> values = valueMapper.selectList(
                 Wrappers.<AnnouncementFieldValue>lambdaQuery().in(AnnouncementFieldValue::getUserId, userIds));
@@ -84,18 +93,29 @@ public class AnnouncementFieldService {
             AnnouncementField field = fields.get(value.getFieldId());
             if (field == null) continue;
             result.computeIfAbsent(value.getUserId(), ignored -> new LinkedHashMap<>())
-                    .put(field.getFieldKey(), value.getFieldValue());
+                    .put(names ? field.getFieldName() : field.getFieldKey(), value.getFieldValue());
         }
         return result;
     }
 
     @Transactional
     public void saveCustomValues(Integer userId, Map<String, String> requestedValues) {
+        saveCustomValues(userId, requestedValues, 0);
+    }
+
+    @Transactional
+    public void saveCustomValues(Integer userId, Map<String, String> requestedValues, Integer adminId) {
         Map<String, String> values = requestedValues == null ? Collections.emptyMap() : requestedValues;
-        List<AnnouncementField> fields = list();
+        List<AnnouncementField> fields = new ArrayList<>(list());
+        for (String requestedKey : values.keySet()) {
+            boolean known = fields.stream().anyMatch(field -> requestedKey.equals(field.getFieldKey())
+                    || requestedKey.equals(field.getFieldName()));
+            if (!known) fields.add(create(requestedKey, adminId));
+        }
         for (AnnouncementField field : fields) {
             if (!CUSTOM.equals(field.getFieldType())) continue;
-            String value = normalizeValue(values.get(field.getFieldKey()));
+            String value = normalizeValue(values.containsKey(field.getFieldKey())
+                    ? values.get(field.getFieldKey()) : values.get(field.getFieldName()));
             AnnouncementFieldValue existing = valueMapper.selectOne(
                     Wrappers.<AnnouncementFieldValue>lambdaQuery()
                             .eq(AnnouncementFieldValue::getFieldId, field.getFieldId())

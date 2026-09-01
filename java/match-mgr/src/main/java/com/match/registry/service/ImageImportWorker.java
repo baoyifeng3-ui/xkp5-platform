@@ -19,6 +19,9 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
 @Component
@@ -31,6 +34,7 @@ public class ImageImportWorker {
     private final ImageArtifactMapper artifactMapper;
     private final ImageUploadMapper uploadMapper;
     private final RegistryImportTool importTool;
+    private final DockerArchiveInspector archiveInspector;
     private final Path stagingRoot;
     private final Clock clock;
     private final long leaseSeconds;
@@ -55,6 +59,7 @@ public class ImageImportWorker {
         this.artifactMapper = artifactMapper;
         this.uploadMapper = uploadMapper;
         this.importTool = importTool;
+        this.archiveInspector = new DockerArchiveInspector();
         this.stagingRoot = stagingRoot.toAbsolutePath().normalize();
         this.clock = clock;
         this.leaseSeconds = leaseSeconds;
@@ -100,14 +105,38 @@ public class ImageImportWorker {
                         "Completed upload metadata is missing");
             }
             Path archive = archive(upload.getUploadId());
+            progress(artifactId, attemptToken, "VALIDATING", 10, 0, 0);
+            int totalLayers = archiveInspector.countLayers(archive);
+            progress(artifactId, attemptToken, "PREPARING", 20, 0, totalLayers);
+            AtomicInteger copiedLayers = new AtomicInteger();
+            AtomicLong lastHeartbeat = new AtomicLong(System.nanoTime());
             RegistryImportTool.ImportResult result = importTool.importArchive(
                     new RegistryImportTool.ImportRequest(archive, artifact.getImageRepository(),
-                            artifact.getImageTag()));
+                            artifact.getImageTag()), new RegistryImportTool.ProgressListener() {
+                        @Override
+                        public void onLayerCopy(int count) {
+                            copiedLayers.set(count);
+                            lastHeartbeat.set(System.nanoTime());
+                            updateCopyProgress(artifactId, attemptToken, count, totalLayers);
+                        }
+
+                        @Override
+                        public void onActivity() {
+                            long previous = lastHeartbeat.get();
+                            long current = System.nanoTime();
+                            if (current - previous >= TimeUnit.SECONDS.toNanos(10)
+                                    && lastHeartbeat.compareAndSet(previous, current)) {
+                                updateCopyProgress(artifactId, attemptToken,
+                                        copiedLayers.get(), totalLayers);
+                            }
+                        }
+                    });
             String digest = result == null ? null : result.getDigest();
             if (!IMMUTABLE_DIGEST.matcher(value(digest)).matches()) {
                 return fail(artifactId, attemptToken, "INVALID_REGISTRY_DIGEST",
                         "Importer did not return an immutable lowercase SHA-256 digest");
             }
+            progress(artifactId, attemptToken, "VERIFYING_DIGEST", 95, totalLayers, totalLayers);
             if (artifactMapper.completeImport(artifactId, attemptToken, digest, now()) != 1) {
                 return fail(artifactId, attemptToken, "DIGEST_PERSIST_FAILED",
                         "Registry digest could not be persisted");
@@ -119,6 +148,24 @@ public class ImageImportWorker {
         } catch (RuntimeException e) {
             return fail(artifactId, attemptToken, "IMPORT_FAILED", e.getMessage());
         }
+    }
+
+    private void progress(String artifactId, String attemptToken, String stage, int progress,
+                          int completedLayers, int totalLayers) {
+        artifactMapper.updateImportProgress(artifactId, attemptToken, stage, progress,
+                completedLayers, totalLayers, now());
+    }
+
+    private int copyingProgress(int copiedLayers, int totalLayers) {
+        if (totalLayers <= 0) return 20;
+        return Math.min(90, 20 + Math.min(copiedLayers, totalLayers) * 70 / totalLayers);
+    }
+
+    private void updateCopyProgress(String artifactId, String attemptToken, int copiedLayers,
+                                    int totalLayers) {
+        progress(artifactId, attemptToken, "COPYING_LAYERS",
+                copyingProgress(copiedLayers, totalLayers),
+                Math.min(copiedLayers, totalLayers), totalLayers);
     }
 
     private boolean fail(String artifactId, String attemptToken, String code, String message) {

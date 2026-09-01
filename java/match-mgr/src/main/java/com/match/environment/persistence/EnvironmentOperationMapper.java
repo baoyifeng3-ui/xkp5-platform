@@ -49,4 +49,10 @@ public interface EnvironmentOperationMapper extends BaseMapper<EnvironmentOperat
                      @Param("resultCode") String resultCode,
                      @Param("resultMessage") String resultMessage,
                      @Param("componentResultsJson") String componentResultsJson);
+
+    @Update("UPDATE environment_operation SET state='PENDING', command_id=#{commandId}, updated_at=#{updatedAt} "
+            + "WHERE operation_id=#{operationId} AND state='WAITING_DEPENDENCY' AND command_id IS NULL")
+    int dispatchWaiting(@Param("operationId") String operationId,
+                        @Param("commandId") String commandId,
+                        @Param("updatedAt") LocalDateTime updatedAt);
 }

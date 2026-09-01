@@ -112,6 +112,8 @@ public class CompetitionEnvironmentServiceTest {
                 .thenAnswer(invocation -> allocation(invocation.getArgument(1)));
         when(commandFactory.createPayloadJson(any(CompetitionEnvironmentRecord.class), anyString()))
                 .thenReturn("{\"payload\":true}");
+        when(commandFactory.createControlPayloadJson(any(CompetitionEnvironmentRecord.class), anyString()))
+                .thenReturn("{\"payload\":true}");
         AgentCommandView command = new AgentCommandView();
         command.setCommandId("55555555-5555-4555-8555-555555555555");
         when(commands.requestEnvironmentCommand(any(ProcessingAgentRecord.class),

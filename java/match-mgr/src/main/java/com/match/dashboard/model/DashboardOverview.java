@@ -1,6 +1,7 @@
 package com.match.dashboard.model;
 
 import java.time.Instant;
+import java.util.List;
 
 public class DashboardOverview {
     private Instant snapshotAt;
@@ -9,6 +10,9 @@ public class DashboardOverview {
     private AgentModeSummary agentModes;
     private EnvironmentSummary environments;
     private int onlineUsers;
+    private int totalUsers;
+    private String platformMode;
+    private List<DashboardAgentResource> agentResources;
     private DashboardAlertSummary alerts;
     private DashboardResourceSummary resources;
 
@@ -24,6 +28,12 @@ public class DashboardOverview {
     public void setEnvironments(EnvironmentSummary environments) { this.environments = environments; }
     public int getOnlineUsers() { return onlineUsers; }
     public void setOnlineUsers(int onlineUsers) { this.onlineUsers = onlineUsers; }
+    public int getTotalUsers() { return totalUsers; }
+    public void setTotalUsers(int totalUsers) { this.totalUsers = totalUsers; }
+    public String getPlatformMode() { return platformMode; }
+    public void setPlatformMode(String platformMode) { this.platformMode = platformMode; }
+    public List<DashboardAgentResource> getAgentResources() { return agentResources; }
+    public void setAgentResources(List<DashboardAgentResource> agentResources) { this.agentResources = agentResources; }
     public DashboardAlertSummary getAlerts() { return alerts; }
     public void setAlerts(DashboardAlertSummary alerts) { this.alerts = alerts; }
     public DashboardResourceSummary getResources() { return resources; }

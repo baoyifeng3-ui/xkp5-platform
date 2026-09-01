@@ -205,6 +205,36 @@ export function uploadLoginBackgroundApi (file) {
     })
 }
 
+export function competitionAnnouncementsApi () {
+    return request({ url: 'admin/competition-announcements', method: 'get' })
+}
+
+export function createCompetitionAnnouncementApi (values) {
+    return request({ url: 'admin/competition-announcements', method: 'post', data: { values }, headers: { 'Content-Type': 'application/json' } })
+}
+
+export function updateCompetitionAnnouncementApi (entryId, values) {
+    return request({ url: `admin/competition-announcements/${entryId}`, method: 'put', data: { values }, headers: { 'Content-Type': 'application/json' } })
+}
+
+export function deleteCompetitionAnnouncementApi (entryId) {
+    return request({ url: `admin/competition-announcements/${entryId}`, method: 'delete' })
+}
+
+export function competitionEnvironmentApi () {
+    return request({ url: 'user/competition-environment', method: 'get' })
+}
+
+export function startCompetitionEnvironmentApi () {
+    return request({ url: 'user/competition-environment/start', method: 'post' })
+}
+
+export function uploadPlatformLogoApi (file) {
+    const data = new FormData()
+    data.append('file', file)
+    return request({ url: 'competition/settings/platform-logo', method: 'post', data })
+}
+
 export function updateCompetitionContentApi (data) {
     return request({
         url: 'competition/content',

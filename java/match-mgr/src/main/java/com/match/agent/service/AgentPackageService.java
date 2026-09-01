@@ -13,14 +13,18 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.MessageDigest;
 import java.util.zip.GZIPOutputStream;
+import com.match.terminal.service.SshBridgeService;
 
 @Service
 public class AgentPackageService {
+    public static final String AGENT_VERSION = "0.2.28";
     private final RegistrationTokenService tokenService;
     private final Path packageRoot;
     private final Path caFile;
     private final String managementUrl;
+    private SshBridgeService sshBridgeService;
 
     public AgentPackageService(RegistrationTokenService tokenService,
                                @Value("${xkp.agent.package-root:/opt/xkp-agent-package}") String packageRoot,
@@ -31,6 +35,9 @@ public class AgentPackageService {
         this.caFile = Paths.get(caFile).toAbsolutePath().normalize();
         this.managementUrl = managementUrl;
     }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setSshBridgeService(SshBridgeService sshBridgeService) { this.sshBridgeService = sshBridgeService; }
 
     public PackageArtifact build(Integer actorUserId, AgentPackageRequest request) {
         validate(request);
@@ -49,6 +56,8 @@ public class AgentPackageService {
         if (!Files.isRegularFile(caFile)) {
             throw new IllegalArgumentException("Agent CA 证书不存在，请先配置管理平台 Agent CA");
         }
+        if (sshBridgeService == null) throw new IllegalStateException("管理服务器 SSH 服务不可用");
+        String managementSshPublicKey = sshBridgeService.publicKey();
         RegistrationTokenView token = tokenService.create(actorUserId, request.getLabel());
         String displayName = request.getLabel().trim();
         String workspace = request.getWorkspace() == null || request.getWorkspace().trim().isEmpty()
@@ -60,9 +69,9 @@ public class AgentPackageService {
             addFile(gzip, "deploy/one-click-install.sh", packageRoot.resolve("deploy/one-click-install.sh"), 0755);
             addFile(gzip, "deploy/build-linux.sh", packageRoot.resolve("deploy/build-linux.sh"), 0755);
             addFile(gzip, "deploy/verify.sh", packageRoot.resolve("deploy/verify.sh"), 0755);
-            addFile(gzip, "deploy/xkp-agent-power.rules", packageRoot.resolve("deploy/xkp-agent-power.rules"), 0644);
             addFile(gzip, "deploy/xkp-agent.service", packageRoot.resolve("deploy/xkp-agent.service"), 0644);
             addFile(gzip, "deploy/ca.crt", caFile, 0644);
+            addText(gzip, "deploy/management-ssh.pub", managementSshPublicKey + "\n", 0644);
             addText(gzip, "install-server.sh", wrapper(token.getToken(), displayName, workspace), 0755);
             addText(gzip, "INSTALL.txt", instructions(displayName, request.getServerIp()), 0644);
             gzip.write(new byte[1024]);
@@ -76,13 +85,14 @@ public class AgentPackageService {
         return "#!/usr/bin/env bash\nset -Eeuo pipefail\ncd \"$(dirname \"$0\")\"\n"
                 + "# Restore permissions defensively when the package is extracted by a tool that ignores tar modes.\n"
                 + "chmod +x dist/xkp-agent-linux-amd64 deploy/install.sh deploy/verify.sh\n"
-                + "if [[ ! -d /etc/polkit-1/rules.d ]]; then\n"
-                + "  command -v apt-get >/dev/null || { echo 'ERROR: apt-get is required to install polkit' >&2; exit 1; }\n"
-                + "  apt-get update\n"
-                + "  DEBIAN_FRONTEND=noninteractive apt-get install -y policykit-1\n"
-                + "  if apt-cache show polkitd 2>/dev/null | grep -q '^Package: polkitd$'; then DEBIAN_FRONTEND=noninteractive apt-get install -y polkitd; fi\n"
-                + "  install -d -m 0755 /etc/polkit-1/rules.d\n"
-                + "fi\n"
+                + "ssh_user=\"${SUDO_USER:-$(id -un)}\"\n"
+                + "ssh_home=\"$(getent passwd \"$ssh_user\" | cut -d: -f6)\"\n"
+                + "[[ -n \"$ssh_home\" ]] || { echo 'ERROR: SSH user home not found' >&2; exit 1; }\n"
+                + "install -d -m 700 -o \"$ssh_user\" -g \"$(id -gn \"$ssh_user\")\" \"$ssh_home/.ssh\"\n"
+                + "touch \"$ssh_home/.ssh/authorized_keys\"\n"
+                + "grep -qxFf deploy/management-ssh.pub \"$ssh_home/.ssh/authorized_keys\" || cat deploy/management-ssh.pub >> \"$ssh_home/.ssh/authorized_keys\"\n"
+                + "chown \"$ssh_user:$(id -gn \"$ssh_user\")\" \"$ssh_home/.ssh/authorized_keys\"\n"
+                + "chmod 600 \"$ssh_home/.ssh/authorized_keys\"\n"
                 + "exec bash deploy/install.sh --binary dist/xkp-agent-linux-amd64 "
                 + "--management-url " + shellQuote(managementUrl) + " --ca deploy/ca.crt "
                 + "--registration-token " + shellQuote(token) + " --display-name "
@@ -103,6 +113,25 @@ public class AgentPackageService {
             while ((read = input.read(buffer)) != -1) { output.write(buffer, 0, read); written += read; }
             writePadding(output, written);
         }
+    }
+
+    public Path upgradeBinary() {
+        Path binary = packageRoot.resolve("dist/xkp-agent-linux-amd64");
+        if (!Files.isRegularFile(binary)) throw new IllegalArgumentException("Agent 升级二进制不存在");
+        return binary;
+    }
+
+    public String upgradeSha256() {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            try (InputStream input = Files.newInputStream(upgradeBinary())) {
+                byte[] buffer = new byte[8192]; int read;
+                while ((read = input.read(buffer)) != -1) digest.update(buffer, 0, read);
+            }
+            StringBuilder value = new StringBuilder(64);
+            for (byte item : digest.digest()) value.append(String.format("%02x", item));
+            return value.toString();
+        } catch (Exception exception) { throw new IllegalStateException("Agent 升级摘要计算失败", exception); }
     }
 
     private void addText(OutputStream output, String name, String value, int mode) throws IOException {

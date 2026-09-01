@@ -17,6 +17,8 @@ import com.match.environment.persistence.ProcessingEnvironmentSlotRecord;
 import com.match.environment.persistence.TrainingEnvironmentMapper;
 import com.match.environment.persistence.TrainingEnvironmentRecord;
 import com.match.licensing.guard.LicenseGuard;
+import com.match.registry.persistence.ImageDeploymentMapper;
+import com.match.registry.persistence.ImageDeploymentRecord;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -24,6 +26,7 @@ import org.mockito.ArgumentCaptor;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Arrays;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
@@ -84,7 +87,7 @@ public class TrainingEnvironmentServiceTest {
 
         request = new CreateTrainingEnvironmentRequest();
         request.setUserId(21);
-        request.setCourseId(31);
+        request.setCourseId("course-31");
         request.setAgentId(AGENT_ID);
         request.setSlotNumber(1);
         request.setAnnotationTemplateId("annotation-template");
@@ -100,7 +103,7 @@ public class TrainingEnvironmentServiceTest {
         ArgumentCaptor<TrainingEnvironmentRecord> environment =
                 ArgumentCaptor.forClass(TrainingEnvironmentRecord.class);
         verify(environmentMapper).insert(environment.capture());
-        assertEquals("training/21/31", environment.getValue().getWorkspaceRelativePath());
+        assertEquals("training/21/course-31", environment.getValue().getWorkspaceRelativePath());
         assertEquals(Integer.valueOf(3), environment.getValue().getAnnotationTemplateVersion());
         assertEquals(Integer.valueOf(5), environment.getValue().getEditorTemplateVersion());
         assertNotEquals(environment.getValue().getAnnotationContainerName(),
@@ -113,7 +116,7 @@ public class TrainingEnvironmentServiceTest {
                 eq("SUPER_ADMIN"), any(String.class));
         EnvironmentCommandPayload payload = objectMapper.readValue(payloadJson.getValue(),
                 EnvironmentCommandPayload.class);
-        assertEquals("training/21/31", payload.getWorkspaceRelativePath());
+        assertEquals("training/21/course-31", payload.getWorkspaceRelativePath());
         assertEquals(2, payload.getComponents().size());
         assertEquals("/root/data", payload.getComponents().get(0).getMountTarget());
         assertEquals("/home/student/data", payload.getComponents().get(1).getMountTarget());
@@ -138,7 +141,7 @@ public class TrainingEnvironmentServiceTest {
         when(slotMapper.selectByAgentAndNumberForUpdate(AGENT_ID, 1)).thenReturn(assigned);
         when(portMapper.selectAgentPortForUpdate(eq(AGENT_ID), any(Integer.class), eq("tcp")))
                 .thenAnswer(invocation -> allocation(assigned.getSlotId(), invocation.getArgument(1)));
-        request.setCourseId(32);
+        request.setCourseId("course-32");
 
         service.create(request, 9, "SUPER_ADMIN");
 
@@ -157,6 +160,47 @@ public class TrainingEnvironmentServiceTest {
 
         verify(environmentMapper, never()).insert(any(TrainingEnvironmentRecord.class));
         verify(operationMapper, never()).insert(any());
+        verify(commandService, never()).requestEnvironmentCommand(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    public void usesSelectedCompetitionPortsInTheCreateCommand() throws Exception {
+        request.setEnvironmentType("COMPETITION");
+        request.setAnnotationHostPort(8094);
+        request.setEditorVscodeHostPort(9194);
+        request.setEditorJupyterHostPort(9994);
+        request.setEditorT100HostPort(5504);
+
+        service.create(request, 9, "SUPER_ADMIN");
+
+        ArgumentCaptor<String> payloadJson = ArgumentCaptor.forClass(String.class);
+        verify(commandService).requestEnvironmentCommand(any(ProcessingAgentRecord.class),
+                eq("CREATE_TRAINING_ENVIRONMENT"), payloadJson.capture(), eq(9),
+                eq("SUPER_ADMIN"), any(String.class));
+        EnvironmentCommandPayload payload = objectMapper.readValue(payloadJson.getValue(),
+                EnvironmentCommandPayload.class);
+        String command = payload.getComponents().get(1).getCommand().get(2);
+        assertTrue(command.contains("--disable-update-check"));
+        assertTrue(command.contains("until wget -q --no-check-certificate"));
+        assertTrue(command.contains("--ServerApp.default_url=/lab"));
+        assertEquals(Integer.valueOf(8094), payload.getComponents().get(0).getPorts().get(0).getHostPort());
+        assertEquals(Integer.valueOf(9194), payload.getComponents().get(1).getPorts().get(0).getHostPort());
+        assertEquals(Integer.valueOf(9994), payload.getComponents().get(1).getPorts().get(1).getHostPort());
+        assertEquals(Integer.valueOf(5504), payload.getComponents().get(1).getPorts().get(2).getHostPort());
+    }
+
+    @Test
+    public void rejectsTemplateWhenServerHasAnotherImageDigest() {
+        ImageDeploymentMapper deployments = mock(ImageDeploymentMapper.class);
+        ImageDeploymentRecord deployed = new ImageDeploymentRecord();
+        deployed.setTargetDigest("sha256:another");
+        when(deployments.selectLatestSucceeded(AGENT_ID, "ANNOTATION")).thenReturn(deployed);
+        when(deployments.selectLatestSucceeded(AGENT_ID, "EDITOR")).thenReturn(deployed);
+        service.setImageDeploymentMapper(deployments);
+
+        expectIllegalArgument(() -> service.create(request, 9, "SUPER_ADMIN"), "镜像版本");
+
+        verify(environmentMapper, never()).insert(any(TrainingEnvironmentRecord.class));
         verify(commandService, never()).requestEnvironmentCommand(any(), any(), any(), any(), any(), any());
     }
 

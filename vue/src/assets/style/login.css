@@ -14,7 +14,7 @@
     position: absolute;
     inset: 0;
     content: '';
-    background: rgba(26, 34, 55, .7);
+    background: rgba(26, 34, 55, .35);
 }
 
 .login-brand {
@@ -41,6 +41,7 @@
     font-size: 19px;
     font-weight: 700;
 }
+.login-brand-logo { display: block; width: 42px; height: 42px; object-fit: contain; }
 
 .login-brand > div {
     display: flex;

@@ -44,7 +44,8 @@ public class WebConfigAgentBoundaryTest {
         assertEquals(1, occurrences(source, "participantModeGuard::requireTrainingMode"));
         assertEquals(1, occurrences(source, "\"/testPaper/**\""));
         assertEquals(1, occurrences(source, "\"/score/**\""));
-        assertEquals(1, occurrences(source, "\"/train-url/**\""));
+        // /train-url 不再有专门守卫：仅保留登录校验，供实训模式“模型验证”页使用
+        assertEquals(0, occurrences(source, "\"/train-url/**\""));
         assertEquals(2, occurrences(source, "participantModeGuard::requireCompetitionMode"));
         assertEquals(1, occurrences(source, "\"/user/competition-environment/**\""));
         assertEquals(1, occurrences(source, "\"/admin/training-environments/**\""));

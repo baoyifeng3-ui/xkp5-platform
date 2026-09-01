@@ -74,7 +74,7 @@ public class AdminParticipantPreviewControllerTest {
         TrainingEnvironmentRecord environment = new TrainingEnvironmentRecord();
         environment.setEnvironmentId("internal-environment");
         environment.setUserId(21);
-        environment.setCourseId(7);
+        environment.setCourseId("course-7");
         environment.setActualState("RUNNING");
         environment.setAnnotationContainerName("internal-container");
         when(environmentService.listAll()).thenReturn(Arrays.asList(environment));

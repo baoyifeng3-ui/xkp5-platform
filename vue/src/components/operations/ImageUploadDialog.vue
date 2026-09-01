@@ -6,22 +6,22 @@
       <el-form-item label="组件"><el-radio-group v-model="form.componentType" :disabled="uploading"><el-radio-button label="ANNOTATION">图像标注</el-radio-button><el-radio-button label="EDITOR">代码编辑</el-radio-button></el-radio-group></el-form-item>
       <el-form-item label="版本"><el-input v-model.trim="form.version" placeholder="例如 2026.08.1" :disabled="uploading" /></el-form-item>
       <el-form-item label="仓库名称"><el-input v-model.trim="form.imageRepository" placeholder="例如 xkp/annotation" :disabled="uploading" /></el-form-item>
-      <el-form-item label="归档 SHA-256"><el-input v-model.trim="form.expectedSha256" maxlength="64" placeholder="选择文件后自动生成" :disabled="uploading || hashing" /><small class="hash-status" :class="{ 'is-ready': hashComputed }">{{ hashStatus }}</small></el-form-item>
+      <el-form-item label="归档 SHA-256"><el-checkbox v-model="checksumEnabled" :disabled="uploading || hashing" @change="toggleChecksum">上传前校验</el-checkbox><el-input v-if="checksumEnabled" v-model.trim="form.expectedSha256" maxlength="64" placeholder="选择文件后自动生成" :disabled="uploading || hashing" /><small class="hash-status" :class="{ 'is-ready': hashComputed }">{{ checksumEnabled ? hashStatus : '未选择校验，上传后由服务器计算' }}</small></el-form-item>
       <el-form-item label="归档文件">
         <input ref="file" class="native-file" type="file" accept=".tar,.gz,.tgz,application/x-tar,application/gzip" :disabled="uploading" @change="selectFile">
-        <el-button icon="el-icon-folder-opened" :disabled="uploading" @click="$refs.file.click()">选择文件</el-button><span class="file-name">{{ file ? `${file.name} · ${formatBytes(file.size)}` : '尚未选择' }}</span>
+        <el-button icon="el-icon-folder-opened" :disabled="uploading" @click="$refs.file.click()">{{ resumeUpload ? '选择原文件' : '选择文件' }}</el-button><span class="file-name">{{ file ? `${file.name} · ${formatBytes(file.size)}` : (resumeUpload ? `请选择 ${resumeUpload.originalFilename}` : '尚未选择') }}</span>
       </el-form-item>
       <el-form-item v-if="uploadId" label="断点状态"><span>{{ uploadId }}</span><el-button type="text" :disabled="uploading" @click="discardResume">放弃并重建</el-button></el-form-item>
-      <el-form-item v-if="uploading || progress" label="上传进度"><el-progress :percentage="progress" :status="progress === 100 ? 'success' : undefined" /><small>{{ formatBytes(receivedBytes) }} / {{ file ? formatBytes(file.size) : '--' }}</small></el-form-item>
+      <el-form-item v-if="uploading || progress" label="上传进度"><el-progress :percentage="progress" :status="progress === 100 ? 'success' : undefined" /><small>{{ formatBytes(receivedBytes) }} / {{ file ? formatBytes(file.size) : (resumeUpload ? formatBytes(Number(resumeUpload.totalSize)) : '--') }}</small></el-form-item>
     </el-form>
-    <span slot="footer"><el-button :disabled="uploading || hashing" @click="close">取消</el-button><el-button type="primary" :loading="uploading" :disabled="hashing || !hashComputed" @click="start">{{ uploadId ? '继续上传' : '开始上传' }}</el-button></span>
+    <span slot="footer"><el-button :disabled="uploading" @click="close">取消</el-button><el-button v-if="resumeUpload && !file" type="primary" icon="el-icon-folder-opened" @click="chooseAndContinue">选择原文件并继续</el-button><el-button v-else type="primary" :loading="uploading" :disabled="!file || uploading" @click="start">{{ uploadId ? '继续上传' : '开始上传' }}</el-button></span>
   </el-dialog>
 </template>
 
 <script>
 import { createImageUpload, getImageUploadStatus, uploadImageChunk, completeImageUpload, cancelImageUpload } from '@/services/imageRegistry'
 
-const CHUNK_SIZE = 8 * 1024 * 1024
+const CHUNK_SIZE = 64 * 1024 * 1024
 const MAX_CHUNK_RETRIES = 3
 const RESUME_KEY = 'xkp:image-upload:'
 
@@ -83,31 +83,40 @@ class Sha256 {
 
 export default {
   name: 'ImageUploadDialog',
-  props: { visible: Boolean },
-  data: () => ({ file: null, uploadId: '', receivedBytes: 0, progress: 0, uploading: false, hashing: false, hashComputed: false, retrying: false, retryAttempt: 0, form: { groupId: '', componentType: 'ANNOTATION', version: '', imageRepository: '', expectedSha256: '' } }),
+  props: { visible: Boolean, resumeUpload: Object },
+  data: () => ({ file: null, uploadId: '', receivedBytes: 0, progress: 0, activeChunkSize: CHUNK_SIZE, uploading: false, finalizing: false, hashing: false, hashComputed: false, checksumEnabled: true, retrying: false, retryAttempt: 0, form: { groupId: '', componentType: 'ANNOTATION', version: '', imageRepository: '', expectedSha256: '' } }),
   computed: {
     hashStatus () {
+      if (this.finalizing) return '正在后台合并并校验大镜像，请勿关闭页面'
       if (this.retrying) return `网络波动，正在重试第 ${this.retryAttempt} 次`
       if (this.hashing) return this.file && this.file.size > 64 * 1024 * 1024 ? '正在分块计算 SHA-256...' : '正在计算 SHA-256...'
       if (this.hashComputed) return '已自动计算，可直接上传'
       return this.file ? '等待计算' : '请选择归档文件'
     }
   },
+  watch: { visible (shown) { if (shown) this.prepareOpen() } },
   methods: {
-    async selectFile (event) {
-      this.file = event.target.files[0] || null
-      this.uploadId = ''
-      this.receivedBytes = 0
-      this.progress = 0
-      this.form.expectedSha256 = ''
-      this.hashComputed = false
-      if (!this.file) return
-      const stored = localStorage.getItem(this.resumeKey())
-      if (stored) this.uploadId = stored
-      await this.computeFileHash()
+    prepareOpen () {
+      this.file = null; this.retrying = false; this.retryAttempt = 0
+      if (!this.resumeUpload) { this.uploadId = ''; this.receivedBytes = 0; this.progress = 0; this.activeChunkSize = CHUNK_SIZE; this.form = { groupId: '', componentType: 'ANNOTATION', version: '', imageRepository: '', expectedSha256: '' }; this.checksumEnabled = true; this.hashComputed = false; return }
+      const item = this.resumeUpload
+      this.uploadId = item.uploadId; this.receivedBytes = Number(item.receivedBytes || 0); this.activeChunkSize = Number(item.chunkSize || CHUNK_SIZE); this.progress = item.totalSize ? Math.min(99, Math.round(this.receivedBytes / Number(item.totalSize) * 100)) : 0
+      this.form = { groupId: item.groupId || '', componentType: item.componentType || 'ANNOTATION', version: item.version || '', imageRepository: item.imageRepository || '', expectedSha256: item.expectedSha256 || '' }
+      this.checksumEnabled = Boolean(item.expectedSha256); this.hashComputed = this.checksumEnabled
     },
-    async computeFileHash () {
+    async selectFile (event) {
+      const selected = event.target.files[0] || null
+      if (selected && this.resumeUpload && (selected.name !== this.resumeUpload.originalFilename || Number(selected.size) !== Number(this.resumeUpload.totalSize))) { this.$message.error('请选择原上传记录对应的同名同大小文件'); event.target.value = ''; return }
+      this.file = selected
+      if (!this.resumeUpload) { this.uploadId = ''; this.receivedBytes = 0; this.progress = 0; this.activeChunkSize = CHUNK_SIZE; this.form.expectedSha256 = ''; this.hashComputed = false }
       if (!this.file) return
+      if (!this.resumeUpload) { const stored = localStorage.getItem(this.resumeKey()); if (stored) this.uploadId = stored }
+      if (this.checksumEnabled && !this.resumeUpload) this.computeFileHash()
+      if (this.resumeUpload) this.$nextTick(() => this.start())
+    },
+    chooseAndContinue () { this.$refs.file.click() },
+    async computeFileHash () {
+      if (!this.file || !this.checksumEnabled) return
       this.hashing = true
       try {
         if (this.file.size <= 64 * 1024 * 1024 && window.crypto && window.crypto.subtle) {
@@ -129,6 +138,11 @@ export default {
     },
     resumeKey () { return `${RESUME_KEY}${this.file ? `${this.file.name}:${this.file.size}:${this.file.lastModified}` : ''}` },
     async start () {
+      if (!this.file || !this.form.groupId || !this.form.version || !this.form.imageRepository) { this.$message.warning('请完整填写镜像信息并选择归档文件'); return }
+      if (this.hashing) {
+        this.$message.info('已开始准备上传，正在完成 SHA-256 计算')
+        while (this.hashing) await new Promise(resolve => window.setTimeout(resolve, 200))
+      }
       if (!this.validate()) return
       this.uploading = true
       try {
@@ -137,6 +151,7 @@ export default {
           try { status = valueOf(await getImageUploadStatus(this.uploadId)) } catch (error) { this.uploadId = ''; localStorage.removeItem(this.resumeKey()) }
         }
         if (status && status.state === 'PENDING_REVIEW') { this.finishUploaded(); return }
+        if (status && status.chunkSize) this.activeChunkSize = Number(status.chunkSize)
         if (!this.uploadId) {
           try {
             status = valueOf(await createImageUpload({
@@ -159,14 +174,15 @@ export default {
             throw error
           }
           this.uploadId = status.uploadId
+          this.activeChunkSize = Number(status.chunkSize || CHUNK_SIZE)
           localStorage.setItem(this.resumeKey(), this.uploadId)
         }
         this.receivedBytes = Number(status.receivedBytes || 0)
-        const firstChunk = Math.floor(this.receivedBytes / CHUNK_SIZE)
-        const totalChunks = Math.ceil(this.file.size / CHUNK_SIZE)
+        const firstChunk = Math.floor(this.receivedBytes / this.activeChunkSize)
+        const totalChunks = Math.ceil(this.file.size / this.activeChunkSize)
         for (let index = firstChunk; index < totalChunks; index++) {
-          const start = index * CHUNK_SIZE
-          const chunk = this.file.slice(start, Math.min(start + CHUNK_SIZE, this.file.size))
+          const start = index * this.activeChunkSize
+          const chunk = this.file.slice(start, Math.min(start + this.activeChunkSize, this.file.size))
           const checksum = await this.chunkHash(chunk)
           let chunkResult
           try {
@@ -179,17 +195,24 @@ export default {
           this.receivedBytes = Number(chunkResult.receivedBytes || start + chunk.size)
           this.progress = Math.min(99, Math.round(this.receivedBytes / this.file.size * 100))
         }
+        this.finalizing = true
         await completeImageUpload(this.uploadId)
-        this.finishUploaded()
-      } finally { this.uploading = false }
+        this.$message.success('文件上传完成，后台正在合并校验')
+        this.$emit('uploaded')
+        this.close(true)
+      } finally { this.uploading = false; this.finalizing = false }
     },
     validate () {
       const validFile = this.file && /\.(tar|tar\.gz|tgz)$/i.test(this.file.name)
-      if (!this.form.groupId || !this.form.version || !this.form.imageRepository || !this.hashComputed || !/^[0-9a-f]{64}$/.test(this.form.expectedSha256) || !validFile) {
-        this.$message.warning('请完整填写信息并选择归档文件，SHA-256 会自动生成')
+      if (!this.form.groupId || !this.form.version || !this.form.imageRepository || (this.checksumEnabled && (!this.hashComputed || !/^[0-9a-f]{64}$/.test(this.form.expectedSha256))) || !validFile) {
+        this.$message.warning(this.checksumEnabled ? '请完整填写信息并完成 SHA-256 校验' : '请完整填写镜像信息并选择归档文件')
         return false
       }
       return true
+    },
+    toggleChecksum () {
+      if (!this.checksumEnabled) { this.form.expectedSha256 = ''; this.hashComputed = false; this.hashing = false }
+      else if (this.file) this.computeFileHash()
     },
     async uploadChunkWithRetry (index, chunk, checksum, start) {
       let lastError
@@ -221,7 +244,7 @@ export default {
       this.$emit('uploaded')
       this.close(true)
     },
-    async discardResume () { if (this.uploadId) { await cancelImageUpload(this.uploadId); localStorage.removeItem(this.resumeKey()) } this.uploadId = ''; this.receivedBytes = 0; this.progress = 0; this.retrying = false; this.retryAttempt = 0 },
+    async discardResume () { if (this.uploadId) { await cancelImageUpload(this.uploadId); localStorage.removeItem(this.resumeKey()) } this.uploadId = ''; this.receivedBytes = 0; this.progress = 0; this.activeChunkSize = CHUNK_SIZE; this.retrying = false; this.retryAttempt = 0 },
     close (force = false) { if (this.uploading && !force) return; this.$emit('update:visible', false) },
     formatBytes (bytes) { if (!Number.isFinite(bytes)) return '--'; if (bytes < 1024) return `${bytes} B`; const units = ['KiB', 'MiB', 'GiB', 'TiB']; let value = bytes / 1024; let unit = units[0]; for (let i = 1; value >= 1024 && i < units.length; i++) { value /= 1024; unit = units[i] } return `${value.toFixed(value >= 10 ? 1 : 2)} ${unit}` }
   }

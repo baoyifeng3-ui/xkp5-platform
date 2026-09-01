@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="rank-page">
     <div class="r-table">
       <!-- {{ tableData }} -->
       <el-table

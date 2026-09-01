@@ -1,0 +1,8 @@
+const fs = require('fs')
+const source = fs.readFileSync('src/views/management/TrainingManagement.vue', 'utf8')
+if (!source.includes('全选当前可用账号')) throw new Error('eligible account select-all missing')
+if (!source.includes('eligibleAccounts')) throw new Error('eligible accounts source missing')
+if (source.includes('v-model="form.agentId"')) throw new Error('server selector must be removed')
+if (source.includes('v-model="form.slotNumbers"')) throw new Error('slot selector must be removed')
+if (source.includes('HostPort')) throw new Error('host-port request fields must be removed')
+console.log('account environment creation contract PASS')

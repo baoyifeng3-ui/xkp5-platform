@@ -3,6 +3,7 @@ package com.match.registry.persistence;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.TableField;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -29,4 +30,8 @@ public class ImageDeploymentRecord {
     private LocalDateTime requestedAt;
     private LocalDateTime completedAt;
     private LocalDateTime updatedAt;
+    @TableField(exist = false) private Integer progressPercent;
+    @TableField(exist = false) private String progressStage;
+    @TableField(exist = false) private Long transferredBytes;
+    @TableField(exist = false) private Long totalBytes;
 }

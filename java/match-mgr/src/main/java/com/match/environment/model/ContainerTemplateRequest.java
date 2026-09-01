@@ -20,6 +20,7 @@ public class ContainerTemplateRequest {
     private Integer cpuLimitMillis;
     private Long memoryLimitBytes;
     private Boolean gpuEnabled;
+    private Boolean mpsEnabled;
     private Integer gpuComputePercent;
     private Long gpuMemoryLimitBytes;
     private Boolean privileged;

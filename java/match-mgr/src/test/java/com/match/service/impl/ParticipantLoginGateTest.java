@@ -1,6 +1,8 @@
 package com.match.service.impl;
 
 import com.match.dto.CountDownResponse;
+import com.match.mode.model.PlatformModeView;
+import com.match.mode.service.PlatformModeService;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -16,11 +18,15 @@ public class ParticipantLoginGateTest {
     @Mock
     private CountDownServiceImpl countDownService;
 
+    @Mock
+    private PlatformModeService platformModeService;
+
     private ParticipantLoginGate gate;
 
     @Before
     public void setUp() {
-        gate = new ParticipantLoginGate(countDownService, true);
+        when(platformModeService.current()).thenReturn(new PlatformModeView(PlatformModeService.COMPETITION, 1, null, null));
+        gate = new ParticipantLoginGate(countDownService, platformModeService, true);
     }
 
     @Test
@@ -44,10 +50,9 @@ public class ParticipantLoginGateTest {
     }
 
     @Test
-    public void rejectsParticipantBeforeLoginWindow() {
+    public void allowsParticipantBeforeLoginWindow() {
         when(countDownService.snapshot()).thenReturn(snapshot("WAITING_LOGIN"));
-
-        assertEquals("尚未到开放登录时间，请稍后再试", gate.deniedMessage(false));
+        assertNull(gate.deniedMessage(false));
     }
 
     @Test
@@ -58,16 +63,22 @@ public class ParticipantLoginGateTest {
     }
 
     @Test
-    public void rejectsParticipantAfterFinish() {
+    public void allowsParticipantAfterFinishToReachTheCompetitionShell() {
         when(countDownService.snapshot()).thenReturn(snapshot("FINISHED"));
-
-        assertEquals("比赛已结束，无法登录", gate.deniedMessage(false));
+        assertNull(gate.deniedMessage(false));
     }
 
     @Test
     public void allowsParticipantsWhenGateIsDisabledForTesting() {
-        ParticipantLoginGate testGate = new ParticipantLoginGate(countDownService, false);
+        ParticipantLoginGate testGate = new ParticipantLoginGate(countDownService, platformModeService, false);
         assertNull(testGate.deniedMessage(false));
+    }
+
+    @Test
+    public void alwaysAllowsParticipantsInTrainingMode() {
+        when(platformModeService.current()).thenReturn(new PlatformModeView(PlatformModeService.TRAINING, 1, null, null));
+        when(countDownService.snapshot()).thenReturn(snapshot("FINISHED"));
+        assertNull(gate.deniedMessage(false));
     }
 
     private CountDownResponse snapshot(String status) {

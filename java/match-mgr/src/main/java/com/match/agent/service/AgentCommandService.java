@@ -44,6 +44,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 public class AgentCommandService {
     static final String SHUTDOWN_SERVER = "SHUTDOWN_SERVER";
     static final String OPEN_ROOT_TERMINAL = "OPEN_ROOT_TERMINAL";
+    static final String UPGRADE_AGENT = "UPGRADE_AGENT";
+    public static final String EXECUTE_TERMINAL_INPUT = "EXECUTE_TERMINAL_INPUT";
     public static final String DEPLOY_IMAGE = "DEPLOY_IMAGE";
     static final int COMMAND_VERSION = 1;
     static final int MAX_DELIVERY_ATTEMPTS = 5;
@@ -137,7 +139,7 @@ public class AgentCommandService {
         this.clock = clock;
         this.environmentReconciler = environmentReconciler;
         this.modeTransitionReconciler = modeTransitionReconciler;
-        this.terminalRelayBaseUrl = validateTerminalRelayBaseUrl(terminalRelayBaseUrl,
+        this.terminalRelayBaseUrl = validateTerminalRelayBaseUrl(externalRelayUrl(terminalRelayBaseUrl),
                 insecureTerminalRelayAllowed);
         this.eventPublisher = eventPublisher;
     }
@@ -169,8 +171,12 @@ public class AgentCommandService {
         ProcessingAgentCommandRecord existing = mapper.selectActiveByDedup(agentId,
                 OPEN_ROOT_TERMINAL, dedupKey);
         if (existing != null) {
+            if (isOrphanedTerminalCommand(existing)) {
+                mapper.cancelTerminalCommand(existing.getCommandId(), LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC));
+            } else {
             return requireMatchingTerminalCommand(existing, agentId, dedupKey, normalizedSessionId,
                     agentConnectionDeadline, absoluteExpiresAt);
+            }
         }
         String payloadJson = terminalPayload(normalizedSessionId, agentConnectionDeadline,
                 absoluteExpiresAt);
@@ -231,6 +237,25 @@ public class AgentCommandService {
         }
     }
 
+    private static String externalRelayUrl(String configured) {
+        if (configured != null && !configured.matches("^wss?://(127\\.0\\.0\\.1|localhost)(:\\d+)?/.*")) {
+            return configured;
+        }
+        String management = System.getenv("XKP_AGENT_MANAGEMENT_URL");
+        if (management == null || management.trim().isEmpty()) return configured;
+        String value = management.trim().replaceFirst("^https://", "wss://")
+                .replaceFirst("^http://", "ws://").replaceFirst("/+$", "");
+        return value + "/terminal/v1/agent";
+    }
+
+    @Transactional
+    public void cancelTerminalCommand(String commandId) {
+        if (commandId != null && !commandId.trim().isEmpty()) {
+            mapper.cancelTerminalCommand(commandId,
+                    LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC));
+        }
+    }
+
     @Transactional
     public AgentCommandView requestShutdown(ProcessingAgentRecord agent, Integer requesterUserId,
                                             String requesterRole) {
@@ -272,6 +297,39 @@ public class AgentCommandService {
     }
 
     @Transactional
+    public AgentCommandView requestUpgrade(ProcessingAgentRecord agent, String targetVersion, String sha256,
+                                           Integer requesterUserId, String requesterRole) {
+        String agentId = requireAgentId(agent);
+        if (mapper.selectEnabledAgentForUpdate(agentId) == null) throw new IllegalArgumentException("处理服务器不可用");
+        ProcessingAgentCommandRecord existing = mapper.selectActive(agentId, UPGRADE_AGENT);
+        if (existing != null) return toView(existing);
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("targetVersion", targetVersion); payload.put("downloadPath", "/agent/v1/upgrade-binary"); payload.put("sha256", sha256);
+        LocalDateTime now = utcNow();
+        ProcessingAgentCommandRecord record = new ProcessingAgentCommandRecord();
+        record.setCommandId(UUID.randomUUID().toString()); record.setAgentId(agentId); record.setCommandType(UPGRADE_AGENT);
+        record.setCommandVersion(COMMAND_VERSION); record.setPayloadJson(payload.toString()); record.setState("PENDING");
+        record.setActiveDedupKey(agentId + ":" + UPGRADE_AGENT); record.setRequesterUserId(requesterUserId);
+        record.setRequesterRole(requireRole(requesterRole)); record.setCorrelationId(UUID.randomUUID().toString());
+        record.setRequestedAt(now); record.setAvailableAt(now); record.setAttemptCount(0); record.setUpdatedAt(now);
+        mapper.insert(record); return toView(record);
+    }
+
+    @Transactional
+    public AgentCommandView requestTerminalInput(ProcessingAgentRecord agent, String sessionId, String data,
+                                                 Integer requesterUserId) {
+        String agentId = requireAgentId(agent);
+        if (mapper.selectEnabledAgentForUpdate(agentId) == null) throw new IllegalArgumentException("处理服务器不可用");
+        ObjectNode payload = objectMapper.createObjectNode(); payload.put("sessionId", requireUuid(sessionId)); payload.put("data", data);
+        LocalDateTime now = utcNow(); ProcessingAgentCommandRecord record = new ProcessingAgentCommandRecord();
+        record.setCommandId(UUID.randomUUID().toString()); record.setAgentId(agentId); record.setCommandType(EXECUTE_TERMINAL_INPUT);
+        record.setCommandVersion(COMMAND_VERSION); record.setPayloadJson(payload.toString()); record.setState("PENDING");
+        record.setRequesterUserId(requesterUserId); record.setRequesterRole("SUPER_ADMIN"); record.setCorrelationId(UUID.randomUUID().toString());
+        record.setRequestedAt(now); record.setAvailableAt(now); record.setAttemptCount(0); record.setUpdatedAt(now); mapper.insert(record);
+        return toView(record);
+    }
+
+    @Transactional
     public AgentCommandView requestEnvironmentCommand(ProcessingAgentRecord agent, String commandType,
                                                       String payloadJson, Integer requesterUserId,
                                                       String requesterRole, String dedupKey) {
@@ -283,11 +341,15 @@ public class AgentCommandService {
                 && !"START_TRAINING_ENVIRONMENT".equals(commandType)
                 && !"STOP_TRAINING_ENVIRONMENT".equals(commandType)
                 && !"RESTORE_TRAINING_ENVIRONMENT".equals(commandType)
+                && !"DELETE_TRAINING_ENVIRONMENT".equals(commandType)
                 && !"DELIVER_COURSE_RESOURCE".equals(commandType)
+                && !"TRANSFER_FILE".equals(commandType)
+                && !"MODEL_WORKSPACE".equals(commandType)
                 && !"CREATE_COMPETITION_ENVIRONMENT".equals(commandType)
                 && !"START_COMPETITION_ENVIRONMENT".equals(commandType)
                 && !"STOP_COMPETITION_ENVIRONMENT".equals(commandType)
-                && !"RESTORE_COMPETITION_ENVIRONMENT".equals(commandType)) {
+                && !"RESTORE_COMPETITION_ENVIRONMENT".equals(commandType)
+                && !"DELETE_COMPETITION_ENVIRONMENT".equals(commandType)) {
             throw new IllegalArgumentException("Environment command type is invalid");
         }
         if (payloadJson == null
@@ -397,7 +459,8 @@ public class AgentCommandService {
     @Transactional
     public Optional<AgentCommandEnvelope> lease(ProcessingAgentRecord agent) {
         String agentId = requireAgentId(agent);
-        LocalDateTime now = utcNow();
+        // Terminal-capable Agents require second-precision UTC command timestamps.
+        LocalDateTime now = utcNow().withNano(0);
         ProcessingAgentCommandRecord pending = mapper.selectNextForLease(agentId, now);
         if (pending == null) {
             return Optional.empty();
@@ -696,6 +759,16 @@ public class AgentCommandService {
         } catch (IOException | IllegalArgumentException invalidPayload) {
             throw terminalSessionConflict();
         }
+    }
+
+    @Transactional
+    public boolean failStaleImageDeployment(String commandId, LocalDateTime cutoff) {
+        return mapper.failStaleImageDeployment(commandId, cutoff, utcNow()) == 1;
+    }
+
+    private boolean isOrphanedTerminalCommand(ProcessingAgentCommandRecord record) {
+        return record.getPayloadJson() != null && record.getPayloadJson().contains("sessionId")
+                && (record.getState() == null || "RUNNING".equals(record.getState()));
     }
 
     private boolean textEquals(JsonNode payload, String field, String expected) {

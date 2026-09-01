@@ -12,12 +12,12 @@ spring:
     baseline-version: 0
   servlet:
     multipart:
-      max-file-size: 20MB
-      max-request-size: 100MB
+      max-file-size: 50GB
+      max-request-size: 50GB
 
 fdfs:
   connect-timeout: 15000
-  so-timeout: 15000
+  so-timeout: 600000
   thumb-image:
     height: 1000
     width: 1000
@@ -26,11 +26,15 @@ fdfs:
   web-server-url: ${MATCH_FASTDFS_HTTP:http://localhost:8888/}
 
 match:
+  competition-password-key: ${MATCH_COMPETITION_PASSWORD_KEY:eGtwNS1kZXZlbG9wbWVudC1rZXktMzItYnl0ZXMhISE=}
+  ssh-bridge:
+    user: ${MATCH_SSH_USER:root}
   terminal:
     agent-relay-url: ${TERMINAL_AGENT_RELAY_URL:wss://127.0.0.1:19147/terminal/v1/agent}
-  participant-login-gate-enabled: ${MATCH_PARTICIPANT_LOGIN_GATE_ENABLED:true}
+  # 登录不受比赛倒计时限制；比赛模式仅控制登录后的界面和可用功能。
+  participant-login-gate-enabled: ${MATCH_PARTICIPANT_LOGIN_GATE_ENABLED:false}
   fastdfs:
-    storage-host: ${MATCH_FASTDFS_STORAGE_HOST:127.0.0.1}
+    storage-host: ${MATCH_FASTDFS_STORAGE_HOST:fastdfs-storage}
   allowed-origins: ${MATCH_ALLOWED_ORIGINS:http://localhost:19140,http://127.0.0.1:19140,http://127.0.0.1:19146,http://172.16.33.154:19140,http://172.16.33.158:19140}
   dataset-root: ${MATCH_DATASET_ROOT:download/dataset}
   scoring:

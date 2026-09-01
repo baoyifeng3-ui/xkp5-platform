@@ -1,5 +1,6 @@
 package com.match.dashboard.persistence;
 
+import com.match.agent.persistence.ProcessingAgentRecord;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
@@ -13,6 +14,16 @@ public interface DashboardOverviewMapper {
     @Select("SELECT COUNT(*) FROM processing_agent WHERE enabled = 1 AND removed_at IS NULL "
             + "AND last_seen_at >= #{cutoff}")
     int countOnlineAgents(@Param("cutoff") LocalDateTime cutoff);
+
+    @Select("SELECT COUNT(*) FROM user WHERE enabled = 1")
+    int countEnabledUsers();
+
+    @Select("SELECT mode FROM platform_mode WHERE singleton_id = 1")
+    String selectPlatformMode();
+
+    @Select("SELECT agent_id, display_name, hostname, primary_ip, enabled, last_seen_at, latest_metrics "
+            + "FROM processing_agent WHERE removed_at IS NULL ORDER BY display_name, agent_id")
+    List<ProcessingAgentRecord> selectDashboardAgents();
 
         @Select("SELECT COUNT(*) FROM processing_agent a LEFT JOIN processing_agent_mode m "
             + "ON BINARY m.agent_id = BINARY a.agent_id WHERE a.enabled = 1 AND a.removed_at IS NULL "
@@ -30,7 +41,9 @@ public interface DashboardOverviewMapper {
             + "('CREATING', 'STARTING', 'STOPPING', 'RESTORING', 'WAITING_DEPENDENCY')")
     int countTransitionalEnvironments();
 
-    @Select("SELECT COUNT(*) FROM environment_operation WHERE state IN ('PENDING', 'RUNNING')")
+    // 环境操作实际状态集合为 PENDING/WAITING_DEPENDENCY/SUCCEEDED/FAILED（模块从不写 RUNNING），
+    // 统计口径必须包含 WAITING_DEPENDENCY，否则“进行中操作”被系统性漏计
+    @Select("SELECT COUNT(*) FROM environment_operation WHERE state IN ('PENDING', 'RUNNING', 'WAITING_DEPENDENCY')")
     int countActiveOperations();
 
     @Select("SELECT COUNT(*) FROM environment_operation failed WHERE failed.state = 'FAILED' "

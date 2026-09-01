@@ -41,7 +41,10 @@ public class AdminPlatformModeController {
     @PostMapping("")
     public ResponseResult<Object> change(@RequestBody(required = false) ChangePlatformModeRequest request) {
         User actor = roleGuard.requireBusinessAdmin();
-        requireConfirmation(request);
+        if (request == null || (!PlatformModeService.COMPETITION.equals(request.getTargetMode())
+                && !PlatformModeService.TRAINING.equals(request.getTargetMode()))) {
+            throw new IllegalArgumentException("平台模式无效");
+        }
         return Response.makeOKRsp(platformModeService.change(request.getTargetMode(), actor));
     }
 
@@ -58,13 +61,4 @@ public class AdminPlatformModeController {
         return Response.makeOKRsp(transitionService.get(transitionId));
     }
 
-    private void requireConfirmation(ChangePlatformModeRequest request) {
-        String expected = request != null && PlatformModeService.COMPETITION.equals(request.getTargetMode())
-                ? "ENTER COMPETITION" : "EXIT COMPETITION";
-        if (request == null || (!PlatformModeService.COMPETITION.equals(request.getTargetMode())
-                && !PlatformModeService.TRAINING.equals(request.getTargetMode()))
-                || !expected.equals(request.getConfirmation())) {
-            throw new IllegalArgumentException("模式切换确认文本不正确");
-        }
-    }
 }

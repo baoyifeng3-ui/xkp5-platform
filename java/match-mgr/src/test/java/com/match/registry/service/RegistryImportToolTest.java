@@ -12,6 +12,8 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -61,7 +63,25 @@ public class RegistryImportToolTest {
         assertTrue(process.stderr.closed);
     }
 
+    @Test
+    public void reportsEachCopiedBlobOnceFromSkopeoOutput() throws Exception {
+        String first = "Copying blob sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n";
+        String duplicate = "Copying blob sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r";
+        String second = "Copying blob sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n";
+        FakeProcess process = new FakeProcess(false, true, first + duplicate + second, "");
+        List<Integer> copied = new ArrayList<>();
+
+        RegistryImportTool.ImportResult result = tool(process, true).importArchive(request(), copied::add);
+
+        assertEquals("sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", result.getDigest());
+        assertEquals(Arrays.asList(1, 2), copied);
+    }
+
     private RegistryImportTool tool(FakeProcess process) throws Exception {
+        return tool(process, false);
+    }
+
+    private RegistryImportTool tool(FakeProcess process, boolean createDigest) throws Exception {
         Path root = temp.newFolder("import").toPath();
         Path ca = temp.newFile("ca.crt").toPath();
         Path username = temp.newFile("username").toPath();
@@ -69,7 +89,15 @@ public class RegistryImportToolTest {
         Files.write(username, "writer".getBytes(StandardCharsets.UTF_8));
         Files.write(password, "secret".getBytes(StandardCharsets.UTF_8));
         return new RegistryImportTool("skopeo", "https://registry:5000", ca, username,
-                password, root, 1, command -> process, 10, 10);
+                password, root, 1, command -> {
+                    if (createDigest) {
+                        int index = command.indexOf("--digestfile");
+                        Files.write(java.nio.file.Paths.get(command.get(index + 1)),
+                                "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                                        .getBytes(StandardCharsets.US_ASCII));
+                    }
+                    return process;
+                }, 10, 10);
     }
 
     private RegistryImportTool.ImportRequest request() throws Exception {
@@ -81,7 +109,11 @@ public class RegistryImportToolTest {
         private boolean closed;
 
         private TrackingInputStream() {
-            super(new byte[0]);
+            this("");
+        }
+
+        private TrackingInputStream(String content) {
+            super(content.getBytes(StandardCharsets.UTF_8));
         }
 
         @Override
@@ -94,13 +126,19 @@ public class RegistryImportToolTest {
     private static final class FakeProcess extends Process {
         private final boolean interrupt;
         private final boolean completes;
-        private final TrackingInputStream stdout = new TrackingInputStream();
-        private final TrackingInputStream stderr = new TrackingInputStream();
+        private final TrackingInputStream stdout;
+        private final TrackingInputStream stderr;
         private boolean destroyed;
 
         private FakeProcess(boolean interrupt, boolean completes) {
+            this(interrupt, completes, "", "");
+        }
+
+        private FakeProcess(boolean interrupt, boolean completes, String stdout, String stderr) {
             this.interrupt = interrupt;
             this.completes = completes;
+            this.stdout = new TrackingInputStream(stdout);
+            this.stderr = new TrackingInputStream(stderr);
         }
 
         @Override public OutputStream getOutputStream() { return new ByteArrayOutputStream(); }

@@ -1,10 +1,6 @@
 <template>
   <section class="grading-page">
     <header class="grading-heading">
-      <div>
-        <h1>试卷判分</h1>
-        <p>当前启用试卷：{{ paper ? `${paper} 卷` : '未选择' }} · 核对自动判分并完成实操题评分</p>
-      </div>
       <div class="grading-heading-actions">
         <el-tooltip :content="exportTip" placement="bottom">
           <span>
@@ -369,7 +365,7 @@ export default {
   --grading-green: #2f7d61;
   color: var(--grading-ink);
 }
-.grading-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 20px; }
+.grading-heading { display: flex; align-items: center; justify-content: flex-end; gap: 20px; margin-bottom: 12px; }
 .grading-heading h1 { margin: 0 0 6px; color: #172d44; font-size: 25px; font-weight: 700; line-height: 1.25; letter-spacing: 0; }
 .grading-heading p, .export-history-title p { margin: 0; color: var(--grading-muted); font-size: 13px; }
 .grading-heading-actions { display: flex; align-items: center; gap: 10px; }

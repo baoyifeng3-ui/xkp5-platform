@@ -14,6 +14,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.scheduling.annotation.Scheduled;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -72,6 +73,15 @@ public class ImageDeploymentService {
         ImageDeploymentRecord active = deployments.selectActiveSlotForUpdate(slotKey);
         if (active != null) {
             if (key.equals(active.getActiveDeploymentKey())) return active;
+            // A failed delivery is historical data, not an active deployment. Older
+            // records may still carry the slot key, so release that stale lock before
+            // accepting a retry while keeping the record for audit/history views.
+            if ("FAILED".equals(active.getState())) {
+                deployments.clearActiveKeys(active.getDeploymentId());
+                active = null;
+            }
+        }
+        if (active != null) {
             throw new IllegalArgumentException("DEPLOYMENT_ALREADY_ACTIVE");
         }
         ImageReleaseRecord release = releases.selectById(releaseId);
@@ -83,6 +93,10 @@ public class ImageDeploymentService {
         ProcessingAgentRecord agent = agents.selectForManagement(agentId);
         if (agent == null || !Boolean.TRUE.equals(agent.getEnabled()) || agent.getRemovedAt() != null) {
             throw new IllegalArgumentException("AGENT_NOT_AVAILABLE");
+        }
+        ImageDeploymentRecord latest = deployments.selectLatestSucceeded(agentId, component);
+        if (latest != null && digest.equals(latest.getTargetDigest())) {
+            return latest;
         }
         LocalDateTime now = LocalDateTime.now(clock);
         ImageDeploymentRecord deployment = new ImageDeploymentRecord();
@@ -100,7 +114,7 @@ public class ImageDeploymentService {
             throw collision;
         }
         AgentCommandView command = commands.requestImageDeploymentCommand(agent, component, digest, policy,
-                deployment.getDeploymentId(), key, actorId, role);
+                deployment.getDeploymentId(), idempotencyKey, actorId, role);
         if (command == null) throw new IllegalStateException("DEPLOYMENT_COMMAND_NOT_CREATED");
         deployment.setCommandId(command.getCommandId());
         deployments.updateById(deployment);
@@ -144,13 +158,14 @@ public class ImageDeploymentService {
         if ("RUNNING".equals(code) && !"PENDING".equals(current) && !"PULLED".equals(current)) return;
         if ("PULLED".equals(code)) state = "PULLED";
         else if ("RUNNING".equals(code)) state = "RUNNING";
-        else if (event.isSuccess() && "SUCCEEDED".equals(code)) { state = "SUCCEEDED"; terminal = true; }
+        else if (event.isSuccess() && ("SUCCEEDED".equals(code) || "IMAGE_ALREADY_PRESENT".equals(code))) { state = "SUCCEEDED"; terminal = true; }
         else { state = "FAILED"; terminal = true; }
         deployment.setState(state); deployment.setFailureCode(terminal && !event.isSuccess() ? code : null);
         deployment.setFailureMessage(terminal && !event.isSuccess() ? event.getResultMessage() : null);
         deployment.setUpdatedAt(LocalDateTime.now(clock));
-        if (terminal) { deployment.setCompletedAt(deployment.getUpdatedAt()); deployment.setActiveDeploymentKey(null); deployment.setActiveAgentComponentKey(null); }
+        if (terminal) { deployment.setCompletedAt(deployment.getUpdatedAt()); }
         deployments.updateById(deployment);
+        if (terminal) deployments.clearActiveKeys(deployment.getDeploymentId());
     }
 
     @Transactional
@@ -160,8 +175,31 @@ public class ImageDeploymentService {
         if (deployment == null || "SUCCEEDED".equals(deployment.getState()) || "FAILED".equals(deployment.getState())) return;
         deployment.setState(terminalState); deployment.setFailureCode(failureCode);
         deployment.setFailureMessage(failureMessage); deployment.setCompletedAt(LocalDateTime.now(clock));
-        deployment.setUpdatedAt(deployment.getCompletedAt()); deployment.setActiveDeploymentKey(null);
-        deployment.setActiveAgentComponentKey(null); deployments.updateById(deployment);
+        deployment.setUpdatedAt(deployment.getCompletedAt()); deployments.updateById(deployment);
+        deployments.clearActiveKeys(deployment.getDeploymentId());
+    }
+
+    @Transactional
+    public void deleteFailed(String role, String deploymentId) {
+        requireSuperAdmin(role);
+        ImageDeploymentRecord deployment = deployments.selectById(deploymentId);
+        if (deployment == null) throw new IllegalArgumentException("推送任务不存在");
+        if (!"FAILED".equals(deployment.getState())) throw new IllegalArgumentException("仅能删除失败的推送任务");
+        deployments.clearActiveKeys(deploymentId); deployments.deleteById(deploymentId);
+    }
+
+    @Scheduled(initialDelayString = "${xkp.registry.deployment-timeout-initial-ms:10000}",
+            fixedDelayString = "${xkp.registry.deployment-timeout-scan-ms:60000}")
+    @Transactional
+    public void failStaleDeployments() {
+        LocalDateTime cutoff = LocalDateTime.now(clock).minusHours(2);
+        for (ImageDeploymentRecord deployment : deployments.selectStaleRunning(cutoff, 50)) {
+            if (deployment.getCommandId() != null
+                    && commands.failStaleImageDeployment(deployment.getCommandId(), cutoff)) {
+                recoverTerminalCommand(deployment.getCommandId(), "FAILED",
+                        "IMAGE_DEPLOYMENT_TIMEOUT", "镜像推送超过两小时且没有进度更新");
+            }
+        }
     }
 
     private void requireSuperAdmin(String role) { if (!"SUPER_ADMIN".equals(role)) throw new IllegalArgumentException("SUPER_ADMIN_REQUIRED"); }

@@ -12,6 +12,7 @@ import com.match.security.ParticipantModeGuard;
 import com.match.mode.model.PlatformModeView;
 import com.match.mode.service.PlatformModeService;
 import com.match.service.impl.UserServiceImpl;
+import com.match.service.impl.AnnouncementFieldService;
 import com.match.service.impl.ParticipantLoginGate;
 import com.match.util.result.Response;
 import com.match.util.result.ResponseResult;
@@ -33,19 +34,29 @@ public class UserController {
     private final UserActivityService userActivityService;
     private final PlatformModeService platformModeService;
     private final ParticipantModeGuard participantModeGuard;
+    private final AnnouncementFieldService fieldService;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public UserController(UserServiceImpl userService,
                           ParticipantLoginGate participantLoginGate,
                           PasswordCodec passwordCodec,
                           UserActivityService userActivityService,
                           PlatformModeService platformModeService,
-                          ParticipantModeGuard participantModeGuard) {
+                          ParticipantModeGuard participantModeGuard,
+                          AnnouncementFieldService fieldService) {
         this.userService = userService;
         this.participantLoginGate = participantLoginGate;
         this.passwordCodec = passwordCodec;
         this.userActivityService = userActivityService;
         this.platformModeService = platformModeService;
         this.participantModeGuard = participantModeGuard;
+        this.fieldService = fieldService;
+    }
+
+    public UserController(UserServiceImpl userService, ParticipantLoginGate loginGate,
+                          PasswordCodec passwordCodec, UserActivityService activity,
+                          PlatformModeService mode, ParticipantModeGuard guard) {
+        this(userService, loginGate, passwordCodec, activity, mode, guard, null);
     }
 
     @PostMapping("login")
@@ -113,6 +124,17 @@ public class UserController {
         return Response.makeOKRsp("密码修改成功");
     }
 
+    @PostMapping("profile")
+    public ResponseResult<Object> completeProfile(@RequestBody Map<String, String> fields) {
+        User user = userService.getById(StpUtil.getLoginIdAsInt());
+        if (user == null) return Response.makeRsp(401, "账号不存在");
+        if (fieldService == null) return Response.makeRsp(500, "资料服务不可用");
+        fieldService.saveCustomValues(user.getUserId(), fields, user.getUserId());
+        user.setMustCompleteProfile(false);
+        userService.updateById(user);
+        return Response.makeOKRsp("资料已保存");
+    }
+
     @PostMapping("logout")
     public ResponseResult<Object> logout() {
         userActivityService.logout(StpUtil.getTokenValue());
@@ -133,6 +155,8 @@ public class UserController {
         data.put("admin", isAdmin(user));
         data.put("role", roleOf(user).name());
         data.put("mustChangePassword", Boolean.TRUE.equals(user.getMustChangePassword()));
+        data.put("mustCompleteProfile", Boolean.TRUE.equals(user.getMustCompleteProfile()));
+        if (fieldService != null) data.put("profileFields", fieldService.valuesByUserIdsByName(java.util.Collections.singletonList(user.getUserId())).getOrDefault(user.getUserId(), java.util.Collections.emptyMap()));
         data.put("platformMode", platformMode.getMode());
         data.put("modeGeneration", platformMode.getGeneration());
         return data;

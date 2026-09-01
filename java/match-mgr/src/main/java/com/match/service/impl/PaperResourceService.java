@@ -36,7 +36,7 @@ public class PaperResourceService {
         result.put("annotationsPresent", annotationsPresent);
         result.put("annotationsValid", annotationsValid);
         result.put("subjectCount", subjectCount);
-        result.put("ready", fileCount > 0 && annotationsValid && subjectCount > 0);
+        result.put("ready", annotationsValid && subjectCount > 0);
         return result;
     }
 
@@ -49,6 +49,14 @@ public class PaperResourceService {
             }
             throw new IllegalArgumentException("赛卷 " + paperCatalogService.normalize(paperType)
                     + " 资源不完整，请检查数据目录和 annotations.xml");
+        }
+    }
+
+    public void requireSelectable(String paperType) {
+        Map<String, Object> resourceStatus = status(paperType);
+        if (((Integer) resourceStatus.get("subjectCount")) == 0) {
+            throw new IllegalArgumentException("赛卷 " + paperCatalogService.normalize(paperType)
+                    + " 暂无题目，请先在试卷题目中添加");
         }
     }
 

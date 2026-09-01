@@ -7,6 +7,8 @@ import com.match.course.persistence.CourseProgressRecord;
 import com.match.course.persistence.CourseRecord;
 import com.match.course.persistence.CourseResourceMapper;
 import com.match.course.persistence.CourseResourceRecord;
+import com.match.resource.persistence.CourseResourceCatalogMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,12 +27,21 @@ public class CourseLearningService {
     private final CourseMapper courseMapper;
     private final CourseResourceMapper resourceMapper;
     private final CourseProgressMapper progressMapper;
+    private final CourseResourceCatalogMapper catalogMapper;
 
     public CourseLearningService(CourseMapper courseMapper, CourseResourceMapper resourceMapper,
                                  CourseProgressMapper progressMapper) {
+        this(courseMapper, resourceMapper, progressMapper, null);
+    }
+
+    @Autowired
+    public CourseLearningService(CourseMapper courseMapper, CourseResourceMapper resourceMapper,
+                                 CourseProgressMapper progressMapper,
+                                 CourseResourceCatalogMapper catalogMapper) {
         this.courseMapper = courseMapper;
         this.resourceMapper = resourceMapper;
         this.progressMapper = progressMapper;
+        this.catalogMapper = catalogMapper;
     }
 
     public void recordProgress(Integer userId, String resourceId, String progressKind,
@@ -40,10 +51,10 @@ public class CourseLearningService {
 
     public List<CourseView> visibleCourses() {
         return courseMapper.selectVisible().stream().map(record -> new CourseView(record,
-                resourceMapper.selectByCourseId(record.getCourseId()).stream()
+                resourcesByCourse(record.getCourseId()).stream()
                         .filter(r -> Boolean.TRUE.equals(r.getEnabled()))
                         .map(r -> new com.match.course.model.ResourceView(r.getResourceId(), r.getCourseId(),
-                                r.getResourceType(), r.getName(), r.getContentLength(), r.getMimeType(),
+                                r.getResourceType(), r.getChapterId(), r.getPracticeTool(), r.getName(), r.getContentLength(), r.getMimeType(),
                                 r.getSortOrder(), r.getEnabled())).collect(Collectors.toList())))
                 .collect(Collectors.toList());
     }
@@ -52,7 +63,7 @@ public class CourseLearningService {
     public void recordProgress(Integer userId, String resourceId, String progressKind,
                                Integer progressValue, Boolean completed, Long currentValue,
                                Long totalValue, String lastPosition) {
-        CourseResourceRecord resource = resourceMapper.selectById(resourceId);
+        CourseResourceRecord resource = resource(resourceId);
         if (resource == null || !Boolean.TRUE.equals(resource.getEnabled())) {
             throw new IllegalArgumentException("课程资源不存在或已停用");
         }
@@ -83,14 +94,14 @@ public class CourseLearningService {
     }
 
     public Map<String, Object> previewUrl(String resourceId) {
-        CourseResourceRecord resource = resourceMapper.selectById(resourceId);
+        CourseResourceRecord resource = resource(resourceId);
         if (resource == null || !Boolean.TRUE.equals(resource.getEnabled())) throw new IllegalArgumentException("课程资源不存在或已停用");
         if ("ARCHIVE".equals(resource.getResourceType())) throw new IllegalArgumentException("压缩包仅支持发送到实训环境");
         CourseRecord course = courseMapper.selectById(resource.getCourseId());
         if (course == null || !Boolean.TRUE.equals(course.getEnabled())) throw new IllegalArgumentException("课程未发布");
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("resourceId", resourceId); result.put("resourceType", resource.getResourceType());
-        String previewUrl = FastDFSClient.getServerAccessUrl(resource.getStorageKey());
+        String previewUrl = FastDFSClient.getResAccessUrl(resource.getStorageKey());
         if (previewUrl == null || previewUrl.trim().isEmpty()) throw new IllegalArgumentException("资源预览地址不可用");
         result.put("previewUrl", previewUrl);
         return result;
@@ -105,5 +116,15 @@ public class CourseLearningService {
             result.put("coverUrl", FastDFSClient.getServerAccessUrl(course.getCoverResourceId()));
         }
         return result;
+    }
+
+    private List<CourseResourceRecord> resourcesByCourse(String courseId) {
+        return catalogMapper == null ? resourceMapper.selectByCourseId(courseId)
+                : catalogMapper.selectByCourseId(courseId);
+    }
+
+    private CourseResourceRecord resource(String resourceId) {
+        return catalogMapper == null ? resourceMapper.selectById(resourceId)
+                : catalogMapper.selectByFileId(resourceId);
     }
 }

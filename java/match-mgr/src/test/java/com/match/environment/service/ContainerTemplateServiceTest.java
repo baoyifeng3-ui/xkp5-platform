@@ -39,6 +39,9 @@ public class ContainerTemplateServiceTest {
                 Clock.fixed(Instant.parse("2026-08-19T03:00:00Z"), ZoneOffset.UTC));
         when(mapper.selectPublishedDigest(anyString(), anyString()))
                 .thenReturn("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        when(mapper.selectPublishedImageReference(anyString(), anyString()))
+                .thenAnswer(invocation -> "EDITOR".equals(invocation.getArgument(1))
+                        ? "zy-code:latest" : "zy-anno:latest");
     }
 
     @Test
@@ -53,7 +56,7 @@ public class ContainerTemplateServiceTest {
         assertEquals("ANNOTATION", saved.getValue().getComponentType());
         assertEquals("sysbox-runc", saved.getValue().getRuntimeName());
         assertEquals("/root/data", saved.getValue().getMountTarget());
-        assertEquals("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        assertEquals("zy-anno:latest",
                 saved.getValue().getImageReference());
         assertEquals(7, saved.getValue().getCreatedBy().intValue());
         assertNotNull(saved.getValue().getPublishedAt());
@@ -123,13 +126,43 @@ public class ContainerTemplateServiceTest {
         assertEquals(Arrays.asList("/bin/bash"), editor.getCommand());
 
         ContainerTemplateRequest unlimited = editor();
+        unlimited.setCpuLimitMillis(null);
         unlimited.setMemoryLimitBytes(null);
-        expectInvalid(() -> service.publish(unlimited, 7));
+        ContainerTemplateRecord unlimitedPublished = service.publish(unlimited, 7);
+        assertEquals(null, unlimitedPublished.getCpuLimitMillis());
+        assertEquals(null, unlimitedPublished.getMemoryLimitBytes());
 
         ContainerTemplateRequest excessiveGpu = editor();
         excessiveGpu.setGpuEnabled(true);
+        excessiveGpu.setMpsEnabled(true);
         excessiveGpu.setGpuComputePercent(101);
         expectInvalid(() -> service.publish(excessiveGpu, 7));
+    }
+
+    @Test
+    public void gpuWithoutMpsDoesNotRequireComputePercentage() {
+        ContainerTemplateRequest editor = editor();
+        editor.setGpuEnabled(true);
+        editor.setMpsEnabled(false);
+
+        ContainerTemplateRecord published = service.publish(editor, 7);
+
+        assertEquals(Boolean.FALSE, published.getMpsEnabled());
+        assertEquals(null, published.getGpuComputePercent());
+    }
+
+    @Test
+    public void mpsRequiresGpuAndComputePercentage() {
+        ContainerTemplateRequest missingPercentage = editor();
+        missingPercentage.setGpuEnabled(true);
+        missingPercentage.setMpsEnabled(true);
+        expectInvalid(() -> service.publish(missingPercentage, 7));
+
+        ContainerTemplateRequest missingGpu = editor();
+        missingGpu.setGpuEnabled(false);
+        missingGpu.setMpsEnabled(true);
+        missingGpu.setGpuComputePercent(20);
+        expectInvalid(() -> service.publish(missingGpu, 7));
     }
 
     private ContainerTemplateRequest annotation() {

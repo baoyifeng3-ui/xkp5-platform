@@ -90,6 +90,11 @@ public class ImageReleaseController {
         return Response.makeOKRsp(deployments.rollback("SUPER_ADMIN", deploymentId, confirm, actor.getUserId()));
     }
 
+    @DeleteMapping("/deployments/{deploymentId}")
+    public ResponseResult<Object> deleteFailedDeployment(@PathVariable String deploymentId) {
+        roleGuard.requireSuperAdmin(); deployments.deleteFailed("SUPER_ADMIN", deploymentId); return Response.makeOKRsp(null);
+    }
+
     public static class DeploymentRequest {
         public String agentId;
         public String componentType;

@@ -9,6 +9,8 @@ import com.match.course.persistence.CourseDeliveryMapper;
 import com.match.course.persistence.CourseDeliveryRecord;
 import com.match.course.persistence.CourseResourceMapper;
 import com.match.course.persistence.CourseResourceRecord;
+import com.match.resource.persistence.CourseResourceCatalogMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.match.environment.persistence.TrainingEnvironmentMapper;
 import com.match.environment.persistence.TrainingEnvironmentRecord;
 import org.springframework.stereotype.Service;
@@ -29,22 +31,33 @@ public class CourseDeliveryService {
     private final ProcessingAgentMapper agentMapper;
     private final AgentCommandService commandService;
     private final ObjectMapper objectMapper;
+    private final CourseResourceCatalogMapper catalogMapper;
 
     public CourseDeliveryService(CourseResourceMapper resourceMapper, CourseDeliveryMapper deliveryMapper,
                                  TrainingEnvironmentMapper environmentMapper, ProcessingAgentMapper agentMapper,
                                  AgentCommandService commandService, ObjectMapper objectMapper) {
+        this(resourceMapper, deliveryMapper, environmentMapper, agentMapper, commandService,
+                objectMapper, null);
+    }
+
+    @Autowired
+    public CourseDeliveryService(CourseResourceMapper resourceMapper, CourseDeliveryMapper deliveryMapper,
+                                 TrainingEnvironmentMapper environmentMapper, ProcessingAgentMapper agentMapper,
+                                 AgentCommandService commandService, ObjectMapper objectMapper,
+                                 CourseResourceCatalogMapper catalogMapper) {
         this.resourceMapper = resourceMapper;
         this.deliveryMapper = deliveryMapper;
         this.environmentMapper = environmentMapper;
         this.agentMapper = agentMapper;
         this.commandService = commandService;
         this.objectMapper = objectMapper;
+        this.catalogMapper = catalogMapper;
     }
 
     @Transactional
     public CourseDeliveryRecord deliver(String resourceId, String environmentId, Integer userId,
                                         Integer actorUserId, String actorRole) {
-        CourseResourceRecord resource = resourceMapper.selectById(resourceId);
+        CourseResourceRecord resource = resource(resourceId);
         TrainingEnvironmentRecord environment = environmentMapper.selectForUpdate(environmentId);
         if (resource == null || !Boolean.TRUE.equals(resource.getEnabled())) {
             throw new IllegalArgumentException("课程资源不存在或已停用");
@@ -84,12 +97,15 @@ public class CourseDeliveryService {
 
     @Transactional
     public List<CourseDeliveryRecord> deliverToAllUsers(String resourceId, Integer actorUserId, String actorRole) {
-        CourseResourceRecord resource = resourceMapper.selectById(resourceId);
+        CourseResourceRecord resource = resource(resourceId);
         if (resource == null) throw new IllegalArgumentException("课程资源不存在");
         List<CourseDeliveryRecord> result = new ArrayList<>();
+        List<String> courseIds = catalogMapper == null
+                ? java.util.Collections.singletonList(resource.getCourseId())
+                : catalogMapper.selectEnabledCourseIds(resourceId);
         for (TrainingEnvironmentRecord environment : environmentMapper.selectAllEnvironments()) {
-            if (environment.getUserId() != null && resource.getCourseId() != null
-                    && resource.getCourseId().equals(String.valueOf(environment.getCourseId()))) {
+            if (environment.getUserId() != null
+                    && courseIds.contains(environment.getCourseId())) {
                 result.add(deliver(resourceId, environment.getEnvironmentId(), environment.getUserId(), actorUserId, actorRole));
             }
         }
@@ -102,6 +118,11 @@ public class CourseDeliveryService {
 
     public List<CourseDeliveryRecord> recentDeliveries() {
         return deliveryMapper.selectRecent();
+    }
+
+    private CourseResourceRecord resource(String resourceId) {
+        return catalogMapper == null ? resourceMapper.selectById(resourceId)
+                : catalogMapper.selectByFileId(resourceId);
     }
 
     @EventListener

@@ -21,7 +21,8 @@ public class ParticipantAccessGuard {
         User user = userService.getById(StpUtil.getLoginIdAsInt());
         if (user != null && roleOf(user) != UserRole.USER) return;
         CountDownResponse snapshot = countDownService.snapshot();
-        if ("PRE_START".equals(snapshot.getAccessPhase()) || "BEFORE_LOGIN".equals(snapshot.getAccessPhase())) {
+        if ("PRE_START".equals(snapshot.getAccessPhase()) || "BEFORE_LOGIN".equals(snapshot.getAccessPhase())
+                || "UNSCHEDULED".equals(snapshot.getAccessPhase())) {
             throw new CompetitionAccessException("比赛尚未正式开始，当前功能暂不可用");
         }
         if ("FINISHED".equals(snapshot.getAccessPhase())) {

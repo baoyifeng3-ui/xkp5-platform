@@ -41,11 +41,17 @@ public class User implements Serializable {
     @TableField("password")
     private String password;
 
+    @TableField("remark")
+    private String remark;
+
     @TableField("enabled")
     private Boolean enabled;
 
     @TableField("must_change_password")
     private Boolean mustChangePassword;
+
+    @TableField("must_complete_profile")
+    private Boolean mustCompleteProfile;
 
     @TableField("is_admin")
     private Boolean isAdmin;

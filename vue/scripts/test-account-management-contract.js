@@ -1,0 +1,15 @@
+const fs = require('fs')
+const source = fs.readFileSync('src/views/management/UserManagement.vue', 'utf8')
+for (const text of ['批量创建账号', '批量启用', '批量禁用', '批量删除', '服务器槽位', '自定义字段', '迁移用户数据', '重新生成比赛密码']) {
+  if (!source.includes(text)) throw new Error(`missing account management control: ${text}`)
+}
+if (!source.includes('migrateData: false')) throw new Error('data migration must default to false')
+if (!source.includes('customFieldNames')) throw new Error('account list must expose actual custom field names')
+if (!source.includes('customFieldValue')) throw new Error('account list must render custom field values by name')
+if (!source.includes('this.competitionMode ? Promise.resolve({ data: [] }) : listAdminTrainingSlots()')) throw new Error('competition account list must not call the training-only slot endpoint')
+if (source.indexOf('getPlatformMode()') > source.indexOf('listAdminTrainingSlots()')) throw new Error('account page must determine mode before loading training slots')
+if (!source.includes('服务器槽位（可选）')) throw new Error('single account slot must be optional')
+if (!source.includes('处理服务器（可选）')) throw new Error('batch account servers must be optional')
+if (source.includes('用户名、密码和服务器槽位不能为空')) throw new Error('single account must not require a slot')
+if (source.includes('请选择处理服务器')) throw new Error('batch account must not require servers')
+console.log('account management contract PASS')

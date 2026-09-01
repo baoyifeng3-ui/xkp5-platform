@@ -14,9 +14,14 @@ import java.nio.file.Paths;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Component
@@ -27,6 +32,7 @@ public class RegistryImportTool {
     private static final Pattern REPOSITORY = Pattern.compile("[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*");
     private static final Pattern TAG = Pattern.compile("[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}");
     private static final Pattern REGISTRY_AUTHORITY = Pattern.compile("[A-Za-z0-9.-]+(?::[0-9]{1,5})?");
+    private static final Pattern COPY_BLOB = Pattern.compile("Copying blob (sha256:[0-9a-fA-F]{64})");
 
     private final String executable;
     private final String registryAuthority;
@@ -77,6 +83,10 @@ public class RegistryImportTool {
     }
 
     public ImportResult importArchive(ImportRequest request) {
+        return importArchive(request, copiedLayers -> { });
+    }
+
+    public ImportResult importArchive(ImportRequest request, ProgressListener progressListener) {
         validate(request);
         Path digestFile = null;
         Path authFile = null;
@@ -109,8 +119,13 @@ public class RegistryImportTool {
                     + ":" + request.getTag());
 
             process = launcher.start(command);
-            stdout = new BoundedStreamCollector(process.getInputStream());
-            stderr = new BoundedStreamCollector(process.getErrorStream());
+            Set<String> copiedBlobs = Collections.synchronizedSet(new HashSet<>());
+            Consumer<String> outputObserver = text -> {
+                progressListener.onActivity();
+                reportCopiedBlobs(text, copiedBlobs, progressListener);
+            };
+            stdout = new BoundedStreamCollector(process.getInputStream(), outputObserver);
+            stderr = new BoundedStreamCollector(process.getErrorStream(), outputObserver);
             stdout.start();
             stderr.start();
             boolean completed = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
@@ -159,6 +174,19 @@ public class RegistryImportTool {
                     // Import root is private to the dedicated worker and cleaned operationally.
                 }
             }
+        }
+    }
+
+    private static void reportCopiedBlobs(String text, Set<String> copiedBlobs,
+                                          ProgressListener progressListener) {
+        Matcher matcher = COPY_BLOB.matcher(text);
+        while (matcher.find()) {
+            int count;
+            synchronized (copiedBlobs) {
+                if (!copiedBlobs.add(matcher.group(1).toLowerCase(Locale.ROOT))) continue;
+                count = copiedBlobs.size();
+            }
+            progressListener.onLayerCopy(count);
         }
     }
 
@@ -241,19 +269,25 @@ public class RegistryImportTool {
 
     private static final class BoundedStreamCollector extends Thread {
         private final InputStream input;
+        private final Consumer<String> observer;
         private final ByteArrayOutputStream captured = new ByteArrayOutputStream();
 
-        private BoundedStreamCollector(InputStream input) {
+        private BoundedStreamCollector(InputStream input, Consumer<String> observer) {
             this.input = input;
+            this.observer = observer;
             setDaemon(true);
         }
 
         @Override
         public void run() {
             byte[] buffer = new byte[8192];
+            String tail = "";
             try {
                 int count;
                 while ((count = input.read(buffer)) != -1) {
+                    String text = tail + new String(buffer, 0, count, StandardCharsets.UTF_8);
+                    observer.accept(text);
+                    tail = text.length() <= 96 ? text : text.substring(text.length() - 96);
                     int remaining = MAX_CAPTURE_BYTES - captured.size();
                     if (remaining > 0) {
                         captured.write(buffer, 0, Math.min(count, remaining));
@@ -295,6 +329,13 @@ public class RegistryImportTool {
 
     interface ProcessLauncher {
         Process start(List<String> command) throws IOException;
+    }
+
+    @FunctionalInterface
+    public interface ProgressListener {
+        void onLayerCopy(int copiedLayers);
+
+        default void onActivity() { }
     }
 
     public static final class ImportResult {

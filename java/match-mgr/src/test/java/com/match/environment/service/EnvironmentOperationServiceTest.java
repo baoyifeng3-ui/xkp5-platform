@@ -63,6 +63,8 @@ public class EnvironmentOperationServiceTest {
         when(agentMapper.selectForManagement(AGENT_ID)).thenReturn(agent);
         when(commandFactory.createPayloadJson(any(TrainingEnvironmentRecord.class), any(String.class)))
                 .thenReturn("{}");
+        when(commandFactory.createControlPayloadJson(any(TrainingEnvironmentRecord.class), any(String.class)))
+                .thenReturn("{}");
         AgentCommandView command = new AgentCommandView();
         command.setCommandId("command-1");
         when(commandService.requestEnvironmentCommand(any(), any(), any(), any(), any(), any()))
@@ -92,6 +94,32 @@ public class EnvironmentOperationServiceTest {
                 eq("START_TRAINING_ENVIRONMENT"), any(), any(), any(), any());
         assertEquals("WAITING_DEPENDENCY", view.getState());
         assertNull(view.getCommand());
+    }
+
+    @Test
+    public void waitingDependencyStartsAfterOtherEnvironmentsStop() {
+        TrainingEnvironmentRecord stopped = environment("env-current", 21, 31, "STOPPED", "STOPPED", 5L);
+        TrainingEnvironmentRecord waiting = environment("env-selected", 21, 32, "RUNNING", "WAITING_DEPENDENCY", 8L);
+        waiting.setCurrentOperationId("operation-waiting");
+        EnvironmentOperationRecord operation = new EnvironmentOperationRecord();
+        operation.setOperationId("operation-waiting");
+        operation.setEnvironmentId("env-selected");
+        operation.setOperationType("START");
+        operation.setState("WAITING_DEPENDENCY");
+        operation.setActorUserId(9);
+        operation.setActorRole("ADMIN");
+        when(environmentMapper.selectWaitingDependencies()).thenReturn(Collections.singletonList(waiting));
+        when(environmentMapper.selectUserEnvironmentsForUpdate(21)).thenReturn(Arrays.asList(stopped, waiting));
+        when(operationMapper.selectActive("env-selected")).thenReturn(operation);
+        when(operationMapper.dispatchWaiting(eq("operation-waiting"), eq("command-1"), any(LocalDateTime.class))).thenReturn(1);
+        when(environmentMapper.dispatchWaitingStart(eq("env-selected"), eq("operation-waiting"), eq(9), any(LocalDateTime.class))).thenReturn(1);
+
+        service.dispatchWaitingStarts();
+
+        verify(commandService).requestEnvironmentCommand(eq(agent), eq("START_TRAINING_ENVIRONMENT"),
+                eq("{}"), eq(9), eq("ADMIN"), eq("env-selected:START"));
+        verify(operationMapper).dispatchWaiting(eq("operation-waiting"), eq("command-1"), any(LocalDateTime.class));
+        verify(environmentMapper).dispatchWaitingStart(eq("env-selected"), eq("operation-waiting"), eq(9), any(LocalDateTime.class));
     }
 
     @Test
@@ -218,19 +246,26 @@ public class EnvironmentOperationServiceTest {
     }
 
     @Test
-    public void adminCanDeleteStoppedEnvironment() {
+    public void adminDeleteDispatchesAgentRemovalBeforeDeletingDatabaseRecord() {
         TrainingEnvironmentRecord selected = environment("env-selected", 21, 32, "STOPPED", "STOPPED", 7L);
         when(environmentMapper.selectForUpdate("env-selected")).thenReturn(selected);
         service.delete("env-selected", 9, "ADMIN");
-        verify(environmentMapper).deleteById("env-selected");
+        verify(commandService).requestEnvironmentCommand(eq(agent),
+                eq("DELETE_TRAINING_ENVIRONMENT"), eq("{}"), eq(9), eq("ADMIN"),
+                eq("env-selected:DELETE"));
+        verify(environmentMapper, never()).deleteById("env-selected");
     }
 
     @Test
-    public void runningEnvironmentCannotBeDeleted() {
+    public void adminCanForceDeleteRunningOrFailedEnvironment() {
         TrainingEnvironmentRecord selected = environment("env-selected", 21, 32, "RUNNING", "RUNNING", 7L);
         when(environmentMapper.selectForUpdate("env-selected")).thenReturn(selected);
-        expectIllegalArgument(() -> service.delete("env-selected", 9, "ADMIN"), "停止");
-        verify(environmentMapper, never()).deleteById("env-selected");
+        service.delete("env-selected", 9, "ADMIN");
+        verify(environmentMapper).compareAndSetState(eq("env-selected"), eq(7L), eq("STOPPED"),
+                eq("DELETING"), any(String.class), eq(9), any(LocalDateTime.class));
+        verify(commandService).requestEnvironmentCommand(eq(agent),
+                eq("DELETE_TRAINING_ENVIRONMENT"), eq("{}"), eq(9), eq("ADMIN"),
+                eq("env-selected:DELETE"));
     }
 
     private TrainingEnvironmentRecord environment(String id, int userId, int courseId,
@@ -238,7 +273,7 @@ public class EnvironmentOperationServiceTest {
         TrainingEnvironmentRecord environment = new TrainingEnvironmentRecord();
         environment.setEnvironmentId(id);
         environment.setUserId(userId);
-        environment.setCourseId(courseId);
+        environment.setCourseId(String.valueOf(courseId));
         environment.setAgentId(AGENT_ID);
         environment.setDesiredState(desired);
         environment.setActualState(actual);

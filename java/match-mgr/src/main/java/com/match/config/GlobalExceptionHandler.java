@@ -10,6 +10,8 @@ import com.match.licensing.web.LicenseImportException;
 import com.match.mode.service.ModeConflictException;
 import com.match.service.impl.SubmissionValidationException;
 import com.match.terminal.service.TerminalSessionException;
+import com.match.resource.service.ResourceOperationException;
+import com.match.environment.service.ClassOfflineException;
 import com.match.util.result.Response;
 import com.match.util.result.ResponseResult;
 import org.springframework.http.HttpStatus;
@@ -45,6 +47,22 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ResponseResult<Object>> handleBadRequest(IllegalArgumentException exception) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(Response.makeRsp(400, exception.getMessage()));
+    }
+
+    @ExceptionHandler(ClassOfflineException.class)
+    public ResponseEntity<ResponseResult<Object>> handleClassOffline(ClassOfflineException exception) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("reasonCode", "CLASS_SERVERS_OFFLINE");
+        data.put("offlineServers", exception.getOfflineServers());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Response.makeRsp(409, exception.getMessage(), data));
+    }
+
+    @ExceptionHandler(ResourceOperationException.class)
+    public ResponseEntity<ResponseResult<Object>> handleResourceOperation(
+            ResourceOperationException exception) {
+        return ResponseEntity.status(exception.getStatus()).body(Response.makeRsp(
+                exception.getStatus(), exception.getMessage(), reason(exception.getCode())));
     }
 
     @ExceptionHandler(TerminalSessionException.class)

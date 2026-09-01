@@ -128,6 +128,11 @@ public class FastDFSClient {
         return true;
     }
 
+    public static byte[] downloadBytes(String fileUrl) {
+        StorePath storePath = StorePath.parseFromUrl(fileUrl);
+        return fastFileStorageClient.downloadFile(storePath.getGroup(), storePath.getPath(), new DownloadByteArray());
+    }
+
     /**
      * @param fileUrl 文件访问地址
      * @author Xiaoliang Ma

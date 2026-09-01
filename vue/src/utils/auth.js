@@ -3,6 +3,7 @@ const PlanKey = 'Plan'
 const UserNameKey = 'UserName'
 const UserInfoKey = 'UserInfo'
 const CompetitionAccessPhaseKey = 'CompetitionAccessPhase'
+const ClassPolicyKey = 'ClassPolicy'
 const roleNavigation = require('@/navigation/roleNavigation')
 
 export function getToken () {
@@ -77,6 +78,9 @@ export function mustChangePassword () {
     return getUserInfo().mustChangePassword === true
 }
 
+export function setClassPolicy (policy) { sessionStorage.setItem(ClassPolicyKey, JSON.stringify(policy || {})) }
+export function getClassPolicy () { try { return JSON.parse(sessionStorage.getItem(ClassPolicyKey) || '{}') } catch (error) { return {} } }
+
 export function setCompetitionAccessPhase (phase) {
     sessionStorage.setItem(CompetitionAccessPhaseKey, phase || '')
 }
@@ -92,4 +96,5 @@ export function clearSession () {
     sessionStorage.removeItem(UserInfoKey)
     sessionStorage.removeItem('userId')
     sessionStorage.removeItem(CompetitionAccessPhaseKey)
+    sessionStorage.removeItem(ClassPolicyKey)
 }

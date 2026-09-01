@@ -1,0 +1,9 @@
+package com.match.learning.web;
+import com.match.entity.User; import com.match.learning.persistence.*; import com.match.security.RoleGuard; import com.match.util.result.*; import org.springframework.web.bind.annotation.*; import java.time.LocalDateTime; import java.util.*;
+@RestController @RequestMapping("/admin/learning-analysis") public class LearningAnalysisController {
+ private final RoleGuard roles; private final LearningAnalysisMapper mapper; private final LearningEvaluationRecordMapper evaluations;
+ public LearningAnalysisController(RoleGuard r,LearningAnalysisMapper m,LearningEvaluationRecordMapper e){roles=r;mapper=m;evaluations=e;}
+ @GetMapping("/overview") public ResponseResult<Object> overview(){roles.requireBusinessAdmin(); Map<String,Object> d=new LinkedHashMap<>();d.putAll(mapper.overview());d.put("users",mapper.userSummary());return Response.makeOKRsp(d);}
+ @GetMapping("/users/{userId}/evaluations") public ResponseResult<Object> list(@PathVariable Integer userId){roles.requireBusinessAdmin();return Response.makeOKRsp(mapper.evaluations(userId));}
+ @PostMapping("/users/{userId}/evaluations") public ResponseResult<Object> create(@PathVariable Integer userId,@RequestBody Map<String,Object> body){User a=roles.requireBusinessAdmin();int rating=((Number)body.getOrDefault("rating",5)).intValue();String content=String.valueOf(body.getOrDefault("content",""));if(content.trim().isEmpty())throw new IllegalArgumentException("评价内容不能为空");LearningEvaluationRecord r=new LearningEvaluationRecord();r.setEvaluationId(UUID.randomUUID().toString());r.setUserId(userId);r.setCourseId((String)body.get("courseId"));r.setRating(Math.max(1,Math.min(5,rating)));r.setContent(content.trim());r.setCreatedBy(a.getUserId());r.setCreatedAt(LocalDateTime.now());r.setUpdatedAt(r.getCreatedAt());evaluations.insert(r);return Response.makeOKRsp(r);}
+}

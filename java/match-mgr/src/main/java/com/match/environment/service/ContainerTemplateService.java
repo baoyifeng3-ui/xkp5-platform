@@ -55,6 +55,8 @@ public class ContainerTemplateService {
         if (publishedDigest == null || !publishedDigest.matches("^sha256:[0-9a-f]{64}$")) {
             throw new IllegalArgumentException("镜像发布版本不可用或组件类型不匹配");
         }
+        String runtimeImageReference=mapper.selectPublishedImageReference(request.getReleaseId().trim(),normalized.componentType);
+        if(runtimeImageReference==null||!IMAGE_REFERENCE.matcher(runtimeImageReference).matches())throw new IllegalArgumentException("镜像运行引用不可用");
         LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
 
         String templateId = trimToNull(request.getTemplateId());
@@ -76,7 +78,8 @@ public class ContainerTemplateService {
         record.setTemplateName(normalized.name);
         record.setComponentType(normalized.componentType);
         record.setEnabled(true);
-        record.setImageReference(publishedDigest);
+        record.setImageReference(runtimeImageReference);
+        record.setImageDigest(publishedDigest);
         record.setRuntimeName(normalized.runtimeName);
         record.setRestartPolicy(normalized.restartPolicy);
         record.setPortsJson(writeJson(normalized.ports));
@@ -86,6 +89,7 @@ public class ContainerTemplateService {
         record.setCpuLimitMillis(normalized.cpuLimitMillis);
         record.setMemoryLimitBytes(normalized.memoryLimitBytes);
         record.setGpuEnabled(normalized.gpuEnabled);
+        record.setMpsEnabled(normalized.mpsEnabled);
         record.setGpuComputePercent(normalized.gpuComputePercent);
         record.setGpuMemoryLimitBytes(normalized.gpuMemoryLimitBytes);
         record.setConfigFingerprint(fingerprint(record));
@@ -175,15 +179,20 @@ public class ContainerTemplateService {
         }
         result.mountTarget = requireText(request.getMountTarget(), "挂载目标", 255);
         validateComponentBoundary(result.componentType, result.runtimeName, result.mountTarget);
-        result.ports = normalizePorts(request.getPorts());
+        result.ports = normalizePorts(request.getPorts(), result.componentType);
         result.command = normalizeCommand(request.getCommand());
         result.workingDirectory = optionalText(request.getWorkingDirectory(), "工作目录", 255);
-        result.cpuLimitMillis = requireRange(request.getCpuLimitMillis(), 100, 128000, "CPU 限制");
-        result.memoryLimitBytes = requireRange(request.getMemoryLimitBytes(), MIN_MEMORY_BYTES,
+        result.cpuLimitMillis = optionalRange(request.getCpuLimitMillis(), 100, 128000, "CPU 限制");
+        result.memoryLimitBytes = optionalRange(request.getMemoryLimitBytes(), MIN_MEMORY_BYTES,
                 MAX_MEMORY_BYTES, "内存限制");
         result.gpuEnabled = Boolean.TRUE.equals(request.getGpuEnabled());
+        result.mpsEnabled = Boolean.TRUE.equals(request.getMpsEnabled());
         result.gpuComputePercent = request.getGpuComputePercent();
         result.gpuMemoryLimitBytes = request.getGpuMemoryLimitBytes();
+        if (result.mpsEnabled && (!result.gpuEnabled || !"EDITOR".equals(result.componentType))) {
+            throw new IllegalArgumentException("MPS 仅支持启用 GPU 的代码编辑模板");
+        }
+        if (!result.mpsEnabled) result.gpuComputePercent = null;
         validateGpu(result);
         return result;
     }
@@ -200,10 +209,13 @@ public class ContainerTemplateService {
         }
     }
 
-    private List<ContainerPortSpec> normalizePorts(List<ContainerPortSpec> ports) {
-        if (ports == null || ports.isEmpty() || ports.size() > 16) {
-            throw new IllegalArgumentException("容器端口数量不正确");
+    private List<ContainerPortSpec> normalizePorts(List<ContainerPortSpec> ports, String componentType) {
+        if (ports == null || ports.isEmpty()) {
+            ports = new ArrayList<>();
+            if ("ANNOTATION".equals(componentType)) ports.add(new ContainerPortSpec(8080, "tcp"));
+            else { ports.add(new ContainerPortSpec(9090, "tcp")); ports.add(new ContainerPortSpec(8888, "tcp")); ports.add(new ContainerPortSpec(5000, "tcp")); }
         }
+        if (ports.size() > 16) throw new IllegalArgumentException("容器端口数量不正确");
         List<ContainerPortSpec> normalized = new ArrayList<>();
         Set<String> unique = new HashSet<>();
         for (ContainerPortSpec port : ports) {
@@ -252,7 +264,9 @@ public class ContainerTemplateService {
         if (!"EDITOR".equals(template.componentType) || !"nvidia".equals(template.runtimeName)) {
             throw new IllegalArgumentException("只有代码编辑模板可以启用 GPU");
         }
-        template.gpuComputePercent = requireRange(template.gpuComputePercent, 1, 100, "GPU 算力限制");
+        if (template.mpsEnabled) {
+            template.gpuComputePercent = requireRange(template.gpuComputePercent, 1, 100, "MPS GPU 比例");
+        }
         if (template.gpuMemoryLimitBytes != null) {
             template.gpuMemoryLimitBytes = requireRange(template.gpuMemoryLimitBytes,
                     256L * 1024 * 1024, 64L * 1024 * 1024 * 1024, "GPU 显存限制");
@@ -272,6 +286,7 @@ public class ContainerTemplateService {
         content.put("cpu", record.getCpuLimitMillis());
         content.put("memory", record.getMemoryLimitBytes());
         content.put("gpu", record.getGpuEnabled());
+        content.put("mps", record.getMpsEnabled());
         content.put("gpuCompute", record.getGpuComputePercent());
         content.put("gpuMemory", record.getGpuMemoryLimitBytes());
         return Digests.sha256(writeJson(content));
@@ -335,11 +350,19 @@ public class ContainerTemplateService {
         return value;
     }
 
+    private Integer optionalRange(Integer value, int minimum, int maximum, String label) {
+        return value == null ? null : requireRange(value, minimum, maximum, label);
+    }
+
     private long requireRange(Long value, long minimum, long maximum, String label) {
         if (value == null || value < minimum || value > maximum) {
             throw new IllegalArgumentException(label + "不正确");
         }
         return value;
+    }
+
+    private Long optionalRange(Long value, long minimum, long maximum, String label) {
+        return value == null ? null : requireRange(value, minimum, maximum, label);
     }
 
     private static final class NormalizedTemplate {
@@ -355,6 +378,7 @@ public class ContainerTemplateService {
         private Integer cpuLimitMillis;
         private Long memoryLimitBytes;
         private boolean gpuEnabled;
+        private boolean mpsEnabled;
         private Integer gpuComputePercent;
         private Long gpuMemoryLimitBytes;
     }

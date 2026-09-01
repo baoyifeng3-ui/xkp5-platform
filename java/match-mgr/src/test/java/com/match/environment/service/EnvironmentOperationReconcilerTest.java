@@ -7,6 +7,7 @@ import com.match.environment.persistence.CompetitionEnvironmentMapper;
 import com.match.environment.persistence.CompetitionEnvironmentRecord;
 import com.match.environment.persistence.TrainingEnvironmentMapper;
 import com.match.environment.persistence.TrainingEnvironmentRecord;
+import com.match.environment.persistence.EnvironmentPortAllocationMapper;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -26,6 +27,7 @@ public class EnvironmentOperationReconcilerTest {
     private EnvironmentOperationMapper operations;
     private TrainingEnvironmentMapper trainingEnvironments;
     private CompetitionEnvironmentMapper competitionEnvironments;
+    private EnvironmentPortAllocationMapper portAllocations;
     private EnvironmentOperationReconciler reconciler;
 
     @Before
@@ -33,8 +35,9 @@ public class EnvironmentOperationReconcilerTest {
         operations = mock(EnvironmentOperationMapper.class);
         trainingEnvironments = mock(TrainingEnvironmentMapper.class);
         competitionEnvironments = mock(CompetitionEnvironmentMapper.class);
+        portAllocations = mock(EnvironmentPortAllocationMapper.class);
         reconciler = new EnvironmentOperationReconciler(operations, trainingEnvironments,
-                competitionEnvironments,
+                competitionEnvironments, portAllocations,
                 new ObjectMapper(), Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -62,6 +65,28 @@ public class EnvironmentOperationReconcilerTest {
     }
 
     @Test
+    public void successfulDeleteRemovesPortsAndEnvironmentAfterAgentResult() {
+        EnvironmentOperationRecord operation = operation("DELETE", "PENDING");
+        when(operations.selectByCommandForUpdate("command-1")).thenReturn(operation);
+        when(trainingEnvironments.selectForUpdate("environment-1"))
+                .thenReturn(new TrainingEnvironmentRecord());
+        String details = "{\"pair\":{\"annotation\":{\"state\":\"MISSING\"},"
+                + "\"editor\":{\"state\":\"MISSING\"}}}";
+
+        reconciler.reconcile("command-1", true, "ENVIRONMENT_DELETED", "done", details);
+
+        LocalDateTime now = LocalDateTime.ofInstant(NOW, ZoneOffset.UTC);
+        verify(operations).markTerminal("operation-1", "SUCCEEDED", now,
+                "ENVIRONMENT_DELETED", "done", details);
+        verify(portAllocations).deleteByEnvironment("environment-1");
+        verify(trainingEnvironments).deleteById("environment-1");
+        verify(trainingEnvironments, never()).reconcileOperation(
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(LocalDateTime.class));
+    }
+
+    @Test
     public void componentFailureBecomesDegradedAndPreservesDetails() {
         EnvironmentOperationRecord operation = operation("RESTORE", "PENDING");
         when(operations.selectByCommandForUpdate("command-1")).thenReturn(operation);
@@ -75,6 +100,24 @@ public class EnvironmentOperationReconcilerTest {
         LocalDateTime now = LocalDateTime.ofInstant(NOW, ZoneOffset.UTC);
         verify(trainingEnvironments).reconcileOperation("environment-1", "operation-1", "DEGRADED",
                 "STOPPED", "MISSING", now);
+    }
+
+    @Test
+    public void failedTrainingResultWithoutComponentDetailsPreservesStoredStates() {
+        EnvironmentOperationRecord operation = operation("START", "PENDING");
+        TrainingEnvironmentRecord environment = new TrainingEnvironmentRecord();
+        environment.setAnnotationContainerState("STOPPED");
+        environment.setEditorContainerState("STOPPED");
+        when(operations.selectByCommandForUpdate("command-1")).thenReturn(operation);
+        when(trainingEnvironments.selectForUpdate("environment-1")).thenReturn(environment);
+
+        reconciler.reconcile("command-1", false, "ENVIRONMENT_NOT_READY", "not ready", null);
+
+        LocalDateTime now = LocalDateTime.ofInstant(NOW, ZoneOffset.UTC);
+        verify(operations).markTerminal("operation-1", "FAILED", now,
+                "ENVIRONMENT_NOT_READY", "not ready", null);
+        verify(trainingEnvironments).reconcileOperation("environment-1", "operation-1", "ERROR",
+                "STOPPED", "STOPPED", now);
     }
 
     @Test

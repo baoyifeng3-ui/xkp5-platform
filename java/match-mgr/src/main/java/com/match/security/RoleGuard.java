@@ -26,6 +26,16 @@ public class RoleGuard {
         return require(UserRole.USER, "仅普通用户可以执行此操作");
     }
 
+    public User requireBusinessUser() {
+        User user = currentEnabledUser("仅普通用户或普通管理员可以执行此操作");
+        UserRole role = roleOf(user);
+        if (role != UserRole.USER && role != UserRole.ADMIN) {
+            throw new AdminAccessException("仅普通用户或普通管理员可以执行此操作");
+        }
+        requireChangedPassword(user);
+        return user;
+    }
+
     public User requireAnyAdmin() {
         User user = currentEnabledUser("仅管理员可以执行此操作");
         UserRole role = roleOf(user);

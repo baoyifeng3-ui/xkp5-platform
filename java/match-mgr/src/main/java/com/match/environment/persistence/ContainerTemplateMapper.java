@@ -9,6 +9,11 @@ import java.util.List;
 public interface ContainerTemplateMapper extends BaseMapper<ContainerTemplateRecord> {
     @Select("SELECT registry_digest FROM image_release WHERE release_id = #{releaseId} AND component_type = #{componentType} AND state = 'PUBLISHED'")
     String selectPublishedDigest(@Param("releaseId") String releaseId, @Param("componentType") String componentType);
+    @Select("SELECT CONCAT(a.image_repository, ':', a.image_tag) FROM image_release r "
+            + "JOIN image_artifact a ON BINARY a.artifact_id=BINARY r.artifact_id "
+            + "WHERE r.release_id=#{releaseId} AND r.component_type=#{componentType} "
+            + "AND r.state='PUBLISHED' AND a.image_repository IS NOT NULL AND a.image_tag IS NOT NULL")
+    String selectPublishedImageReference(@Param("releaseId") String releaseId,@Param("componentType") String componentType);
     @Select("SELECT COUNT(1) FROM training_environment WHERE (annotation_template_id = #{templateId} AND annotation_template_version = #{version}) OR (editor_template_id = #{templateId} AND editor_template_version = #{version})")
     int countTrainingReferences(@Param("templateId") String templateId, @Param("version") int version);
 

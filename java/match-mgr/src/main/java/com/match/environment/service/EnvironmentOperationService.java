@@ -11,6 +11,7 @@ import com.match.environment.persistence.TrainingEnvironmentMapper;
 import com.match.environment.persistence.TrainingEnvironmentRecord;
 import com.match.licensing.guard.LicenseGuard;
 import org.springframework.stereotype.Service;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
@@ -28,6 +29,8 @@ public class EnvironmentOperationService {
     private final EnvironmentCommandFactory commandFactory;
     private final LicenseGuard licenseGuard;
     private final Clock clock;
+    private EnvironmentPortPoolService portPoolService;
+    @org.springframework.beans.factory.annotation.Autowired public void setPortPoolService(EnvironmentPortPoolService value){this.portPoolService=value;}
 
     public EnvironmentOperationService(TrainingEnvironmentMapper environmentMapper,
                                        EnvironmentOperationMapper operationMapper,
@@ -121,20 +124,52 @@ public class EnvironmentOperationService {
         return environmentMapper.selectAllEnvironments();
     }
 
+    @Scheduled(fixedDelayString = "${xkp.environment.waiting-start-delay-ms:1000}")
     @Transactional
-    public void delete(String environmentId, int actorUserId, String actorRole) {
+    public void dispatchWaitingStarts() {
+        List<TrainingEnvironmentRecord> candidates = environmentMapper.selectWaitingDependencies();
+        if (candidates == null || candidates.isEmpty()) return;
+        licenseGuard.requireActive();
+        for (TrainingEnvironmentRecord candidate : candidates) {
+            List<TrainingEnvironmentRecord> environments = environmentMapper.selectUserEnvironmentsForUpdate(candidate.getUserId());
+            TrainingEnvironmentRecord target = requireTarget(environments, candidate.getEnvironmentId());
+            if (!"WAITING_DEPENDENCY".equals(target.getActualState())) continue;
+            boolean ready = true;
+            for (TrainingEnvironmentRecord environment : environments) {
+                if (!target.getEnvironmentId().equals(environment.getEnvironmentId()) && !isStopped(environment)) {
+                    ready = false;
+                    break;
+                }
+            }
+            if (!ready) continue;
+            EnvironmentOperationRecord operation = operationMapper.selectActive(target.getEnvironmentId());
+            if (operation == null || !"START".equals(operation.getOperationType())
+                    || !"WAITING_DEPENDENCY".equals(operation.getState())) continue;
+            ProcessingAgentRecord agent = requireAgent(target.getAgentId());
+            AgentCommandView command = commandService.requestEnvironmentCommand(agent,
+                    "START_TRAINING_ENVIRONMENT", commandFactory.createControlPayloadJson(target, operation.getOperationId()),
+                    operation.getActorUserId(), operation.getActorRole(), target.getEnvironmentId() + ":START");
+            LocalDateTime now = now();
+            if (operationMapper.dispatchWaiting(operation.getOperationId(), command.getCommandId(), now) != 1
+                    || environmentMapper.dispatchWaitingStart(target.getEnvironmentId(), operation.getOperationId(),
+                    operation.getActorUserId(), now) != 1) {
+                throw new IllegalStateException("等待中的实训环境无法继续启动");
+            }
+        }
+    }
+
+    @Transactional
+    public TrainingEnvironmentOperationView delete(String environmentId, int actorUserId, String actorRole) {
         TrainingEnvironmentRecord environment = environmentMapper.selectForUpdate(environmentId);
         if (environment == null) throw new IllegalArgumentException("实训环境不存在");
         if (!"ADMIN".equals(actorRole) && !"SUPER_ADMIN".equals(actorRole)) {
             throw new IllegalArgumentException("仅管理员可以删除实训环境");
         }
-        if (!"STOPPED".equals(environment.getDesiredState()) || !"STOPPED".equals(environment.getActualState())) {
-            throw new IllegalArgumentException("请先停止实训环境再删除");
-        }
         if (operationMapper.selectActive(environmentId) != null) {
             throw new IllegalArgumentException("实训环境仍有进行中的操作");
         }
-        environmentMapper.deleteById(environmentId);
+        return createDispatchedOperation(environment, "DELETE", "STOPPED", "DELETING",
+                actorUserId, actorRole);
     }
 
     private TrainingEnvironmentOperationView createWaitingStart(TrainingEnvironmentRecord environment,
@@ -160,8 +195,12 @@ public class EnvironmentOperationService {
         operationMapper.insert(operation);
         ProcessingAgentRecord agent = requireAgent(environment.getAgentId());
         String commandType = operationType + "_TRAINING_ENVIRONMENT";
+        String payloadJson = ("START".equals(operationType) || "STOP".equals(operationType)
+                || "DELETE".equals(operationType))
+                ? commandFactory.createControlPayloadJson(environment, operationId)
+                : commandFactory.createPayloadJson(environment, operationId);
         AgentCommandView command = commandService.requestEnvironmentCommand(agent, commandType,
-                commandFactory.createPayloadJson(environment, operationId), actorUserId, actorRole,
+                payloadJson, actorUserId, actorRole,
                 environment.getEnvironmentId() + ":" + operationType);
         operation.setCommandId(command.getCommandId());
         operationMapper.updateById(operation);

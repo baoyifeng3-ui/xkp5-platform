@@ -214,8 +214,11 @@ public class CompetitionEnvironmentService {
     private AgentCommandView dispatch(ProcessingAgentRecord agent, CompetitionEnvironmentRecord environment,
                                       EnvironmentOperationRecord operation, String commandType,
                                       String operationType, int actorUserId) {
+        boolean control = "START".equals(operationType) || "STOP".equals(operationType);
         AgentCommandView command = commandService.requestEnvironmentCommand(agent, commandType,
-                commandFactory.createPayloadJson(environment, operation.getOperationId()), actorUserId,
+                control
+                        ? commandFactory.createControlPayloadJson(environment, operation.getOperationId())
+                        : commandFactory.createPayloadJson(environment, operation.getOperationId()), actorUserId,
                 "SUPER_ADMIN", environment.getEnvironmentId() + ":" + operationType);
         operation.setCommandId(command.getCommandId());
         operationMapper.updateById(operation);

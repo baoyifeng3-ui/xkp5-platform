@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 
 import java.util.Collections;
 import java.util.Optional;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
 
@@ -37,7 +39,17 @@ public class AgentCommandPoller {
         while (true) {
             Optional<AgentCommandEnvelope> command = commandService.lease(agent);
             if (command.isPresent()) {
-                return new AgentCommandPollResponse(Collections.singletonList(command.get()));
+                List<AgentCommandEnvelope> batch = new ArrayList<>();
+                batch.add(command.get());
+                if (isControl(command.get())) {
+                    while (batch.size() < 4) {
+                        Optional<AgentCommandEnvelope> next = commandService.lease(agent);
+                        if (!next.isPresent()) break;
+                        batch.add(next.get());
+                        if (!isControl(next.get())) break;
+                    }
+                }
+                return new AgentCommandPollResponse(batch);
             }
             long remaining = deadline - nanoTime.getAsLong();
             if (remaining <= 0) {
@@ -52,6 +64,13 @@ public class AgentCommandPoller {
                 return new AgentCommandPollResponse();
             }
         }
+    }
+
+    private boolean isControl(AgentCommandEnvelope command) {
+        return command != null && ("START_TRAINING_ENVIRONMENT".equals(command.getType())
+                || "STOP_TRAINING_ENVIRONMENT".equals(command.getType())
+                || "START_COMPETITION_ENVIRONMENT".equals(command.getType())
+                || "STOP_COMPETITION_ENVIRONMENT".equals(command.getType()));
     }
 
     private long saturatedAdd(long left, long right) {

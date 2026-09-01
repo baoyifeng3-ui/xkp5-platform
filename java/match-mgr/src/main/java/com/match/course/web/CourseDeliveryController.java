@@ -17,10 +17,7 @@ public class CourseDeliveryController {
     private final RoleGuard roleGuard;
     private final CourseDeliveryService service;
 
-    public CourseDeliveryController(RoleGuard roleGuard, CourseDeliveryService service) {
-        this.roleGuard = roleGuard;
-        this.service = service;
-    }
+    public CourseDeliveryController(RoleGuard roleGuard, CourseDeliveryService service) { this.roleGuard = roleGuard; this.service = service; }
 
     @PostMapping("/{resourceId}/deliver")
     public ResponseResult<Object> deliver(@PathVariable String resourceId, @RequestParam String environmentId) {
@@ -28,31 +25,11 @@ public class CourseDeliveryController {
         return Response.makeOKRsp(service.deliver(resourceId, environmentId, actor.getUserId(), actor.getUserId(), "USER"));
     }
 
-    @org.springframework.web.bind.annotation.GetMapping("/deliveries")
-    public ResponseResult<Object> deliveries() {
-        User actor = roleGuard.requireUser();
-        return Response.makeOKRsp(service.deliveriesForUser(actor.getUserId()));
-    }
-
-    @org.springframework.web.bind.annotation.GetMapping("/admin-deliveries")
-    public ResponseResult<Object> adminDeliveries() {
-        roleGuard.requireAnyAdmin();
-        return Response.makeOKRsp(service.recentDeliveries());
-    }
-
     @PostMapping("/{resourceId}/deliver-for-user")
     public ResponseResult<Object> deliverForUser(@PathVariable String resourceId,
                                                  @RequestParam String environmentId,
                                                  @RequestParam Integer userId) {
         User actor = roleGuard.requireAnyAdmin();
-        return Response.makeOKRsp(service.deliver(resourceId, environmentId, userId, actor.getUserId(),
-                roleGuard.roleOf(actor).name()));
-    }
-
-    @PostMapping("/{resourceId}/deliver-to-all")
-    public ResponseResult<Object> deliverToAll(@PathVariable String resourceId) {
-        User actor = roleGuard.requireAnyAdmin();
-        return Response.makeOKRsp(service.deliverToAllUsers(resourceId, actor.getUserId(),
-                roleGuard.roleOf(actor).name()));
+        return Response.makeOKRsp(service.deliver(resourceId, environmentId, userId, actor.getUserId(), actor.getRole()));
     }
 }

@@ -11,6 +11,7 @@ import java.time.LocalDateTime;
 public class CourseRecord {
     @TableId(value = "course_id", type = IdType.INPUT) private String courseId;
     private String name; private String courseType; private String description;
+    private String introductionHtml; private String outlineHtml;
     private String coverResourceId; private Boolean enabled; private Integer createdBy;
     private LocalDateTime createdAt; private LocalDateTime updatedAt;
 }

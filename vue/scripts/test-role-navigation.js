@@ -7,22 +7,20 @@ assert.deepStrictEqual(navigation.landingRoute('SUPER_ADMIN'), { path: '/operati
 assert.deepStrictEqual(navigation.landingRoute('ADMIN'), { path: '/management' })
 assert.deepStrictEqual(navigation.landingRoute('USER'), { path: '/course-platform' })
 assert.deepStrictEqual(navigation.userItems.map(item => item.label), [
-  '课程平台', '资源中心', '实训环境', '模型验证'
+  '课程平台', '资源中心', '实训环境', '模型验证', '在线帮助'
 ])
 assert.deepStrictEqual(navigation.managementItems.map(item => item.label), [
   '主页', '竞赛管理', '课程与资源', '实训管理', '平台管理'
 ])
 assert.deepStrictEqual(navigation.competitionItems.map(item => item.label), [
-  '模式与环境', '参赛端预览', '比赛控制', '赛程赛规', '试卷题目', '试卷评分', '比赛账号与容器绑定'
+  '参赛端预览', '比赛控制', '赛程赛规', '试卷题目', '试卷评分'
 ])
 assert.deepStrictEqual(navigation.competitionItems.map(item => item.route), [
-  '/management/competition-mode',
   '/competition-preview',
   '/Admin?tab=timer',
   '/Admin?tab=rules',
   '/Admin?tab=subjects',
-  '/Admin?tab=grading',
-  '/management/competition-accounts'
+  '/Admin?tab=grading'
 ])
 const competitionManagement = navigation.managementItems.find(item => item.label === '竞赛管理')
 assert.strictEqual(competitionManagement.children, navigation.competitionItems)
@@ -37,13 +35,15 @@ assert.strictEqual(navigation.routeRoles['/operations'], 'SUPER_ADMIN')
 assert.strictEqual(navigation.routeRoles['/management'], 'ADMIN')
 assert.strictEqual(navigation.routeRoles['/course-platform'], 'USER')
 assert.deepStrictEqual(navigation.previewDestinations, [
-  '/course-platform', '/resource-center', '/training-environment',
+  '/course-platform', '/resource-center', '/training-environment', '/training-validation',
   '/Publicity', '/Home', '/Question', '/Detect', '/competition-practical'
 ])
-assert.deepStrictEqual(navigation.operationsItems.map(item => item.label), ['运维主页', '处理服务器', '容器模板', '镜像仓库', '比赛容器', '管理员账号', '授权诊断'])
+assert.deepStrictEqual(navigation.operationsItems.map(item => item.label), ['运维主页', '处理服务器', '容器模板', '镜像仓库', '管理员账号', '授权诊断', '在线帮助'])
 navigation.competitionItems.forEach(item => assert.ok(item.route, `${item.label} must define a route`))
 
 const routerSource = fs.readFileSync(path.join(__dirname, '../src/router/index.js'), 'utf8')
+assert.ok(!routerSource.includes("path: 'competition-environments'"))
+assert.ok(!routerSource.includes("path: 'competition-accounts'"))
 assert.match(routerSource, new RegExp("path:\\s*['\"]competition['\"],\\s*name:\\s*['\"]CompetitionManagement['\"]"))
 assert.match(routerSource, new RegExp("path:\\s*['\"]platform-settings['\"],\\s*name:\\s*['\"]PlatformSettings['\"]"))
 

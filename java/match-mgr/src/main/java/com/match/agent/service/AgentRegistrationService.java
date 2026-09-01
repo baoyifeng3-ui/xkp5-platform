@@ -35,6 +35,8 @@ public class AgentRegistrationService {
     private final AgentAuditService auditService;
     private final Clock clock;
     private final SecureRandom secureRandom = new SecureRandom();
+    private com.match.account.service.AgentPlacementProvisioner placementProvisioner;
+    @org.springframework.beans.factory.annotation.Autowired public void setPlacementProvisioner(com.match.account.service.AgentPlacementProvisioner value){this.placementProvisioner=value;}
 
     public AgentRegistrationService(RegistrationTokenMapper tokenMapper,
                                     ProcessingAgentMapper agentMapper,
@@ -63,9 +65,21 @@ public class AgentRegistrationService {
         if (!now.isBefore(token.getExpiresAt())) {
             throw new AgentProtocolException("TOKEN_EXPIRED", "注册码已过期", HttpStatus.BAD_REQUEST);
         }
-        if (agentMapper.selectByMachineDigest(request.getMachineDigest()) != null) {
-            throw new AgentProtocolException("MACHINE_ALREADY_REGISTERED", "该处理服务器已经登记",
-                    HttpStatus.CONFLICT);
+        ProcessingAgentRecord existing = agentMapper.selectByMachineDigestIncludingRemoved(request.getMachineDigest());
+        if (existing != null) {
+            String credential = secureCredential();
+            if (agentMapper.refreshRegistration(existing.getAgentId(), Digests.sha256(credential),
+                    request.getDisplayName().trim(), request.getHostname().trim(), request.getPrimaryIp().trim(),
+                    request.getMacAddress().toLowerCase(), request.getAgentVersion().trim(), now) != 1) {
+                throw new AgentProtocolException("MACHINE_ALREADY_REGISTERED", "该处理服务器已经登记",
+                        HttpStatus.CONFLICT);
+            }
+            token.setConsumedAt(now);
+            token.setRegisteredAgentId(existing.getAgentId());
+            tokenMapper.updateById(token);
+            auditService.recordSuccess("AGENT_REREGISTERED", null, existing.getAgentId(), token.getTokenId());
+            if(placementProvisioner!=null)placementProvisioner.ensure(existing.getAgentId());
+            return new AgentRegistrationResponse(existing.getAgentId(), credential);
         }
         int activeAgents = agentMapper.selectCount(new QueryWrapper<ProcessingAgentRecord>()
                 .eq("enabled", true).isNull("removed_at"));
@@ -91,6 +105,7 @@ public class AgentRegistrationService {
         token.setRegisteredAgentId(agentId);
         tokenMapper.updateById(token);
         auditService.recordSuccess("AGENT_REGISTERED", null, agentId, token.getTokenId());
+        if(placementProvisioner!=null)placementProvisioner.ensure(agentId);
         return new AgentRegistrationResponse(agentId, credential);
     }
 

@@ -131,11 +131,11 @@
     background-image: linear-gradient(to right, #002d6c, #0d4c97);
 }
 
-.el-button--primary:focus, .el-button--primary:hover {
+.match-page .el-button--primary:focus, .match-page .el-button--primary:hover {
     background-image: linear-gradient(to right, #002d6c, #0d4c97) !important;
 }
 
-.el-button--primary.is-disabled {
+.match-page .el-button--primary.is-disabled {
     background-image: linear-gradient(to right, #3b5463, #3b5463) !important;
 }
 

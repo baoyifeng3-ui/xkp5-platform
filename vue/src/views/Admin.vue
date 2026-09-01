@@ -8,17 +8,6 @@
     </section>
 
     <div v-else class="admin-workspace">
-      <header class="admin-utility">
-        <div class="admin-breadcrumb">管理中心 / {{ activeTabLabel }}</div>
-        <div class="admin-utility-actions">
-          <span :class="['service-state', { 'is-online': serviceConnected }]">
-            <i />{{ serviceConnected ? '状态已同步' : '状态同步中' }}
-          </span>
-          <span class="admin-identity"><b>{{ accountInitial(adminUserName) }}</b>{{ adminUserName }}</span>
-          <el-button size="small" icon="el-icon-lock" @click="passwordDialog = true">修改密码</el-button>
-        </div>
-      </header>
-
       <el-tabs v-model="activeTab" tab-position="left" class="admin-tabs">
         <el-tab-pane name="timer">
           <span slot="label" class="admin-tab-label" title="比赛控制">
@@ -27,10 +16,6 @@
           </span>
           <section class="workspace-page control-page">
             <header class="workspace-heading">
-              <div>
-                <h1>比赛控制</h1>
-                <p>比赛运行状态与赛卷管理</p>
-              </div>
               <el-tooltip content="刷新比赛状态" placement="bottom">
                 <el-button class="icon-command" icon="el-icon-refresh" circle aria-label="刷新比赛状态" @click="loadPublicState" />
               </el-tooltip>
@@ -118,7 +103,7 @@
                   <div class="paper-heading-actions">
                     <el-button size="small" icon="el-icon-plus" @click="openPaperDialog">新增试卷</el-button>
                     <el-radio-group v-model="paperDraft" size="small" class="paper-selector">
-                      <el-radio-button v-for="paper in availablePapers" :key="paper" :label="paper" :disabled="!paperReady(paper)">{{ paper }} 卷</el-radio-button>
+                      <el-radio-button v-for="paper in availablePapers" :key="paper" :label="paper" :disabled="!paperSelectable(paper)">{{ paper }} 卷</el-radio-button>
                     </el-radio-group>
                   </div>
                 </header>
@@ -130,7 +115,7 @@
                       <i />{{ paperReady(paper) ? '资源完整' : '资源缺失' }}
                     </span>
                   </div>
-                  <el-button type="primary" icon="el-icon-check" :disabled="!paperDraft || !paperReady(paperDraft)" @click="selectPaper">
+                  <el-button type="primary" icon="el-icon-check" :disabled="!paperDraft" @click="selectPaper">
                     启用所选赛卷
                   </el-button>
                 </div>
@@ -150,9 +135,10 @@
           <span slot="label" class="admin-tab-label" title="赛规赛程编辑"><i class="el-icon-edit-outline" /><span>赛规赛程编辑</span></span>
           <section class="workspace-page content-editor-page">
             <header class="workspace-heading">
-              <div><h1>赛规赛程</h1><p>左侧编辑，右侧实时预览</p></div>
               <el-button type="primary" icon="el-icon-check" :loading="competitionContentSaving" @click="saveCompetitionContent">保存内容</el-button>
             </header>
+            <el-tabs v-model="rulesTab" class="rules-tabs">
+              <el-tab-pane label="赛规赛程" name="rules">
             <div class="content-editor-toolbar">
               <el-radio-group v-model="competitionContentKey" size="small">
                 <el-radio-button v-for="item in competitionContentTabs" :key="item.key" :label="item.key">{{ item.label }}</el-radio-button>
@@ -180,6 +166,33 @@
                 </div>
               </section>
             </div>
+              </el-tab-pane>
+              <el-tab-pane label="比赛公告" name="announcement">
+            <section class="admin-panel announcement-field-panel">
+              <div class="section-heading-row"><div><h2>比赛公告</h2><p>独立参赛选手清单，不关联平台账号</p></div><el-button type="primary" icon="el-icon-plus" @click="editAnnouncementEntry()">新增条目</el-button></div>
+              <el-table :data="announcementEntries" empty-text="暂无公告条目" class="admin-table announcement-entry-table">
+                <el-table-column v-for="field in announcementFields.filter(item => item.enabled)" :key="field.fieldKey" :label="field.fieldName" min-width="130"><template slot-scope="scope">{{ announcementValue(scope.row, field.fieldKey) }}</template></el-table-column>
+                <el-table-column label="操作" width="130" align="right"><template slot-scope="scope"><el-button type="text" size="mini" @click="editAnnouncementEntry(scope.row)">编辑</el-button><el-button type="text" size="mini" class="is-danger" @click="removeAnnouncementEntry(scope.row)">删除</el-button></template></el-table-column>
+              </el-table>
+            </section>
+              </el-tab-pane>
+              <el-tab-pane label="注意事项" name="notice">
+            <section v-loading="noticeLoading" class="admin-panel notice-editor-panel">
+              <div class="section-heading-row"><div><h2>注意事项</h2><p>编辑首页只读展示的注意事项正文</p></div><el-button type="primary" icon="el-icon-check" :loading="noticeSaving" :disabled="noticeLoading" @click="saveNotice">保存内容</el-button></div>
+              <el-input v-model="noticeContent" type="textarea" :rows="5" resize="vertical" placeholder="请输入首页注意事项" aria-label="首页注意事项正文" />
+            </section>
+              </el-tab-pane>
+              <el-tab-pane label="公告字段" name="fields">
+            <section class="admin-panel announcement-field-panel">
+              <div class="section-heading-row"><div><h2>比赛公告字段</h2><p>控制首页比赛公告表格的字段名称与显示状态</p></div><el-button type="primary" plain icon="el-icon-plus" @click="openAnnouncementFieldDialog()">新增字段</el-button></div>
+              <el-table :data="announcementFields" empty-text="暂无公告字段" class="admin-table announcement-field-table">
+                <el-table-column prop="fieldName" label="字段名称" min-width="220" />
+                <el-table-column label="状态" width="170"><template slot-scope="scope"><div class="account-status"><el-switch :value="scope.row.enabled" active-color="#76c7aa" inactive-color="#c6cdd2" :aria-label="`${scope.row.fieldName}状态`" @change="toggleAnnouncementField(scope.row, $event)" /><span :class="['account-status-label', { 'is-enabled': scope.row.enabled }]">{{ scope.row.enabled ? '已启用' : '已关闭' }}</span></div></template></el-table-column>
+                <el-table-column label="操作" width="100" align="right"><template slot-scope="scope"><el-button class="table-action" icon="el-icon-edit-outline" circle aria-label="编辑公告字段" @click="openAnnouncementFieldDialog(scope.row)" /></template></el-table-column>
+              </el-table>
+            </section>
+              </el-tab-pane>
+            </el-tabs>
           </section>
         </el-tab-pane>
 
@@ -190,7 +203,6 @@
           </span>
           <section class="workspace-page subject-panel">
             <header class="workspace-heading">
-              <div><h1>试卷题目</h1><p>{{ subjectPaper }} 卷题目维护</p></div>
               <div class="subject-heading-actions">
                 <div class="subject-clear-actions">
                   <el-button type="danger" plain icon="el-icon-delete" :loading="subjectAnswersClearing" :disabled="subjectsClearing" @click="clearSubjectAnswers">清空作答记录</el-button>
@@ -241,27 +253,13 @@
 
         <el-tab-pane name="grading">
           <span slot="label" class="admin-tab-label" title="试卷评分"><i class="el-icon-finished" /><span>试卷评分</span></span>
-          <admin-grading :active-paper="activePaper" :competition-finished="competitionFinished" />
+          <admin-grading ref="adminGrading" :active-paper="activePaper" :competition-finished="competitionFinished" />
         </el-tab-pane>
 
         <el-tab-pane name="users">
           <span slot="label" class="admin-tab-label" title="比赛账号"><i class="el-icon-user" /><span>比赛账号</span></span>
           <section class="workspace-page account-panel">
             <header class="workspace-heading"><div><h1>比赛账号</h1><p>{{ users.length }} 个账号</p></div><div class="account-heading-actions"><el-button type="danger" plain icon="el-icon-delete" :loading="userClearing" :disabled="participantUserCount === 0 || userClearing" @click="clearUsers">清空用户</el-button><el-button type="primary" icon="el-icon-plus" :disabled="userClearing" @click="openUserBatchDialog">新增账号</el-button></div></header>
-            <section v-loading="noticeLoading" class="admin-panel notice-editor-panel">
-              <div class="section-heading-row"><div><h2>注意事项</h2><p>编辑首页只读展示的注意事项正文</p></div><el-button type="primary" icon="el-icon-check" :loading="noticeSaving" :disabled="noticeLoading" @click="saveNotice">保存内容</el-button></div>
-              <el-input v-model="noticeContent" type="textarea" :rows="5" resize="vertical" placeholder="请输入首页注意事项" aria-label="首页注意事项正文" />
-            </section>
-            <section class="admin-panel announcement-field-panel">
-              <div class="section-heading-row"><div><h2>比赛公告字段</h2><p>控制首页比赛公告表格的字段名称与显示状态</p></div><el-button type="primary" plain icon="el-icon-plus" @click="openAnnouncementFieldDialog()">新增字段</el-button></div>
-              <el-table :data="announcementFields" empty-text="暂无公告字段" class="admin-table announcement-field-table">
-                <el-table-column prop="fieldName" label="字段名称" min-width="220" />
-                <el-table-column label="状态" width="170">
-                  <template slot-scope="scope"><div class="account-status"><el-switch :value="scope.row.enabled" active-color="#76c7aa" inactive-color="#c6cdd2" :aria-label="`${scope.row.fieldName}状态`" @change="toggleAnnouncementField(scope.row, $event)" /><span :class="['account-status-label', { 'is-enabled': scope.row.enabled }]">{{ scope.row.enabled ? '已启用' : '已关闭' }}</span></div></template>
-                </el-table-column>
-                <el-table-column label="操作" width="100" align="right"><template slot-scope="scope"><el-button class="table-action" icon="el-icon-edit-outline" circle aria-label="编辑公告字段" @click="openAnnouncementFieldDialog(scope.row)" /></template></el-table-column>
-              </el-table>
-            </section>
             <div class="summary-band" aria-label="账号状态概览">
               <div class="summary-item"><span class="summary-icon"><i class="el-icon-user" /></span><div><small>全部账号</small><strong>{{ users.length }}</strong></div></div>
               <div class="summary-item"><span class="summary-icon summary-icon-success"><i class="el-icon-check" /></span><div><small>已启用</small><strong>{{ enabledUserCount }}</strong></div></div>
@@ -531,6 +529,13 @@
       </span>
     </el-dialog>
 
+    <el-dialog :title="announcementEntry.entryId ? '编辑公告条目' : '新增公告条目'" :visible.sync="announcementEntryDialog" width="min(460px, calc(100vw - 24px))" :close-on-click-modal="false" class="admin-dialog">
+      <el-form label-position="top">
+        <el-form-item v-for="field in announcementFields.filter(item => item.enabled && item.fieldKey !== 'sequence')" :key="field.fieldKey" :label="field.fieldName"><el-input v-model="announcementEntry.values[field.fieldKey]" maxlength="255" /></el-form-item>
+      </el-form>
+      <span slot="footer"><el-button @click="announcementEntryDialog = false">取消</el-button><el-button type="primary" :loading="announcementEntrySaving" @click="saveAnnouncementEntry">保存条目</el-button></span>
+    </el-dialog>
+
     <el-dialog :title="editingAnnouncementField.fieldId ? '编辑公告字段' : '新增公告字段'" :visible.sync="announcementFieldDialog" width="min(420px, calc(100vw - 24px))" :close-on-click-modal="false" class="admin-dialog">
       <el-form ref="announcementFieldForm" :model="editingAnnouncementField" :rules="announcementFieldRules" label-position="top">
         <el-form-item label="字段名称" prop="fieldName"><el-input v-model="editingAnnouncementField.fieldName" maxlength="30" show-word-limit placeholder="例如：赛位号" /></el-form-item>
@@ -594,6 +599,10 @@ import {
   announcementFieldsApi,
   createAnnouncementFieldApi,
   updateAnnouncementFieldApi,
+  competitionAnnouncementsApi,
+  createCompetitionAnnouncementApi,
+  updateCompetitionAnnouncementApi,
+  deleteCompetitionAnnouncementApi,
   adminNoticeApi,
   updateAdminNoticeApi,
   createAdminUserApi,
@@ -640,6 +649,7 @@ export default {
   data () {
     return {
       activeTab: 'timer',
+      rulesTab: 'rules',
       platformForm: { platformName: '', themeColor: DEFAULT_THEME_COLOR, loginBackgroundUrl: '', loginBrandName: '', loginTitle: '', loginDescription: '', loginCopyright: '' },
       defaultThemeColor: DEFAULT_THEME_COLOR,
       platformSaving: false,
@@ -736,6 +746,10 @@ export default {
       noticeLoading: false,
       noticeSaving: false,
       announcementFields: [],
+      announcementEntries: [],
+      announcementEntryDialog: false,
+      announcementEntrySaving: false,
+      announcementEntry: { entryId: null, values: {} },
       announcementFieldDialog: false,
       announcementFieldSaving: false,
       editingAnnouncementField: { fieldName: '', enabled: true },
@@ -843,26 +857,8 @@ export default {
     mustChangePassword () {
       return this.$store.state.Match.mustChangePassword
     },
-    activeTabLabel () {
-      return {
-        timer: '比赛控制',
-        rules: '赛规赛程编辑',
-        subjects: '试卷题目',
-        grading: '试卷评分',
-        users: '比赛账号',
-        training: '比赛设备',
-        settings: '平台设置'
-      }[this.activeTab] || '管理中心'
-    },
     platformName () {
       return this.$store.state.Match.platformName || '数据杯管理台'
-    },
-    serviceConnected () {
-      return Boolean(this.countDown && this.countDown.status)
-    },
-    adminUserName () {
-      const userInfo = this.$store.state.Match.userInfo || {}
-      return userInfo.userName || this.$store.state.Match.userName || 'admin'
     },
     countDownStatusLabel () {
       return {
@@ -973,6 +969,7 @@ export default {
     },
     activeTab (value) {
       if (value === 'subjects') this.loadSubjects()
+      if (value === 'grading' && this.$refs.adminGrading) this.$refs.adminGrading.reload()
       if (value === 'training') this.startTrainingHeartbeat()
       else this.stopTrainingHeartbeat()
       if (value === 'settings' && !this.platformEditing) {
@@ -1061,7 +1058,7 @@ export default {
       }
     },
     async loadAdminState () {
-      await Promise.all([this.loadNotice(), this.loadAnnouncementFields(), this.loadUsers(), this.loadServers()])
+      await Promise.all([this.loadNotice(), this.loadAnnouncementFields(), this.loadAnnouncements(), this.loadUsers(), this.loadServers()])
     },
     async loadNotice () {
       this.noticeLoading = true
@@ -1091,6 +1088,38 @@ export default {
     async loadAnnouncementFields () {
       const result = await announcementFieldsApi()
       if (result.code === 200) this.announcementFields = result.data || []
+    },
+    async loadAnnouncements () {
+      const result = await competitionAnnouncementsApi()
+      if (result.code === 200) this.announcementEntries = result.data || []
+    },
+    editAnnouncementEntry (row) {
+      const values = {}
+      this.announcementFields.filter(field => field.enabled && field.fieldKey !== 'sequence')
+        .forEach(field => { values[field.fieldKey] = row && row[field.fieldKey] ? row[field.fieldKey] : '' })
+      this.announcementEntry = { entryId: row ? row.entryId : null, values }
+      this.announcementEntryDialog = true
+    },
+    async saveAnnouncementEntry () {
+      this.announcementEntrySaving = true
+      try {
+        const result = this.announcementEntry.entryId
+          ? await updateCompetitionAnnouncementApi(this.announcementEntry.entryId, this.announcementEntry.values)
+          : await createCompetitionAnnouncementApi(this.announcementEntry.values)
+        if (result.code === 200) {
+          this.announcementEntryDialog = false
+          await this.loadAnnouncements()
+          this.$message.success('公告条目已保存')
+        }
+      } finally { this.announcementEntrySaving = false }
+    },
+    async removeAnnouncementEntry (row) {
+      try { await this.$confirm('确定删除该公告条目吗？', '删除公告条目', { type: 'warning' }) } catch (error) { return }
+      const result = await deleteCompetitionAnnouncementApi(row.entryId)
+      if (result.code === 200) {
+        await this.loadAnnouncements()
+        this.$message.success('公告条目已删除')
+      }
     },
     async loadUsers () {
       this.userLoading = true
@@ -1171,6 +1200,9 @@ export default {
     paperReady (paper) {
       return Boolean(this.paperResources[paper] && this.paperResources[paper].ready)
     },
+    paperSelectable (paper) {
+      return Number((this.paperResources[paper] && this.paperResources[paper].subjectCount) || 0) > 0
+    },
     paperResourceLabel (paper) {
       const resource = this.paperResources[paper]
       if (!resource) return '检查中'
@@ -1181,6 +1213,10 @@ export default {
       if (!resource.annotationsPresent) missing.push('评分标注缺失')
       else if (!resource.annotationsValid) missing.push('评分标注内容无效')
       return missing.join('、') || '资源不可用'
+    },
+    announcementValue (row, key) {
+      const value = row[key]
+      return value === null || value === undefined || String(value).trim() === '' ? '--' : value
     },
     openPaperDialog () {
       this.paperForm.paperName = ''
@@ -2398,12 +2434,12 @@ export default {
   border-radius: 0;
   box-shadow: none;
 }
-.admin-tabs::v-deep .el-tabs__header { display: none; }
+.admin-tabs::v-deep > .el-tabs__header { display: none; }
 .admin-tabs::v-deep .el-tabs__content {
   height: auto !important;
   width: 100%;
   min-width: 0;
-  padding: 90px 28px 34px;
+  padding: 0;
   overflow: visible !important;
   background: var(--canvas);
   box-sizing: border-box;
@@ -2414,10 +2450,10 @@ export default {
 .workspace-page { width: 100%; min-width: 0; }
 .workspace-heading {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: flex-end;
   gap: 20px;
-  margin-bottom: 20px;
+  margin-bottom: 12px;
 }
 .workspace-heading h1 { margin: 0; color: var(--navy-900); font-size: 25px; font-weight: 700; line-height: 1.25; letter-spacing: 0; }
 .workspace-heading p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
@@ -2490,6 +2526,12 @@ export default {
 }
 .notice-editor-panel,
 .announcement-field-panel { margin-bottom: 18px; padding: 18px 20px 20px; }
+.rules-tabs::v-deep > .el-tabs__header .el-tabs__item { color: #43566a; font-weight: 600; }
+.rules-tabs::v-deep > .el-tabs__header .el-tabs__item:hover,
+.rules-tabs::v-deep > .el-tabs__header .el-tabs__item.is-active { color: #2674b8; }
+.announcement-entry-table + .el-button,
+.announcement-field-panel .section-heading-row .el-button { color: #fff; }
+.announcement-field-panel .section-heading-row .el-button.is-disabled { color: #52677a; background: #dce8f2; border-color: #c7d8e5; }
 .notice-editor-panel .el-textarea { display: block; }
 .notice-editor-panel ::v-deep .el-textarea__inner { min-height: 118px; line-height: 1.7; }
 .section-heading-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
@@ -2674,7 +2716,7 @@ export default {
   .admin-utility-actions { width: 100%; justify-content: flex-end; gap: 10px; }
   .admin-identity { margin-right: auto; }
   .admin-tabs { min-height: calc(100vh - 64px); }
-  .admin-tabs::v-deep .el-tabs__content { padding: 84px 12px 24px; }
+  .admin-tabs::v-deep .el-tabs__content { padding: 0; }
   .workspace-heading { align-items: center; margin-bottom: 16px; }
   .workspace-heading h1 { font-size: 22px; }
   .workspace-heading p { font-size: 12px; }

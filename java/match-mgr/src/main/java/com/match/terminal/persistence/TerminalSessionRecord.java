@@ -36,4 +36,6 @@ public class TerminalSessionRecord {
     private Long browserToAgentBytes;
     private Long agentToBrowserBytes;
     private LocalDateTime updatedAt;
+    private Long pollingOutputCursor;
+    private Long pollingLastInputCursor;
 }

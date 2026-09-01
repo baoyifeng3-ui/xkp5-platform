@@ -429,6 +429,29 @@ public class AgentCommandServiceTest {
     }
 
     @Test
+    public void normalUserCanDispatchTemporaryFileTransfer() {
+        service.requestEnvironmentCommand(agent, "TRANSFER_FILE", "{}",
+                21, "USER", "environment-1:TRANSFER:transfer-1");
+
+        ArgumentCaptor<ProcessingAgentCommandRecord> saved =
+                ArgumentCaptor.forClass(ProcessingAgentCommandRecord.class);
+        verify(mapper).insert(saved.capture());
+        assertEquals("TRANSFER_FILE", saved.getValue().getCommandType());
+        assertEquals("USER", saved.getValue().getRequesterRole());
+    }
+
+    @Test
+    public void normalUserCanDispatchModelWorkspaceCommand() {
+        service.requestEnvironmentCommand(agent, "MODEL_WORKSPACE", "{}",
+                21, "USER", "environment-1:MODEL:command-1");
+
+        ArgumentCaptor<ProcessingAgentCommandRecord> saved =
+                ArgumentCaptor.forClass(ProcessingAgentCommandRecord.class);
+        verify(mapper).insert(saved.capture());
+        assertEquals("MODEL_WORKSPACE", saved.getValue().getCommandType());
+    }
+
+    @Test
     public void superAdminCanDispatchTaskFourCompetitionEnvironmentCommands() {
         for (String type : Arrays.asList("CREATE_COMPETITION_ENVIRONMENT",
                 "START_COMPETITION_ENVIRONMENT", "STOP_COMPETITION_ENVIRONMENT",

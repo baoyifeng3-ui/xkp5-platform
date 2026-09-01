@@ -1,69 +1,69 @@
-.r-table {
+/* 排行榜页样式。所有规则限定在 .rank-page 内，避免 @import 全局泄漏
+ * （Vue <style scoped> 的 @import 不会加 scoped，此前 .el-table 等全局规则
+ * 把整个平台的表格表头染成 #091722 深蓝黑条）。 */
+.rank-page .r-table {
     width: 1200px;
     height: 590px;
     margin: 0 auto;
 }
 
-.el-table {
+.rank-page .el-table {
     background-color: #091722 !important;
 }
 
-.light .el-table__header-wrapper {
-    /* background-image: linear-gradient(to right, #1e65b9, #083e81) !important; */
+.rank-page .light .el-table__header-wrapper {
     background-color: #053167 !important;
 }
 
-.light .el-table__header-wrapper div,
-.light .el-table__header-wrapper th,
-.light .el-table {
-    /* background-image: linear-gradient(to right, #1e65b9, #083e81) !important; */
+.rank-page .light .el-table__header-wrapper div,
+.rank-page .light .el-table__header-wrapper th,
+.rank-page .light .el-table {
     background-color: #053167 !important;
 }
 
-.el-table__header-wrapper {
+.rank-page .el-table__header-wrapper {
     border-bottom: 1px solid #8f9498 !important;
     background-color: #091722 !important;
 }
 
-.el-table__header-wrapper div,
-.el-table__header-wrapper th {
+.rank-page .el-table__header-wrapper div,
+.rank-page .el-table__header-wrapper th {
     background-color: #091722 !important;
 }
 
-.cell {
+.rank-page .cell {
     font-size: 14px !important;
     font-family: myFont;
     font-weight: normal !important;
 }
 
-.light .cell {
+.rank-page .light .cell {
     color: #fff;
 }
 
-.el-table__body-wrapper {
+.rank-page .el-table__body-wrapper {
     height: 530px !important;
     background-color: #fff !important;
-    /* font-size: 20px !important; */
     font-weight: normal !important;
     margin-top: 10px !important;
 }
 
-.el-table__body,
-.el-table__body tr {
+.rank-page .el-table__body,
+.rank-page .el-table__body tr {
     background-color: #fff !important;
     border-color: #fff !important;
 }
 
-.el-table__row td:nth-child(1) {
+.rank-page .el-table__row td:nth-child(1) {
     color: #18ABB0;
     font-weight: bold;
 }
 
-.el-table__row {
+.rank-page .el-table__row {
     color: #000;
 }
 
-.el-table::before {
+.rank-page .el-table::before {
     left: 0;
     bottom: 0;
     width: 100%;
@@ -75,6 +75,6 @@
     src: url(../fonts/SourceHanSans-Light.otf);
 }
 
-.light .el-table__row .el-table__cell .cell {
+.rank-page .light .el-table__row .el-table__cell .cell {
     color: #000 !important;
 }

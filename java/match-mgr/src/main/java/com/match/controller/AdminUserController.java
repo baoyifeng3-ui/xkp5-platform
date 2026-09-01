@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/admin/users")
@@ -37,9 +39,9 @@ public class AdminUserController {
 
     @PostMapping("batch")
     public ResponseResult<Object> createBatch(@RequestBody AdminUserBatchRequest request) {
-        adminGuard.requireAdmin();
+        User actor = adminGuard.requireAdmin();
         try {
-            return Response.makeOKRsp(adminUserManagementService.createBatch(request.getCount()));
+            return Response.makeOKRsp(adminUserManagementService.createBatch(request, actor.getUserId()));
         } catch (DuplicateKeyException exception) {
             return Response.makeRsp(400, "账号序号冲突，请重试");
         }
@@ -53,8 +55,32 @@ public class AdminUserController {
 
     @PostMapping
     public ResponseResult<Object> create(@RequestBody AdminUserRequest request) {
-        adminGuard.requireAdmin();
-        return Response.makeOKRsp(adminUserManagementService.create(request));
+        User actor = adminGuard.requireAdmin();
+        return Response.makeOKRsp(adminUserManagementService.create(request, actor.getUserId()));
+    }
+
+    @PostMapping("bulk-enable")
+    public ResponseResult<Object> bulkEnable(@RequestBody Map<String, List<Integer>> request) {
+        adminGuard.requireAdmin(); return Response.makeOKRsp(
+                adminUserManagementService.setEnabled(request.get("userIds"), true));
+    }
+
+    @PostMapping("bulk-disable")
+    public ResponseResult<Object> bulkDisable(@RequestBody Map<String, List<Integer>> request) {
+        adminGuard.requireAdmin(); return Response.makeOKRsp(
+                adminUserManagementService.setEnabled(request.get("userIds"), false));
+    }
+
+    @PostMapping("bulk-delete")
+    public ResponseResult<Object> bulkDelete(@RequestBody Map<String, List<Integer>> request) {
+        adminGuard.requireAdmin(); return Response.makeOKRsp(
+                adminUserManagementService.deleteUsers(request.get("userIds")));
+    }
+
+    @DeleteMapping("{userId}")
+    public ResponseResult<Object> delete(@PathVariable Integer userId) {
+        adminGuard.requireAdmin(); return Response.makeOKRsp(
+                adminUserManagementService.deleteUsers(java.util.Collections.singletonList(userId)));
     }
 
     @PutMapping("{userId}")
@@ -65,6 +91,6 @@ public class AdminUserController {
                 && (Boolean.FALSE.equals(request.getEnabled()) || Boolean.FALSE.equals(request.getAdmin()))) {
             return Response.makeRsp(400, "不能停用或取消当前登录管理员权限");
         }
-        return Response.makeOKRsp(adminUserManagementService.update(userId, request));
+        return Response.makeOKRsp(adminUserManagementService.update(userId, request, currentAdmin.getUserId()));
     }
 }

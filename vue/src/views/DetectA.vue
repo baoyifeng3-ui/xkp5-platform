@@ -11,7 +11,7 @@
             </el-carousel-item>
         </el-carousel>
         <div class="d-testing">
-            <el-button type="primary" @click="doCheckUtils" :disabled="previewOnly || !t100Url" v-loading.fullscreen.lock="fullscreenLoading"
+            <el-button type="primary" @click="doCheckUtils" :disabled="previewOnly" v-loading.fullscreen.lock="fullscreenLoading"
                 element-loading-text="拼命加载中" element-loading-spinner="el-icon-loading"
                 element-loading-background="rgba(0, 0, 0, 0.8)">检测</el-button>
         </div>

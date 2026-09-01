@@ -1,6 +1,8 @@
-import { userLoginApi, scoreTopApi, scoreApi, trainUrlApi, getUserApi, getTeamUserApi, competitionApi } from "@/api/Match";
+import { userLoginApi, scoreTopApi, scoreApi, competitionEnvironmentApi, startCompetitionEnvironmentApi, getUserApi, getTeamUserApi, competitionApi } from "@/api/Match";
 import { setToken, getToken, setPlan, getPlan, setUserName, getUserName, setUserInfo, getUserInfo, clearSession } from "@/utils/auth"
 import { Message } from 'element-ui'
+import { getUserClassPolicy } from '@/api/ClassPolicy'
+import { setClassPolicy } from '@/utils/auth'
 const { DEFAULT_THEME_COLOR, normalizeThemeColor, applyPlatformTheme } = require('@/services/platformTheme')
 
 const DEFAULT_PLATFORM_NAME = 'XKP5.0平台'
@@ -17,6 +19,8 @@ const state = {
     platformName: DEFAULT_PLATFORM_NAME,
     themeColor: DEFAULT_THEME_COLOR,
     loginBackgroundUrl: '',
+    platformLogoUrl: '',
+    loginEnglishSubtitle: 'XKP5.0 MANAGEMENT PLATFORM',
     loginBrandName: 'XKP5.0平台',
     loginTitle: '进入平台工作台',
     loginDescription: '请使用已分配的平台账号登录。',
@@ -68,6 +72,8 @@ const mutations = {
         state.platformName = String(value.platformName || '').trim() || DEFAULT_PLATFORM_NAME
         state.themeColor = normalizeThemeColor(value.themeColor)
         state.loginBackgroundUrl = String(value.loginBackgroundUrl || '').trim()
+        state.platformLogoUrl = String(value.platformLogoUrl || '').trim()
+        state.loginEnglishSubtitle = String(value.loginEnglishSubtitle || '').trim() || 'XKP5.0 MANAGEMENT PLATFORM'
         state.loginBrandName = String(value.loginBrandName || '').trim() || 'XKP5.0平台'
         state.loginTitle = String(value.loginTitle || '').trim() || '进入平台工作台'
         state.loginDescription = String(value.loginDescription || '').trim() || '请使用已分配的平台账号登录。'
@@ -94,6 +100,8 @@ const mutations = {
         state.themeColor = DEFAULT_THEME_COLOR
         applyPlatformTheme(DEFAULT_THEME_COLOR)
         state.loginBackgroundUrl = ''
+        state.platformLogoUrl = ''
+        state.loginEnglishSubtitle = 'XKP5.0 MANAGEMENT PLATFORM'
         state.loginBrandName = 'XKP5.0平台'
         state.loginTitle = '进入平台工作台'
         state.loginDescription = '请使用已分配的平台账号登录。'
@@ -111,6 +119,9 @@ const actions = {
             commit("SET_TOKEN", r.data.tokenValue)
             sessionStorage.setItem('userId', r.data.loginId)
             commit("SET_USER_INFO", r.data)
+            if (r.data.role === 'USER') {
+                try { const policy = await getUserClassPolicy(); setClassPolicy(policy.data || {}) } catch (error) { setClassPolicy({}) }
+            }
             try {
                 await dispatch("syncActivePaper")
             } catch (error) {
@@ -147,11 +158,20 @@ const actions = {
         return r
     },
     async trainUrl ({ commit }) {
-        const r = await trainUrlApi()
-        if (r.code == 200) {
+        let r = await competitionEnvironmentApi()
+        if (r.code == 200 && r.data && r.data.readiness !== 'RUNNING') {
+            await startCompetitionEnvironmentApi()
+            for (let attempt = 0; attempt < 45; attempt += 1) {
+                await new Promise(resolve => setTimeout(resolve, 1000))
+                r = await competitionEnvironmentApi()
+                if (r.code == 200 && r.data && r.data.readiness === 'RUNNING') break
+            }
+        }
+        if (r.code == 200 && r.data && r.data.readiness === 'RUNNING') {
             commit("SET_URL", r.data)
             return r.data
         }
+        throw new Error('比赛实训环境启动失败，请稍后重试')
     },
     async getTeamUser ({ commit }) {
         const r = await getTeamUserApi()

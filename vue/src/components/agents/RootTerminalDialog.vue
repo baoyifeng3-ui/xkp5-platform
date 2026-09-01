@@ -1,84 +1,73 @@
 <template>
-  <el-dialog :visible="visible" custom-class="root-terminal-dialog" fullscreen :show-close="false" :close-on-click-modal="false" @close="close">
+  <el-dialog :visible="visible" custom-class="root-terminal-dialog" fullscreen :show-close="false" :close-on-click-modal="false" @opened="dialogOpened">
     <header class="terminal-header">
-      <div class="terminal-title"><i class="el-icon-monitor" /><strong>{{ agentName }}</strong><el-tag size="mini" type="danger">ROOT</el-tag></div>
-      <div class="terminal-meta"><span v-if="state">{{ stateLabel }}</span><span v-if="countdown">{{ countdown }}</span><el-button aria-label="关闭终端" title="关闭终端" type="danger" icon="el-icon-close" circle @click="close" /></div>
+      <div class="terminal-title"><i class="el-icon-monitor"/><strong>{{ agentName }} SSH 终端</strong><el-tag size="mini" type="danger">超级管理员</el-tag><el-tag size="mini">终端仿真</el-tag></div>
+      <div class="terminal-meta"><span>{{ errorMessage || (connected ? '已连接' : '正在连接') }}</span><el-button aria-label="关闭终端" type="danger" icon="el-icon-close" circle @click="close"/></div>
     </header>
-    <div ref="terminal" class="terminal-body" />
-    <div v-if="errorMessage" class="terminal-overlay"><i class="el-icon-warning-outline" /><span>{{ errorMessage }}</span><el-button size="small" @click="close">关闭</el-button></div>
+    <div ref="terminalHost" class="terminal-host" @click="focusTerminal"/>
   </el-dialog>
 </template>
-
 <script>
 import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import 'xterm/css/xterm.css'
-import { connectRootTerminal, sendResize, closeRootTerminal, getTerminalSession } from '@/services/rootTerminalSession'
-
-const LABELS = { WAITING_AGENT: '等待 Agent 连接', WAITING_BROWSER: '建立终端连接', ACTIVE: '终端已连接', CLOSING: '正在关闭', CLOSED: '终端已关闭', FAILED: '终端不可用' }
+import { pollRootTerminal, executeRootTerminalInput, closeRootTerminal } from '@/services/rootTerminalSession'
 
 export default {
   name: 'RootTerminalDialog',
   props: { visible: { type: Boolean, default: false }, session: { type: Object, default: null }, agentName: { type: String, default: '处理服务器' } },
-  data: () => ({ state: 'WAITING_AGENT', errorMessage: '', countdown: '', terminal: null, fit: null, socket: null, timer: null, closing: false, connectAbort: null }),
-  computed: { stateLabel () { return LABELS[this.state] || this.state } },
-  watch: { visible (value) { if (value) this.start(); else this.teardown(false) } },
-  mounted () { if (this.visible) this.start() },
-  beforeDestroy () { this.teardown(true) },
+  data: () => ({ terminal: null, fit: null, observer: null, cursor: 0, pollTimer: null, inputQueue: '', flushTimer: null, sending: false, closing: false, remoteClosed: false, connected: false, errorMessage: '', initialized: false }),
+  watch: { visible (value) { if (value) this.$nextTick(() => window.setTimeout(this.initializeTerminal, 120)) } },
+  mounted () { if (this.visible) this.$nextTick(() => window.setTimeout(this.initializeTerminal, 120)) },
+  beforeDestroy () { this.teardown() },
   methods: {
-    async start () {
-      if (!this.session || this.terminal) return
-      this.state = this.session.state || 'WAITING_AGENT'
-      this.errorMessage = ''
-      this.terminal = new Terminal({ convertEol: true, cursorBlink: true, scrollback: 2000, fontSize: 14, theme: { background: '#101820', foreground: '#e6edf3' } })
+    dialogOpened () { this.$nextTick(() => window.setTimeout(this.initializeTerminal, 80)) },
+    initializeTerminal () {
+      if (this.initialized || !this.session || !this.$refs.terminalHost) return
+      const host = this.$refs.terminalHost
+      if (host.clientWidth < 40 || host.clientHeight < 40) { window.setTimeout(this.initializeTerminal, 80); return }
+      this.initialized = true
+      this.terminal = new Terminal({ cursorBlink: true, convertEol: false, scrollback: 5000, fontSize: 14, fontFamily: 'Consolas, Monaco, monospace', theme: { background: '#101820', foreground: '#e6edf3', cursor: '#ffffff' } })
       this.fit = new FitAddon()
       this.terminal.loadAddon(this.fit)
-      this.terminal.open(this.$refs.terminal)
-      this.fitTerminal()
-      this.terminal.onData(data => { if (this.socket && this.socket.readyState === WebSocket.OPEN) this.socket.send(new TextEncoder().encode(data)) })
-      window.addEventListener('resize', this.fitTerminal)
-      this.startCountdown()
-      this.connectAbort = new AbortController()
+      this.terminal.open(host)
+      this.fit.fit()
+      this.terminal.write('\x1b[32m正在建立处理服务器 SSH 会话...\x1b[0m\r\n')
+      this.terminal.focus()
+      this.terminal.onData(data => this.queueInput(data))
+      if (window.ResizeObserver) { this.observer = new ResizeObserver(() => this.resize()); this.observer.observe(host) }
+      window.addEventListener('resize', this.resize)
+      this.poll()
+    },
+    focusTerminal () { if (this.terminal) this.terminal.focus() },
+    resize () { if (!this.fit || !this.$refs.terminalHost) return; window.requestAnimationFrame(() => { try { this.fit.fit() } catch (e) {} }) },
+    queueInput (data) { if (this.closing) return; this.inputQueue += data; if (!this.flushTimer) this.flushTimer = setTimeout(this.flushInput, 15) },
+    async flushInput () {
+      this.flushTimer = null
+      if (this.sending || !this.inputQueue || this.closing) return
+      const data = this.inputQueue.slice(0, 4096)
+      this.inputQueue = this.inputQueue.slice(data.length)
+      this.sending = true
+      try { await executeRootTerminalInput(this.session.sessionId, data) } catch (e) { this.errorMessage = 'SSH 输入发送失败' } finally { this.sending = false; if (this.inputQueue) this.flushTimer = setTimeout(this.flushInput, 15); this.focusTerminal() }
+    },
+    async poll () {
+      if (this.closing || !this.terminal) return
       try {
-        const connection = await connectRootTerminal(this.session.sessionId, { onState: status => { this.state = status.state }, onOpen: () => { this.state = 'ACTIVE'; this.fitTerminal() }, onMessage: data => this.terminal && this.terminal.write(typeof data === 'string' ? data : new Uint8Array(data)), onError: () => this.fail('终端连接失败'), onClose: event => { if (!this.closing && event.code !== 1000) this.fail('终端连接已断开'); else if (!this.closing) this.state = 'CLOSED' } }, { signal: this.connectAbort.signal, deadline: this.session.agentConnectionDeadline })
-        if (this.closing) { connection.socket.close(); return }
-        this.socket = connection.socket
-      } catch (error) { if (!this.closing) this.fail(error && error.message === 'TERMINAL_NOT_READY' ? '终端会话已结束' : '终端票据获取失败') }
+        const data = await pollRootTerminal(this.session.sessionId, this.cursor)
+        if (data.data) { this.terminal.write(data.data); this.cursor = Number(data.nextCursor || this.cursor); this.connected = true; this.errorMessage = ''; this.focusTerminal() }
+        if (data.closed) { this.terminal.write('\r\nSSH 会话已关闭\r\n'); return }
+      } catch (e) { this.errorMessage = 'SSH 输出连接失败' } finally { if (!this.closing) this.pollTimer = setTimeout(this.poll, 200) }
     },
-    fitTerminal () { if (!this.fit || !this.socket) return; this.fit.fit(); sendResize(this.socket, this.terminal.cols, this.terminal.rows) },
-    startCountdown () {
-      if (!this.session) return
-      const tick = () => {
-        const waiting = this.state === 'WAITING_AGENT' || this.state === 'WAITING_BROWSER'
-        const expiry = waiting ? this.session.agentConnectionDeadline : this.session.absoluteExpiresAt
-        if (!expiry) { this.countdown = ''; return }
-        const remaining = Math.max(0, new Date(expiry).getTime() - Date.now())
-        this.countdown = `${waiting ? '连接' : '最长会话'} ${Math.ceil(remaining / 1000)} 秒`
-        if (remaining <= 0) { if (this.connectAbort) this.connectAbort.abort(); this.fail(waiting ? '终端连接已超时' : '终端会话已过期'); return }
-        this.timer = setTimeout(tick, 1000)
-      }
-      tick()
-    },
-    fail (message) { this.state = 'FAILED'; this.errorMessage = message },
-    async close () { if (this.closing) return; this.closing = true; this.state = 'CLOSING'; await this.teardown(false); this.$emit('update:visible', false); this.$emit('closed') },
-    async teardown (destroying) {
-      if (this.timer) { clearTimeout(this.timer); this.timer = null }
-      if (this.connectAbort) { this.connectAbort.abort(); this.connectAbort = null }
-      window.removeEventListener('resize', this.fitTerminal)
-      const socket = this.socket; this.socket = null
-      if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000, 'OPERATOR_CLOSED')
-      if (this.session && this.session.sessionId) { try { await closeRootTerminal(this.session.sessionId, socket) } catch (error) {} }
+    async close () { if (this.closing) return; this.closing = true; await this.teardown(); this.$emit('update:visible', false); this.$emit('closed') },
+    async teardown () {
+      if (this.pollTimer) { clearTimeout(this.pollTimer); this.pollTimer = null }
+      if (this.flushTimer) { clearTimeout(this.flushTimer); this.flushTimer = null }
+      window.removeEventListener('resize', this.resize)
+      if (this.observer) { this.observer.disconnect(); this.observer = null }
+      if (!this.remoteClosed && this.session && this.session.sessionId) { this.remoteClosed = true; try { await closeRootTerminal(this.session.sessionId) } catch (e) {} }
       if (this.terminal) { this.terminal.dispose(); this.terminal = null; this.fit = null }
     }
   }
 }
 </script>
-
-<style>
-.root-terminal-dialog .el-dialog__header, .root-terminal-dialog .el-dialog__body { padding: 0; }
-.root-terminal-dialog .el-dialog__body { height: 100vh; display: flex; flex-direction: column; background: #101820; }
-.terminal-header { min-height: 52px; padding: 0 18px; display: flex; align-items: center; justify-content: space-between; color: #e6edf3; background: #172532; }
-.terminal-title, .terminal-meta { display: flex; align-items: center; gap: 10px; }
-.terminal-body { flex: 1; min-height: 0; padding: 12px; }
-.terminal-overlay { position: absolute; inset: 52px 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: #e6edf3; background: rgba(16, 24, 32, .94); }
-</style>
+<style>.root-terminal-dialog .el-dialog__header,.root-terminal-dialog .el-dialog__body{padding:0}.root-terminal-dialog .el-dialog__body{height:100vh;display:flex;flex-direction:column;background:#101820}.terminal-header{height:52px;flex:0 0 52px;padding:0 18px;display:flex;align-items:center;justify-content:space-between;color:#e6edf3;background:#172532}.terminal-title,.terminal-meta{display:flex;align-items:center;gap:10px}.terminal-host{position:relative;flex:1 1 auto;width:100%;min-width:0;min-height:0;padding:12px;overflow:hidden;background:#101820;box-sizing:border-box}.terminal-host .xterm{width:100%;height:100%;padding:0}.terminal-host .xterm-screen{width:100%!important}.terminal-host .xterm-viewport{overflow-y:auto!important}</style>

@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Update;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import com.match.account.model.EligibleAccountView;
 
 public interface ProcessingEnvironmentSlotMapper extends BaseMapper<ProcessingEnvironmentSlotRecord> {
     @Select("SELECT * FROM processing_environment_slot WHERE slot_id = #{slotId} FOR UPDATE")
@@ -56,4 +57,40 @@ public interface ProcessingEnvironmentSlotMapper extends BaseMapper<ProcessingEn
     @Select("SELECT * FROM processing_environment_slot WHERE user_id = #{userId} "
             + "ORDER BY agent_id, slot_number")
     List<ProcessingEnvironmentSlotRecord> selectByUser(@Param("userId") int userId);
+
+    @Select("SELECT * FROM processing_environment_slot WHERE user_id=#{userId} "
+            + "ORDER BY agent_id, slot_number FOR UPDATE")
+    List<ProcessingEnvironmentSlotRecord> selectByUserForUpdate(@Param("userId") int userId);
+
+    @Select("SELECT u.user_id user_id,u.user_name user_name,u.remark remark,"
+            + "s.slot_id slot_id,s.slot_number slot_number,a.agent_id agent_id,"
+            + "a.display_name agent_name,a.primary_ip primary_ip "
+            + "FROM user u JOIN processing_environment_slot s ON s.user_id=u.user_id "
+            + "JOIN processing_agent a ON BINARY a.agent_id=BINARY s.agent_id "
+            + "LEFT JOIN account_environment_migration m ON m.user_id=u.user_id "
+            + "AND m.state NOT IN ('SUCCEEDED','CANCELLED') "
+            + "WHERE u.role IN ('USER','ADMIN') AND u.enabled=1 AND a.enabled=1 AND a.removed_at IS NULL "
+            + "AND a.last_seen_at >= UTC_TIMESTAMP(3)-INTERVAL 30 SECOND AND m.migration_id IS NULL "
+            + "ORDER BY a.display_name,s.slot_number,u.user_name")
+    List<EligibleAccountView> selectEligibleAccounts();
+
+    @Select("SELECT u.user_id user_id,u.user_name user_name,u.remark remark,"
+            + "s.slot_id slot_id,s.slot_number slot_number,a.agent_id agent_id,"
+            + "a.display_name agent_name,a.primary_ip primary_ip "
+            + "FROM user u JOIN processing_environment_slot s ON s.user_id=u.user_id "
+            + "JOIN processing_agent a ON BINARY a.agent_id=BINARY s.agent_id "
+            + "LEFT JOIN account_environment_migration m ON m.user_id=u.user_id "
+            + "AND m.state NOT IN ('SUCCEEDED','CANCELLED') "
+            + "WHERE u.user_id=#{userId} AND u.role IN ('USER','ADMIN') AND u.enabled=1 AND a.enabled=1 "
+            + "AND a.removed_at IS NULL AND a.last_seen_at >= UTC_TIMESTAMP(3)-INTERVAL 30 SECOND "
+            + "AND m.migration_id IS NULL LIMIT 1")
+    EligibleAccountView selectEligibleAccount(@Param("userId") int userId);
+
+    @Select({"<script>",
+            "SELECT * FROM processing_environment_slot WHERE user_id IS NULL ",
+            "AND agent_id IN ",
+            "<foreach collection='agentIds' item='id' open='(' separator=',' close=')'>#{id}</foreach>",
+            " ORDER BY agent_id,slot_number FOR UPDATE", "</script>"})
+    List<ProcessingEnvironmentSlotRecord> selectFreeSlotsForAgentsForUpdate(
+            @Param("agentIds") List<String> agentIds);
 }

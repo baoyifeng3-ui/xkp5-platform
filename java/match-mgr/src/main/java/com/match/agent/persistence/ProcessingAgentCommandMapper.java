@@ -114,6 +114,14 @@ public interface ProcessingAgentCommandMapper extends BaseMapper<ProcessingAgent
                              @Param("resultCode") String resultCode,
                              @Param("completedAt") LocalDateTime completedAt);
 
+    @Update("UPDATE processing_agent_command SET state = 'FAILED', active_dedup_key = NULL, "
+            + "completed_at = #{now}, result_code = 'OPERATOR_CLOSED', "
+            + "result_message = '远程终端已由超级管理员关闭', updated_at = #{now} "
+            + "WHERE command_id = #{commandId} AND command_type = 'OPEN_ROOT_TERMINAL' "
+            + "AND state IN ('PENDING','LEASED','RUNNING')")
+    int cancelTerminalCommand(@Param("commandId") String commandId,
+                              @Param("now") LocalDateTime now);
+
     @Update("UPDATE processing_agent_command SET state = 'RUNNING', started_at = #{startedAt}, "
             + "updated_at = #{startedAt} WHERE command_id = #{commandId} AND agent_id = #{agentId} "
             + "AND state = 'LEASED' AND lease_token = #{leaseToken} "
@@ -149,6 +157,15 @@ public interface ProcessingAgentCommandMapper extends BaseMapper<ProcessingAgent
                           @Param("leaseToken") String leaseToken, @Param("resultCode") String resultCode,
                           @Param("resultMessage") String resultMessage, @Param("resultJson") String resultJson,
                           @Param("updatedAt") LocalDateTime updatedAt);
+
+    @Update("UPDATE processing_agent_command SET state = 'FAILED', active_dedup_key = NULL, "
+            + "completed_at = #{now}, result_code = 'IMAGE_DEPLOYMENT_TIMEOUT', "
+            + "result_message = '镜像推送超过两小时且没有进度更新', updated_at = #{now} "
+            + "WHERE command_id = #{commandId} AND command_type = 'DEPLOY_IMAGE' "
+            + "AND state = 'RUNNING' AND updated_at < #{cutoff}")
+    int failStaleImageDeployment(@Param("commandId") String commandId,
+                                 @Param("cutoff") LocalDateTime cutoff,
+                                 @Param("now") LocalDateTime now);
 
     @Update("UPDATE processing_agent_command SET result_code = #{resultCode}, "
             + "result_message = #{resultMessage}, result_json = #{resultJson}, updated_at = #{updatedAt} "

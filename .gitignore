@@ -34,6 +34,9 @@ vue/public.zip
 mysql/
 output/
 dist/
+jar-overlay*/
+app-*.jar
+tools/ssh-bridge/*.exe*
 __pycache__/
 *.pyc
 

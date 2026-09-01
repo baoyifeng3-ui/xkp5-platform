@@ -10,4 +10,8 @@ public class CreateCompetitionEnvironmentRequest {
     private Integer annotationTemplateVersion;
     private String editorTemplateId;
     private Integer editorTemplateVersion;
+    private Integer annotationHostPort;
+    private Integer editorVscodeHostPort;
+    private Integer editorJupyterHostPort;
+    private Integer editorT100HostPort;
 }

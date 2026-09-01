@@ -26,10 +26,10 @@ import static org.mockito.Mockito.when;
 
 public class PlatformModeControllerTest {
     @Test
-    public void adminReadsAndChangesModeWithExactConfirmations() {
+    public void adminReadsAndChangesModeWithoutConfirmationPhrases() {
         Fixture fixture = fixture("ADMIN");
-        ChangePlatformModeRequest enter = request("COMPETITION", "ENTER COMPETITION");
-        ChangePlatformModeRequest exit = request("TRAINING", "EXIT COMPETITION");
+        ChangePlatformModeRequest enter = request("COMPETITION", null);
+        ChangePlatformModeRequest exit = request("TRAINING", null);
 
         assertEquals(200, fixture.admin.current().getCode());
         assertEquals(200, fixture.admin.change(enter).getCode());
@@ -45,11 +45,10 @@ public class PlatformModeControllerTest {
     }
 
     @Test
-    public void adminRejectsMissingOrWrongConfirmationBeforeChangingMode() {
+    public void adminRejectsMissingOrInvalidTargetBeforeChangingMode() {
         Fixture fixture = fixture("ADMIN");
 
-        assertInvalid(() -> fixture.admin.change(request("COMPETITION", "EXIT COMPETITION")));
-        assertInvalid(() -> fixture.admin.change(request("TRAINING", "ENTER COMPETITION")));
+        assertInvalid(() -> fixture.admin.change(request("INVALID", null)));
         assertInvalid(() -> fixture.admin.change(null));
 
         verify(fixture.platformModes, never()).change(anyString(), any(User.class));
@@ -65,7 +64,7 @@ public class PlatformModeControllerTest {
         verify(fixture.transitions).retry("transition-1", fixture.actor);
 
         assertForbidden(() -> fixture.admin.current());
-        assertForbidden(() -> fixture.admin.change(request("COMPETITION", "ENTER COMPETITION")));
+        assertForbidden(() -> fixture.admin.change(request("COMPETITION", null)));
         assertForbidden(() -> fixture.admin.transitions(10));
         assertForbidden(() -> fixture.admin.transition("transition-1"));
     }
@@ -137,9 +136,9 @@ public class PlatformModeControllerTest {
     private void assertInvalid(Runnable call) {
         try {
             call.run();
-            fail("invalid confirmation was accepted");
+            fail("invalid target was accepted");
         } catch (IllegalArgumentException expected) {
-            assertEquals("模式切换确认文本不正确", expected.getMessage());
+            assertEquals("平台模式无效", expected.getMessage());
         }
     }
 

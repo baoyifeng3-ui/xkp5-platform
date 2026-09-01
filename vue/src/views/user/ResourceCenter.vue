@@ -1,7 +1,202 @@
-<template><section class="module-page module-composed-page file-page"><header class="file-heading"><div><h1>文件</h1><p>课程资源文件，只能在线预览或发送到实训环境。</p></div><el-button icon="el-icon-monitor" @click="$router.push('/training-environment')">选择实训环境</el-button></header><section class="file-toolbar"><el-input v-model="keyword" prefix-icon="el-icon-search" clearable placeholder="输入关键字搜索" /><el-select v-model="type" clearable placeholder="全部类型"><el-option v-for="item in types" :key="item" :label="typeLabel(item)" :value="item" /></el-select><span class="file-count">共 {{ filtered.length }} 个文件</span></section><div v-if="filtered.length" class="file-grid"><article v-for="file in filtered" :key="file.resourceId" class="file-card"><header><span class="file-icon" :class="tone(file.resourceType)"><i :class="icon(file.resourceType)" /></span><span class="file-size">{{ formatSize(file.contentLength) }}</span><el-tooltip content="更多操作" placement="top"><button type="button" class="file-more" aria-label="更多操作" @click="openCourse(file)"><i class="el-icon-more" /></button></el-tooltip></header><h2 :title="file.name">{{ file.name }}</h2><p>{{ file.courseName }}</p><small>{{ deliveryText(file.deliveryState) }} · {{ typeLabel(file.resourceType) }}</small><footer><el-button size="mini" plain @click="openCourse(file)">查看课程</el-button><el-button size="mini" type="primary" icon="el-icon-monitor" @click="sendToTraining(file)">发送到实训</el-button></footer></article></div><div v-else class="file-empty"><i class="el-icon-folder-opened" /><strong>暂无可用文件</strong><span>管理员发布课程资源后将在此显示。</span></div></section></template>
+<template>
+  <section class="module-page user-resource-center">
+    <header class="page-heading">
+      <div>
+        <h1>资源中心</h1>
+        <p>公共资源可下载或发送到实训环境，交换和作业空间支持上传。</p>
+      </div>
+      <el-button icon="el-icon-refresh" :loading="loading" @click="load"
+        >刷新</el-button
+      >
+    </header>
+    <el-tabs v-model="space" @tab-click="changeSpace"
+      ><el-tab-pane label="公共资源库" name="public" /><el-tab-pane
+        label="交换空间"
+        name="exchange" /><el-tab-pane
+        v-if="!adminDemo"
+        label="作业空间"
+        name="homework"
+    /></el-tabs>
+    <ResourceBrowser
+      :directories="entries.directories"
+      :files="entries.files"
+      :breadcrumbs="breadcrumbs"
+      :loading="loading"
+      :can-upload="adminDemo || space !== 'public'"
+      :can-create-directory="adminDemo || space !== 'public'"
+      :can-delete="canDelete"
+      :allow-deliver="!adminDemo && space === 'public'"
+      @navigate="navigate"
+      @open-directory="openDirectory"
+      @create-directory="createDirectory"
+      @upload="uploadVisible = true"
+      @download="download"
+      @deliver="deliver"
+      @remove="remove"
+    />
+    <ResourceUploadDialog
+      :visible.sync="uploadVisible"
+      :admin="adminDemo"
+      :space="space"
+      :directory-id="currentDirectoryId"
+      @uploaded="load"
+    />
+  </section>
+</template>
 <script>
-import { listUserCourses, listCourseDeliveries } from '@/api/Courses'
-export default { data:()=>({loading:false,rows:[],keyword:'',type:'',deliveries:{},refreshTimer:null}), computed:{types(){return [...new Set(this.rows.map(r=>r.resourceType))]},filtered(){return this.rows.filter(r=>(!this.keyword||r.name.toLowerCase().includes(this.keyword.toLowerCase()))&&(!this.type||r.resourceType===this.type))}},async created(){await this.load();this.refreshTimer=setInterval(this.refreshDeliveries,10000)},beforeDestroy(){clearInterval(this.refreshTimer)},methods:{async load(){this.loading=true;try{const [courses,deliveries]=await Promise.all([listUserCourses(),listCourseDeliveries()]);this.deliveries={};(deliveries.data||[]).forEach(item=>{this.deliveries[item.resourceId]=item.state});this.rows=(courses.data||[]).reduce((all,item)=>all.concat((item.resources||[]).map(resource=>Object.assign({},resource,{courseName:item.course.name,courseId:item.course.courseId,deliveryState:this.deliveries[resource.resourceId]}))),[])}finally{this.loading=false}},async refreshDeliveries(){try{const result=await listCourseDeliveries();(result.data||[]).forEach(item=>{this.deliveries[item.resourceId]=item.state;const row=this.rows.find(resource=>resource.resourceId===item.resourceId);if(row)row.deliveryState=item.state})}catch(error){}},typeLabel(t){return({EBOOK:'电子书',VIDEO:'视频',PPT:'PPT',ARCHIVE:'课程数据'})[t]||t},icon(t){return({EBOOK:'el-icon-document',VIDEO:'el-icon-video-play',PPT:'el-icon-data-board',ARCHIVE:'el-icon-folder'})[t]||'el-icon-document'},tone(t){return({EBOOK:'tone-coral',VIDEO:'tone-blue',PPT:'tone-purple',ARCHIVE:'tone-green'})[t]||'tone-blue'},formatSize(bytes){if(!bytes)return '--';const units=['B','KB','MB','GB'];let value=Number(bytes);let index=0;while(value>=1024&&index<units.length-1){value/=1024;index++}return `${value>=10||index===0?Math.round(value):value.toFixed(1)} ${units[index]}`},deliveryText(s){return({PENDING:'排队中',DISPATCHED:'已提交',RUNNING:'执行中',SUCCEEDED:'已发送',FAILED:'发送失败'})[s]||'未发送'},openCourse(file){this.$router.push({path:'/course-platform',query:{courseId:file.courseId}})},sendToTraining(file){this.$router.push({path:'/training-environment',query:{courseId:file.courseId,resourceId:file.resourceId}})}}}
+import ResourceBrowser from "@/components/resources/ResourceBrowser.vue";
+import ResourceUploadDialog from "@/components/resources/ResourceUploadDialog.vue";
+import {
+  listResourceEntries,
+  createResourceDirectory,
+  getResourceDownload,
+  deleteResourceFile,
+  deleteResourceDirectory,
+  deliverPublicResource,
+} from "@/api/ResourceSpaces";
+import { listUserTrainingEnvironments } from "@/api/TrainingEnvironments";
+export default {
+  props: { adminDemo: { type: Boolean, default: false } },
+  components: { ResourceBrowser, ResourceUploadDialog },
+  data: () => ({
+    space: "public",
+    loading: false,
+    entries: { directories: [], files: [] },
+    breadcrumbs: [{ name: "根目录", id: null }],
+    uploadVisible: false,
+  }),
+  computed: {
+    currentDirectoryId() {
+      return this.breadcrumbs[this.breadcrumbs.length - 1].id;
+    },
+    currentUserId() {
+      return Number(sessionStorage.getItem("userId"));
+    },
+  },
+  created() {
+    this.load();
+  },
+  methods: {
+    async load() {
+      this.loading = true;
+      try {
+        const result = await listResourceEntries(
+          this.adminDemo,
+          this.space,
+          this.currentDirectoryId
+        );
+        this.entries = result.data || { directories: [], files: [] };
+      } finally {
+        this.loading = false;
+      }
+    },
+    changeSpace() {
+      this.breadcrumbs = [{ name: "根目录", id: null }];
+      this.load();
+    },
+    navigate(item, index) {
+      this.breadcrumbs = this.breadcrumbs.slice(0, index + 1);
+      this.load();
+    },
+    openDirectory(item) {
+      this.breadcrumbs.push({ name: item.name, id: item.directoryId });
+      this.load();
+    },
+    canDelete(item) {
+      if (this.adminDemo) return true;
+      if (this.space === "public") return false;
+      if (this.space === "homework") return true;
+      return Number(item.uploadedBy || item.createdBy) === this.currentUserId;
+    },
+    async createDirectory() {
+      const result = await this.$prompt("输入新目录名称", "新建目录", {
+        inputPattern: /^(?!\.{1,2}$)[^\\/]+$/,
+        inputErrorMessage: "目录名称无效",
+      });
+      await createResourceDirectory(this.adminDemo, this.space, {
+        parentId: this.currentDirectoryId,
+        name: result.value,
+      });
+      this.$message.success("目录已创建");
+      await this.load();
+    },
+    async download(file) {
+      const result = await getResourceDownload(
+        this.adminDemo,
+        this.space,
+        file.fileId
+      );
+      window.open(result.data.downloadUrl, "_blank", "noopener");
+    },
+    async deliver(file) {
+      const result = await listUserTrainingEnvironments();
+      const environments = result.data || [];
+      if (!environments.length)
+        return this.$message.warning("当前没有可用的实训环境");
+      const selection = await this.$prompt(
+        "输入需要接收文件的实训环境 ID：\n" +
+          environments
+            .map(
+              (item) =>
+                `${item.environmentId}（课程 ${
+                  item.courseLabel || item.courseId
+                }）`
+            )
+            .join("\n"),
+        "发送到实训环境",
+        {
+          inputValue: environments[0].environmentId,
+          inputValidator: (value) =>
+            environments.some((item) => item.environmentId === value) ||
+            "实训环境 ID 无效",
+        }
+      );
+      await deliverPublicResource(file.fileId, selection.value);
+      this.$message.success("资源下发任务已提交");
+    },
+    async remove(item) {
+      await this.$confirm(
+        `确认删除“${item.name || item.fileName}”？`,
+        "删除确认",
+        { type: "warning" }
+      );
+      if (item.kind === "directory")
+        await deleteResourceDirectory(
+          this.adminDemo,
+          this.space,
+          item.directoryId
+        );
+      else await deleteResourceFile(this.adminDemo, this.space, item.fileId);
+      this.$message.success("已删除");
+      await this.load();
+    },
+  },
+};
 </script>
-<style scoped>.file-page{width:100%}.file-heading{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px}.file-heading h1{margin:0;font-size:28px}.file-heading p{margin:6px 0 0;color:var(--ui-muted);font-size:13px}.file-toolbar{display:flex;align-items:center;gap:12px;margin-bottom:18px;padding:14px 16px;background:var(--ui-surface);border-radius:12px;box-shadow:var(--ui-shadow)}.file-toolbar .el-input{width:min(360px,100%)}.file-toolbar .el-select{width:160px}.file-count{margin-left:auto;color:var(--ui-muted);font-size:12px}.file-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.file-card{min-width:0;padding:14px;background:#fff;border:1px solid var(--ui-border);border-radius:11px;box-shadow:var(--ui-shadow);transition:transform .18s ease,box-shadow .18s ease}.file-card:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(46,58,98,.13)}.file-card>header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}.file-icon{display:grid;place-items:center;width:46px;height:46px;color:#fff;border-radius:50%;font-size:21px}.tone-coral{background:#ff7279}.tone-blue{background:#4eb8ee}.tone-purple{background:#d58bea}.tone-green{background:#38c9aa}.file-size{margin-left:auto;margin-right:5px;color:var(--ui-text);font-size:12px}.file-more{display:grid;place-items:center;width:26px;height:26px;color:var(--ui-muted);background:transparent;border:0;border-radius:50%;cursor:pointer}.file-more:hover{color:var(--ui-primary);background:var(--ui-primary-soft)}.file-card h2{margin:0;overflow:hidden;color:var(--ui-text);font-size:13px;font-weight:500;text-overflow:ellipsis;white-space:nowrap}.file-card p{margin:7px 0;overflow:hidden;color:var(--ui-muted);font-size:12px;text-overflow:ellipsis;white-space:nowrap}.file-card>small{display:block;color:var(--ui-muted);font-size:11px}.file-card footer{display:flex;gap:6px;margin-top:13px;padding-top:11px;border-top:1px solid #f0f1f5}.file-card footer .el-button{flex:1;padding:7px 5px}.file-empty{display:grid;place-items:center;gap:8px;min-height:300px;color:var(--ui-muted);background:#fff;border:1px solid var(--ui-border);border-radius:12px}.file-empty i{font-size:44px;color:var(--ui-primary)}.file-empty strong{color:var(--ui-text);font-size:18px}.file-empty span{font-size:13px}@media(max-width:1100px){.file-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:820px){.file-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:560px){.file-heading{display:block}.file-heading .el-button{margin-top:12px}.file-toolbar{align-items:stretch;flex-direction:column}.file-toolbar .el-input,.file-toolbar .el-select{width:100%}.file-count{margin-left:0}.file-grid{grid-template-columns:1fr}}
+<style scoped>
+.user-resource-center {
+  width: 100%;
+}
+.page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.page-heading h1 {
+  margin: 0;
+  font-size: 28px;
+}
+.page-heading p {
+  margin: 6px 0 0;
+  color: var(--ui-muted);
+  font-size: 13px;
+}
+@media (max-width: 620px) {
+  .page-heading {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+}
 </style>

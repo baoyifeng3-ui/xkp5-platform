@@ -1,0 +1,7 @@
+const fs=require('fs')
+const page=fs.readFileSync('src/views/operations/ProcessingAgents.vue','utf8')
+const dialog=fs.readFileSync('src/components/agents/PortPoolDialog.vue','utf8')
+if(!page.includes('端口池'))throw new Error('processing server port-pool action missing')
+for(const text of ['总量','已用','剩余','起始端口','结束端口'])if(!dialog.includes(text))throw new Error(`port pool field missing: ${text}`)
+if(!dialog.includes('remainingPercent'))throw new Error('low-capacity warning missing')
+console.log('port pool contract PASS')

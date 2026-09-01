@@ -17,6 +17,8 @@ public class SystemSettingService {
     public static final String PLATFORM_NAME = "platform_name";
     public static final String THEME_COLOR = "theme_color";
     public static final String LOGIN_BACKGROUND_URL = "login_background_url";
+    public static final String PLATFORM_LOGO_URL = "platform_logo_url";
+    public static final String LOGIN_ENGLISH_SUBTITLE = "login_english_subtitle";
     public static final String LOGIN_BRAND_NAME = "login_brand_name";
     public static final String LOGIN_TITLE = "login_title";
     public static final String LOGIN_DESCRIPTION = "login_description";
@@ -26,6 +28,8 @@ public class SystemSettingService {
     public static final String DEFAULT_PLATFORM_NAME = "数据杯管理台";
     public static final String DEFAULT_THEME_COLOR = "#162d45";
     public static final String DEFAULT_LOGIN_BACKGROUND_URL = "";
+    public static final String DEFAULT_PLATFORM_LOGO_URL = "";
+    public static final String DEFAULT_LOGIN_ENGLISH_SUBTITLE = "XKP5.0 MANAGEMENT PLATFORM";
     public static final String DEFAULT_LOGIN_BRAND_NAME = "数智杯竞赛平台-登陆页";
     public static final String DEFAULT_LOGIN_TITLE = "进入比赛工作台";
     public static final String DEFAULT_LOGIN_DESCRIPTION = "参赛账号可在开放登录后进入平台，比赛开始前将显示赛前倒计时。";
@@ -72,6 +76,8 @@ public class SystemSettingService {
         settings.put("platformName", getPlatformName());
         settings.put("themeColor", getThemeColor());
         settings.put("loginBackgroundUrl", getLoginBackgroundUrl());
+        settings.put("platformLogoUrl", getValue(PLATFORM_LOGO_URL, DEFAULT_PLATFORM_LOGO_URL));
+        settings.put("loginEnglishSubtitle", getValue(LOGIN_ENGLISH_SUBTITLE, DEFAULT_LOGIN_ENGLISH_SUBTITLE));
         settings.put("loginBrandName", getValue(LOGIN_BRAND_NAME, DEFAULT_LOGIN_BRAND_NAME));
         settings.put("loginTitle", getValue(LOGIN_TITLE, DEFAULT_LOGIN_TITLE));
         settings.put("loginDescription", getValue(LOGIN_DESCRIPTION, DEFAULT_LOGIN_DESCRIPTION));
@@ -166,6 +172,18 @@ public class SystemSettingService {
                                                    String loginBackgroundUrl, String loginBrandName,
                                                    String loginTitle, String loginDescription,
                                                    String loginCopyright, Integer adminId) {
+        return setPlatformSettings(platformName, themeColor, loginBackgroundUrl,
+                getValue(PLATFORM_LOGO_URL, DEFAULT_PLATFORM_LOGO_URL),
+                getValue(LOGIN_ENGLISH_SUBTITLE, DEFAULT_LOGIN_ENGLISH_SUBTITLE), loginBrandName,
+                loginTitle, loginDescription, loginCopyright, adminId);
+    }
+
+    @Transactional
+    public Map<String, String> setPlatformSettings(String platformName, String themeColor,
+                                                   String loginBackgroundUrl, String platformLogoUrl,
+                                                   String loginEnglishSubtitle, String loginBrandName,
+                                                   String loginTitle, String loginDescription,
+                                                   String loginCopyright, Integer adminId) {
         String name = platformName == null ? "" : platformName.trim();
         if (name.isEmpty()) throw new IllegalArgumentException("平台名称不能为空");
         if (name.length() > MAX_PLATFORM_NAME_LENGTH) throw new IllegalArgumentException("平台名称不能超过 30 个字符");
@@ -173,6 +191,9 @@ public class SystemSettingService {
         if (!color.matches("#[0-9a-fA-F]{6}")) throw new IllegalArgumentException("主题色必须是 6 位十六进制颜色");
         String background = loginBackgroundUrl == null ? "" : loginBackgroundUrl.trim();
         if (background.length() > 1000) throw new IllegalArgumentException("登录背景地址不能超过 1000 个字符");
+        String logo = platformLogoUrl == null ? "" : platformLogoUrl.trim();
+        if (logo.length() > 1000) throw new IllegalArgumentException("平台 Logo 地址不能超过 1000 个字符");
+        String englishSubtitle = normalizeLoginCopy(loginEnglishSubtitle, "登录页英文副标题", 100);
         String brandName = normalizeLoginCopy(loginBrandName, "登录页顶部名称", 60);
         String title = normalizeLoginCopy(loginTitle, "登录页主标题", 60);
         String description = normalizeLoginCopy(loginDescription, "登录页说明文字", 300);
@@ -180,6 +201,8 @@ public class SystemSettingService {
         saveSetting(PLATFORM_NAME, name, adminId);
         saveSetting(THEME_COLOR, color.toLowerCase(), adminId);
         saveSetting(LOGIN_BACKGROUND_URL, background, adminId);
+        saveSetting(PLATFORM_LOGO_URL, logo, adminId);
+        saveSetting(LOGIN_ENGLISH_SUBTITLE, englishSubtitle, adminId);
         saveSetting(LOGIN_BRAND_NAME, brandName, adminId);
         saveSetting(LOGIN_TITLE, title, adminId);
         saveSetting(LOGIN_DESCRIPTION, description, adminId);

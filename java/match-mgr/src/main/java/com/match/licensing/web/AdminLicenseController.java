@@ -74,7 +74,8 @@ public class AdminLicenseController {
         User actor = roleGuard.requireBusinessAdmin();
         try {
             PlatformLicenseRecord imported = importService.importLicense(file.getBytes(), actor.getUserId());
-            return Response.makeOKRsp(imported.getLicenseId());
+            // 显式 (Object) 绑定 makeOKRsp(T data) 泛型重载，避免 String 误绑 makeOKRsp(String message)
+            return Response.makeOKRsp((Object) imported.getLicenseId());
         } catch (IOException exception) {
             throw new LicenseImportException("FILE_READ_FAILED", "无法读取授权文件", exception);
         }

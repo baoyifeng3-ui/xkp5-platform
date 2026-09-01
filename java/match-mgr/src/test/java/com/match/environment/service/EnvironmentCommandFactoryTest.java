@@ -13,6 +13,7 @@ import org.junit.Test;
 import java.util.Arrays;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -42,6 +43,73 @@ public class EnvironmentCommandFactoryTest {
         assertEquals(Integer.valueOf(8081), payload.getComponents().get(0).getPorts().get(0).getHostPort());
         assertEquals("/home/student/data", payload.getComponents().get(1).getMountTarget());
         assertEquals(Integer.valueOf(9091), payload.getComponents().get(1).getPorts().get(0).getHostPort());
+    }
+
+    @Test
+    public void suppliesEditorStartupCommandWhenTemplateDoesNotDeclareOne() throws Exception {
+        ContainerTemplateMapper templateMapper = mock(ContainerTemplateMapper.class);
+        EnvironmentPortAllocationMapper portMapper = mock(EnvironmentPortAllocationMapper.class);
+        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+        EnvironmentCommandFactory factory = new EnvironmentCommandFactory(templateMapper, portMapper, objectMapper);
+        TrainingEnvironmentRecord environment = environment();
+        when(templateMapper.selectVersion("annotation-template", 3))
+                .thenReturn(template("annotation-template", 3, "ANNOTATION", "/root/data"));
+        when(templateMapper.selectVersion("editor-template", 5))
+                .thenReturn(template("editor-template", 5, "EDITOR", "/home/student/data"));
+        when(portMapper.selectBySlot("slot-1")).thenReturn(Arrays.asList(
+                port("ANNOTATION", 8080, 8081), port("EDITOR", 9090, 9091)));
+
+        EnvironmentCommandPayload payload = objectMapper.readValue(
+                factory.createPayloadJson(environment, "operation-1"), EnvironmentCommandPayload.class);
+
+        String command = payload.getComponents().get(1).getCommand().get(2);
+        assertTrue(command.contains("--disable-update-check"));
+        assertTrue(command.contains("until wget -q --no-check-certificate"));
+        assertTrue(command.contains("--ServerApp.default_url=/lab"));
+        assertTrue(command.contains("mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main"));
+        assertTrue(command.contains("rm -rf /root/.conda/pkgs/cache"));
+        assertTrue(command.contains("envs/*/lib/python*/site-packages"));
+        assertTrue(!command.contains("envs/contest"));
+        assertTrue(command.contains("$e/object_detection"));
+        assertTrue(command.contains("$e/slim"));
+        assertTrue(command.contains("tensorflow"));
+        assertTrue(command.contains("1.15"));
+        assertTrue(!command.contains("pip install"));
+        assertTrue(!command.contains("numpy=="));
+        assertTrue(command.contains("while sleep 10"));
+        assertTrue(command.contains("PYTHONPATH=/usr/local/zy-T100/utils_x86/models/A:/usr/local/zy-T100/utils_x86/models/B"));
+        assertTrue(!command.contains("pkgs/pro"));
+        assertTrue(!command.contains("pkgs/free"));
+        assertTrue("Agent rejects command arguments above 2048 bytes: " + command.length(), command.length() <= 2048);
+    }
+
+    @Test
+    public void controlPayloadContainsOnlyContainerIdentity() throws Exception {
+        ContainerTemplateMapper templateMapper = mock(ContainerTemplateMapper.class);
+        EnvironmentPortAllocationMapper portMapper = mock(EnvironmentPortAllocationMapper.class);
+        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+        EnvironmentCommandFactory factory = new EnvironmentCommandFactory(templateMapper, portMapper, objectMapper);
+        TrainingEnvironmentRecord environment = environment();
+        when(templateMapper.selectVersion("annotation-template", 3))
+                .thenReturn(template("annotation-template", 3, "ANNOTATION", "/root/data"));
+        when(templateMapper.selectVersion("editor-template", 5))
+                .thenReturn(template("editor-template", 5, "EDITOR", "/home/student/data"));
+        ContainerTemplateRecord editor = templateMapper.selectVersion("editor-template", 5);
+        editor.setMpsEnabled(true);
+        editor.setGpuComputePercent(35);
+
+        EnvironmentCommandPayload payload = objectMapper.readValue(
+                factory.createControlPayloadJson(environment, "operation-1"), EnvironmentCommandPayload.class);
+
+        assertEquals("environment-1", payload.getEnvironmentId());
+        assertEquals(null, payload.getWorkspaceRelativePath());
+        assertEquals("annotation-1", payload.getComponents().get(0).getContainerName());
+        assertEquals(null, payload.getComponents().get(0).getImageReference());
+        assertEquals(null, payload.getComponents().get(0).getPorts());
+        assertEquals("editor-1", payload.getComponents().get(1).getContainerName());
+        assertEquals(null, payload.getComponents().get(1).getCommand());
+        assertEquals(Boolean.TRUE, payload.getComponents().get(1).getMpsEnabled());
+        assertEquals(Integer.valueOf(35), payload.getComponents().get(1).getGpuComputePercent());
     }
 
     @Test

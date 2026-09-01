@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assume.assumeFalse;
 import static org.mockito.Mockito.mock;
 
 public class ScoreServiceImplTest {
@@ -17,6 +18,10 @@ public class ScoreServiceImplTest {
 
     @Test
     public void selectsAnnotationsFileFromPaperAndRoot() throws Exception {
+        // 该用例通过 /bin/sh 解释器验证评分脚本调用链；生产评分在 Ubuntu 容器运行，
+        // Windows 开发机不存在 /bin/sh，直接跳过以免误报失败。
+        assumeFalse("shell-based scoring test runs on Unix-like systems only",
+                System.getProperty("os.name").toLowerCase().contains("win"));
         Path annotationsRoot = temporaryFolder.newFolder("annotations").toPath();
         Files.createDirectories(annotationsRoot.resolve("a"));
         Files.createDirectories(annotationsRoot.resolve("b"));

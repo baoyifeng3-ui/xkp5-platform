@@ -10,6 +10,8 @@ import com.match.entity.User;
 import com.match.security.UserRole;
 import com.match.terminal.model.TerminalSessionView;
 import com.match.terminal.model.TerminalTicketView;
+import com.match.terminal.model.TerminalPollingInputRequest;
+import com.match.terminal.model.TerminalPollingOutputView;
 import com.match.terminal.persistence.TerminalSessionMapper;
 import com.match.terminal.persistence.TerminalSessionRecord;
 import org.springframework.dao.DuplicateKeyException;
@@ -24,6 +26,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
@@ -158,6 +161,30 @@ public class TerminalSessionService {
         return toView(record);
     }
 
+    @Transactional(readOnly = true)
+    public TerminalPollingOutputView pollOutput(String sessionId, long cursor) {
+        TerminalSessionRecord record = requireSession(sessionId);
+        if (cursor < 0) throw new IllegalArgumentException("输出游标不能为负数");
+        TerminalPollingOutputView view = new TerminalPollingOutputView();
+        view.setCursor(cursor);
+        view.setNextCursor(cursor);
+        view.setReset(false);
+        view.setState(record.getState());
+        view.setChunks(Collections.emptyList());
+        return view;
+    }
+
+    @Transactional
+    public void queueInput(String sessionId, User actor, TerminalPollingInputRequest request) {
+        requireSuperAdmin(actor);
+        requireSession(sessionId);
+        String data = request == null ? null : request.getData();
+        if (data == null || data.isEmpty() || data.getBytes(StandardCharsets.UTF_8).length > 4096) {
+            throw new IllegalArgumentException("终端输入不能为空且不能超过 4 KiB");
+        }
+        throw new TerminalSessionException("TERMINAL_POLLING_NOT_READY", "终端轮询输入通道正在接入", HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
     @Transactional
     public TerminalTicketView issueAgentTicket(ProcessingAgentRecord agent, String sessionId,
                                                 String commandId, String leaseToken) {
@@ -172,7 +199,7 @@ public class TerminalSessionService {
                 || !commandService.hasRunningTerminalLease(commandId, agent.getAgentId(), leaseToken, sessionId)) {
             throw ticketUnavailable();
         }
-        Instant now = clock.instant();
+        Instant now = clock.instant().truncatedTo(ChronoUnit.SECONDS);
         Instant expiresAt = earliest(now.plus(TICKET_LIFETIME),
                 toInstant(record.getRequestedAt()).plus(AGENT_CONNECTION_WINDOW),
                 toInstant(record.getAbsoluteExpiresAt()));
@@ -350,6 +377,7 @@ public class TerminalSessionService {
         requireSuperAdmin(actor);
         TerminalSessionRecord record = requireSession(sessionId);
         if (isTerminal(record.getState())) {
+            commandService.cancelTerminalCommand(record.getCommandId());
             relayLifecycle.closePersistedSessionConditionally(sessionId,
                     () -> TerminalRelayLifecycle.ConditionalCloseDecision.LOCAL_ONLY);
             return;
@@ -365,6 +393,7 @@ public class TerminalSessionService {
                 return TerminalRelayLifecycle.ConditionalCloseDecision.LOCAL_ONLY;
             }
             audit(record, "TERMINAL_CLOSE", "SUCCESS", "OPERATOR_CLOSED");
+            commandService.cancelTerminalCommand(record.getCommandId());
             return TerminalRelayLifecycle.ConditionalCloseDecision.PERSISTED;
         });
     }
@@ -386,7 +415,7 @@ public class TerminalSessionService {
         if (agent == null || !Boolean.TRUE.equals(agent.getEnabled()) || agent.getRemovedAt() != null) {
             throw error("TERMINAL_AGENT_UNAVAILABLE", "Processing Agent is unavailable");
         }
-        Instant now = clock.instant();
+        Instant now = clock.instant().truncatedTo(ChronoUnit.SECONDS);
         if (!isOnline(agent, now)) {
             throw error("TERMINAL_AGENT_OFFLINE", "Processing Agent is offline");
         }
@@ -407,40 +436,32 @@ public class TerminalSessionService {
         try {
             sessionMapper.insert(record);
         } catch (DuplicateKeyException collision) {
+            TerminalSessionRecord active = sessionMapper.selectActiveByAgent(agent.getAgentId());
+            if (active != null && active.getSessionId() != null) {
+                return toView(active);
+            }
             throw error("TERMINAL_SESSION_ACTIVE",
                     "An active terminal session already exists for this Agent");
         }
 
-        AgentCommandView command;
-        try {
-            command = commandService.requestTerminalCommand(agent, record.getSessionId(),
-                    agentConnectionDeadline, absoluteExpiresAt, actor.getUserId(),
-                    UserRole.SUPER_ADMIN.name());
-        } catch (AgentProtocolException exception) {
-            if (!"TERMINAL_COMMAND_SESSION_CONFLICT".equals(exception.getCode())) {
-                throw exception;
-            }
-            throw new TerminalSessionException(exception.getCode(), exception.getMessage(),
-                    HttpStatus.CONFLICT);
+        if (sessionMapper.markPollingActive(record.getSessionId(), utcNow) != 1) {
+            throw error("TERMINAL_SESSION_START_FAILED", "轮询终端会话无法启动");
         }
-        if (sessionMapper.setCommand(record.getSessionId(), command.getCommandId(), utcNow) != 1) {
-            throw error("TERMINAL_COMMAND_ATTACH_FAILED",
-                    "Terminal command could not be attached to its session");
-        }
+        record.setState("ACTIVE");
         if (auditService != null) {
             auditService.recordTerminal("TERMINAL_REQUEST", "SUCCESS", null,
                     record.getRequesterUserId(), record.getAgentId(), record.getSessionId(),
-                    command.getCommandId());
+                    null);
         }
 
         TerminalSessionView view = new TerminalSessionView();
         view.setSessionId(record.getSessionId());
         view.setAgentId(record.getAgentId());
-        view.setState(record.getState());
+        view.setState("ACTIVE");
         view.setRequestedAt(now);
         view.setAgentConnectionDeadline(agentConnectionDeadline);
         view.setAbsoluteExpiresAt(absoluteExpiresAt);
-        view.setCommandId(command.getCommandId());
+        view.setCommandId(null);
         return view;
     }
 

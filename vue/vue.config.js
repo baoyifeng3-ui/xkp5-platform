@@ -9,8 +9,7 @@ const name = 'dist' // page title
 
 // const port = process.env.port || process.env.npm_config_port || 9527 // dev port
 const port = process.env.MATCH_FRONTEND_PORT || process.env.port || process.env.npm_config_port || 19140
-const backendTarget = process.env.MATCH_BACKEND_URL || 'http://localhost:19141'
-const fastdfsTarget = process.env.MATCH_FASTDFS_HTTP || 'http://localhost:8888'
+const backendTarget = process.env.MATCH_BACKEND_URL || 'http://localhost:19243'
 
 module.exports = {
   publicPath: '/',
@@ -40,9 +39,14 @@ module.exports = {
         pathRewrite: { '^/api': '' }
       },
       '/files': {
-        target: fastdfsTarget,
+        target: backendTarget,
         changeOrigin: true,
-        pathRewrite: { '^/files': '' }
+      },
+      '/terminal': {
+        target: process.env.MATCH_TERMINAL_GATEWAY_URL || 'https://localhost:19443',
+        changeOrigin: true,
+        ws: true,
+        secure: false
       }
     },
     before(app) {

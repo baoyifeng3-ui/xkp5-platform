@@ -1,5 +1,5 @@
 <template>
-    <div :class="['h-box', 'module-page', { 'is-preview': previewOnly }]">
+    <div :class="['h-box', 'home-page', 'module-page', { 'is-preview': previewOnly }]">
         <header class="module-heading participant-heading">
             <div><h1>赛程赛规</h1><p>查看竞赛内容、比赛方式、流程与评分规则。</p></div>
         </header>

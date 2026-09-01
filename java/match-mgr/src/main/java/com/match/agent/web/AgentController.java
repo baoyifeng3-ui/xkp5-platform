@@ -14,6 +14,8 @@ import com.match.agent.service.AgentHeartbeatService;
 import com.match.agent.service.AgentRegistrationService;
 import com.match.agent.service.AgentCommandPoller;
 import com.match.agent.service.AgentCommandService;
+import com.match.agent.service.AgentPackageService;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -31,6 +33,7 @@ public class AgentController {
     private final AgentHeartbeatService heartbeatService;
     private final AgentCommandPoller commandPoller;
     private final AgentCommandService commandService;
+    private AgentPackageService packageService;
 
     public AgentController(AgentRegistrationService registrationService,
                            AgentCredentialService credentialService,
@@ -42,6 +45,20 @@ public class AgentController {
         this.heartbeatService = heartbeatService;
         this.commandPoller = commandPoller;
         this.commandService = commandService;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setPackageService(AgentPackageService packageService) { this.packageService = packageService; }
+
+    @GetMapping("/upgrade-binary")
+    public ResponseEntity<org.springframework.core.io.Resource> upgradeBinary(@RequestHeader("Authorization") String authorization) {
+        credentialService.authenticate(authorization);
+        java.nio.file.Path binary = packageService.upgradeBinary();
+        return ResponseEntity.ok().header("X-Agent-Version", AgentPackageService.AGENT_VERSION)
+                .header("X-Agent-SHA256", packageService.upgradeSha256())
+                .contentLength(binary.toFile().length())
+                .contentType(org.springframework.http.MediaType.APPLICATION_OCTET_STREAM)
+                .body(new org.springframework.core.io.FileSystemResource(binary));
     }
 
     @PostMapping("/register")

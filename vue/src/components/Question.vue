@@ -296,19 +296,32 @@ export default {
         item.saving = false
       }
     },
-    onAnswerEnvironment (item) {
+    async onAnswerEnvironment (item) {
       if (this.previewOnly) return
-      const urlByPoint = {
-        code: item.subject.vscodeUrl,
-        cvat: item.subject.cvatUrl,
-        t100: item.subject.t100Url
+      const environmentWindow = window.open('', '_blank')
+      if (!environmentWindow) {
+        this.$message.error('浏览器阻止了环境窗口，请允许本站打开新窗口')
+        return
       }
-      const target = urlByPoint[item.subject.point]
+      let environment
+      try {
+        environment = await this.$store.dispatch('Match/trainUrl')
+      } catch (error) {
+        environmentWindow.close()
+        this.$message.error((error && error.message) || '比赛实训环境启动失败')
+        return
+      }
+      const target = {
+        code: environment.editorUrl,
+        cvat: environment.annotationUrl,
+        t100: environment.t100Url
+      }[item.subject.point]
       if (!target) {
+        environmentWindow.close()
         this.$message.error('当前题目没有可用的答题环境')
         return
       }
-      window.open(/^https?:\/\//.test(target) ? target : `http://${target}`)
+      environmentWindow.location.href = /^https?:\/\//.test(target) ? target : `http://${target}`
     },
     handleTips () {
       this.isShowTips = !this.isShowTips

@@ -1,0 +1,2 @@
+package com.match.transfer;import com.baomidou.mybatisplus.annotation.*;import lombok.Data;import java.time.LocalDateTime;
+@Data @TableName("temporary_training_transfer")public class TemporaryTransferRecord{@TableId(value="transfer_id",type=IdType.INPUT)private String transferId;private Integer userId;private String environmentId;private String fileName;private String storageKey;private String sha256;private String state;private String commandId;private LocalDateTime expiresAt;private LocalDateTime createdAt;private LocalDateTime updatedAt;}

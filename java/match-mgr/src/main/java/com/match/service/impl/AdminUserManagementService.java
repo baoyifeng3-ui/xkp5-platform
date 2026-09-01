@@ -3,6 +3,13 @@ package com.match.service.impl;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.match.dto.AdminUserView;
 import com.match.dto.AdminUserRequest;
+import com.match.dto.AdminUserBatchRequest;
+import com.match.account.service.AccountSlotService;
+import com.match.environment.persistence.ProcessingEnvironmentSlotRecord;
+import com.match.environment.persistence.TrainingEnvironmentMapper;
+import com.match.environment.persistence.ProcessingEnvironmentSlotMapper;
+import com.match.agent.persistence.ProcessingAgentMapper;
+import com.match.agent.persistence.ProcessingAgentRecord;
 import com.match.entity.AnswerSheet;
 import com.match.entity.Score;
 import com.match.entity.Teams;
@@ -23,6 +30,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -44,6 +52,8 @@ public class AdminUserManagementService {
     private static final char[] SYMBOLS = "!@#$%^&*".toCharArray();
     private static final char[] ALL_PASSWORD_CHARACTERS =
             "0123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ!@#$%^&*".toCharArray();
+    private static final char[] INITIAL_PASSWORD_CHARACTERS =
+            "23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".toCharArray();
 
     private final UserMapper userMapper;
     private final TeamsUserMapper teamsUserMapper;
@@ -54,6 +64,15 @@ public class AdminUserManagementService {
     private final UserTrainingAssignmentMapper userTrainingAssignmentMapper;
     private final AnnouncementFieldService announcementFieldService;
     private final SecureRandom secureRandom;
+    private AccountSlotService accountSlotService;
+    private TrainingEnvironmentMapper trainingEnvironmentMapper;
+    private ProcessingEnvironmentSlotMapper slotMapper;
+    private ProcessingAgentMapper processingAgentMapper;
+
+    @Autowired public void setAccountSlotService(AccountSlotService value) { this.accountSlotService = value; }
+    @Autowired public void setTrainingEnvironmentMapper(TrainingEnvironmentMapper value) { this.trainingEnvironmentMapper = value; }
+    @Autowired public void setSlotMapper(ProcessingEnvironmentSlotMapper value){this.slotMapper=value;}
+    @Autowired public void setProcessingAgentMapper(ProcessingAgentMapper value){this.processingAgentMapper=value;}
 
     @Autowired
     public AdminUserManagementService(UserMapper userMapper,
@@ -115,10 +134,12 @@ public class AdminUserManagementService {
         }
 
         List<AdminUserView> result = new ArrayList<>();
-        Map<Integer, Map<String, String>> customValues = announcementFieldService.valuesByUserIds(userIds);
+        Map<Integer, Map<String, String>> customValues = announcementFieldService.valuesByUserIdsByName(userIds);
         for (User user : users) {
             AdminUserView view = toView(user, teamsById.get(teamIdByUserId.get(user.getUserId())));
             view.setCustomFields(customValues.getOrDefault(user.getUserId(), new LinkedHashMap<>()));
+            if(slotMapper!=null){List<ProcessingEnvironmentSlotRecord> placements=slotMapper.selectByUser(user.getUserId());if(placements.size()==1){ProcessingEnvironmentSlotRecord slot=placements.get(0);view.setSlotId(slot.getSlotId());view.setSlotNumber(slot.getSlotNumber());view.setAgentId(slot.getAgentId());ProcessingAgentRecord agent=processingAgentMapper==null?null:processingAgentMapper.selectForManagement(slot.getAgentId());if(agent!=null){view.setAgentName(agent.getDisplayName());view.setPrimaryIp(agent.getPrimaryIp());view.setPlacementReady(Boolean.TRUE.equals(user.getEnabled())&&Boolean.TRUE.equals(agent.getEnabled())&&agent.getRemovedAt()==null&&agent.getLastSeenAt()!=null&&agent.getLastSeenAt().isAfter(LocalDateTime.now(java.time.ZoneOffset.UTC).minusSeconds(30)));}}}
+            if(trainingEnvironmentMapper!=null)view.setEnvironmentCount(trainingEnvironmentMapper.selectCount(Wrappers.<com.match.environment.persistence.TrainingEnvironmentRecord>lambdaQuery().eq(com.match.environment.persistence.TrainingEnvironmentRecord::getUserId,user.getUserId())));
             result.add(view);
         }
         return result;
@@ -151,7 +172,53 @@ public class AdminUserManagementService {
     }
 
     @Transactional
+    public List<AdminUserView> createBatch(AdminUserBatchRequest request, int actorId) {
+        if (request == null) throw new IllegalArgumentException("批量创建参数不能为空");
+        validateCount(request.getCount());
+        boolean assignSlots = request.getAgentIds() != null && !request.getAgentIds().isEmpty();
+        List<ProcessingEnvironmentSlotRecord> freeSlots = !assignSlots
+                ? Collections.emptyList() : accountSlotService.lockFreeSlots(request.getAgentIds());
+        if (assignSlots && freeSlots.size() < request.getCount())
+            throw new IllegalArgumentException("所选服务器空闲槽位不足");
+        List<User> existingUsers = userMapper.selectList(
+                Wrappers.<User>lambdaQuery().orderByAsc(User::getUserId));
+        int nextSequence = nextSequence(existingUsers);
+        List<AdminUserView> created = new ArrayList<>();
+        for (int index = 0; index < request.getCount(); index++) {
+            String initialPassword = generateInitialPassword();
+            User user = new User();
+            user.setUserName("user" + (nextSequence + index));
+            user.setPassword(initialPassword);
+            user.setRemark(request.getRemark());
+            user.setEnabled(true);
+            user.setMustChangePassword(true);
+            user.setIsAdmin(false);
+            user.setRole(UserRole.USER.name());
+            userMapper.insert(user);
+            Teams team = createTeam(user.getUserId(), "", "", "");
+            announcementFieldService.saveCustomValues(user.getUserId(), request.getCustomFields(), actorId);
+            AdminUserView view = toView(user, team);
+            view.setInitialPassword(initialPassword);
+            if (assignSlots) {
+                ProcessingEnvironmentSlotRecord slot = freeSlots.get(index);
+                accountSlotService.bind(user.getUserId(), slot.getSlotId(), actorId);
+                view.setSlotId(slot.getSlotId()); view.setSlotNumber(slot.getSlotNumber());
+                view.setAgentId(slot.getAgentId()); view.setPlacementReady(true);
+            }
+            view.setCustomFields(request.getCustomFields() == null
+                    ? new LinkedHashMap<>() : new LinkedHashMap<>(request.getCustomFields()));
+            created.add(view);
+        }
+        return created;
+    }
+
+    @Transactional
     public AdminUserView create(AdminUserRequest request) {
+        return create(request, 0);
+    }
+
+    @Transactional
+    public AdminUserView create(AdminUserRequest request, int actorId) {
         validate(request, true);
         User user = new User();
         applyUser(user, request, true);
@@ -160,11 +227,13 @@ public class AdminUserManagementService {
         } catch (org.springframework.dao.DuplicateKeyException exception) {
             throw new IllegalArgumentException("用户名已存在");
         }
+        if (request.getSlotId() != null && !request.getSlotId().trim().isEmpty())
+            accountSlotService.bind(user.getUserId(), request.getSlotId(), actorId);
         Teams team = null;
         if (!isAdmin(user)) {
             team = createTeam(user.getUserId(), request.getSchoolName(),
                     request.getTeacherName(), request.getContestantName());
-            announcementFieldService.saveCustomValues(user.getUserId(), request.getCustomFields());
+            announcementFieldService.saveCustomValues(user.getUserId(), request.getCustomFields(), actorId);
         }
         AdminUserView view = toView(user, team);
         view.setCustomFields(request.getCustomFields() == null
@@ -174,6 +243,11 @@ public class AdminUserManagementService {
 
     @Transactional
     public AdminUserView update(Integer userId, AdminUserRequest request) {
+        return update(userId, request, 0);
+    }
+
+    @Transactional
+    public AdminUserView update(Integer userId, AdminUserRequest request, int actorId) {
         User user = userMapper.selectById(userId);
         if (user == null) throw new IllegalArgumentException("账号不存在");
         if (roleOf(user) != UserRole.USER) {
@@ -186,11 +260,20 @@ public class AdminUserManagementService {
         } catch (org.springframework.dao.DuplicateKeyException exception) {
             throw new IllegalArgumentException("用户名已存在");
         }
+        if (request.getSlotId() != null && !request.getSlotId().trim().isEmpty()) {
+            List<ProcessingEnvironmentSlotRecord> currentSlots = slotMapper == null ? Collections.emptyList() : slotMapper.selectByUserForUpdate(userId);
+            String currentSlotId = currentSlots.size() == 1 ? currentSlots.get(0).getSlotId() : null;
+            if (!request.getSlotId().equals(currentSlotId)) {
+                Integer count = trainingEnvironmentMapper == null ? 0 : trainingEnvironmentMapper.selectCount(Wrappers.<com.match.environment.persistence.TrainingEnvironmentRecord>lambdaQuery().eq(com.match.environment.persistence.TrainingEnvironmentRecord::getUserId, userId));
+                if (count != null && count > 0) throw new IllegalArgumentException("账号已有环境，请使用更换槽位迁移功能");
+                if (accountSlotService != null) { accountSlotService.unbind(userId); accountSlotService.bind(userId, request.getSlotId(), actorId); }
+            }
+        }
         Teams team = null;
         if (!isAdmin(user)) {
             if (hasProfileUpdate(request)) {
                 team = upsertTeam(userId, request.getSchoolName(), request.getTeacherName(), request.getContestantName());
-                announcementFieldService.saveCustomValues(userId, request.getCustomFields());
+                announcementFieldService.saveCustomValues(userId, request.getCustomFields(), actorId);
             } else {
                 team = teamForUser(userId);
             }
@@ -277,6 +360,8 @@ public class AdminUserManagementService {
 
     private void applyUser(User user, AdminUserRequest request, boolean creating) {
         user.setUserName(request.getUserName().trim());
+        user.setRemark(request.getRemark());
+        if (creating) user.setMustCompleteProfile(Boolean.TRUE.equals(request.getRequireProfile()));
         if (creating || (request.getPassword() != null && !request.getPassword().isEmpty())) {
             user.setPassword(request.getPassword());
         }
@@ -322,6 +407,15 @@ public class AdminUserManagementService {
         return password.toString();
     }
 
+    String generateInitialPassword() {
+        StringBuilder password = new StringBuilder(6);
+        while (password.length() < 6) {
+            password.append(INITIAL_PASSWORD_CHARACTERS[
+                    secureRandom.nextInt(INITIAL_PASSWORD_CHARACTERS.length)]);
+        }
+        return password.toString();
+    }
+
     private char randomCharacter(char[] characters) {
         return characters[secureRandom.nextInt(characters.length)];
     }
@@ -355,6 +449,9 @@ public class AdminUserManagementService {
         view.setUserId(user.getUserId());
         view.setUserName(user.getUserName());
         view.setPassword(user.getPassword());
+        view.setRemark(user.getRemark());
+        view.setEnvironmentCount(0);
+        view.setPlacementReady(false);
         view.setEnabled(user.getEnabled());
         view.setMustChangePassword(user.getMustChangePassword());
         view.setIsAdmin(user.getIsAdmin());
@@ -369,6 +466,42 @@ public class AdminUserManagementService {
         view.setTeacherName(people.length > 0 ? displayValue(people[0]) : "--");
         view.setContestantName(people.length > 1 ? displayValue(people[1]) : "--");
         return view;
+    }
+
+    @Transactional
+    public int setEnabled(List<Integer> userIds, boolean enabled) {
+        if (userIds == null || userIds.isEmpty()) return 0;
+        int updated = 0;
+        for (User user : userMapper.selectBatchIds(userIds)) {
+            if (roleOf(user) != UserRole.USER) continue;
+            user.setEnabled(enabled); userMapper.updateById(user); updated++;
+        }
+        return updated;
+    }
+
+    @Transactional
+    public int deleteUsers(List<Integer> userIds) {
+        if (userIds == null || userIds.isEmpty()) return 0;
+        List<User> users = userMapper.selectBatchIds(userIds).stream()
+                .filter(user -> roleOf(user) == UserRole.USER).collect(Collectors.toList());
+        for (User user : users) {
+            Integer count = trainingEnvironmentMapper.selectCount(
+                    Wrappers.<com.match.environment.persistence.TrainingEnvironmentRecord>lambdaQuery()
+                            .eq(com.match.environment.persistence.TrainingEnvironmentRecord::getUserId,
+                                    user.getUserId()));
+            if (count != null && count > 0) throw new IllegalArgumentException("账号存在实训环境，请先删除环境");
+        }
+        List<Integer> ids = users.stream().map(User::getUserId).collect(Collectors.toList());
+        if (ids.isEmpty()) return 0;
+        userTrainingAssignmentMapper.delete(Wrappers.<UserTrainingAssignment>lambdaQuery().in(UserTrainingAssignment::getUserId, ids));
+        answerSheetMapper.delete(Wrappers.<AnswerSheet>lambdaQuery().in(AnswerSheet::getUserId, ids));
+        scoreMapper.delete(Wrappers.<Score>lambdaQuery().in(Score::getUserId, ids));
+        teamsUserMapper.delete(Wrappers.<TeamsUser>lambdaQuery().in(TeamsUser::getUserId, ids));
+        trainUrlMapper.delete(Wrappers.<TrainUrl>lambdaQuery().in(TrainUrl::getUserId, ids));
+        announcementFieldService.deleteValuesForUsers(ids);
+        for (Integer id : ids) accountSlotService.unbind(id);
+        userMapper.deleteBatchIds(ids);
+        return ids.size();
     }
 
     private String displayValue(String value) {

@@ -23,6 +23,9 @@ import com.match.environment.persistence.ProcessingEnvironmentSlotRecord;
 import com.match.environment.persistence.TrainingEnvironmentMapper;
 import com.match.environment.persistence.TrainingEnvironmentRecord;
 import com.match.licensing.guard.LicenseGuard;
+import com.match.registry.persistence.ImageDeploymentMapper;
+import com.match.registry.persistence.ImageDeploymentRecord;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,6 +50,8 @@ public class TrainingEnvironmentService {
     private final LicenseGuard licenseGuard;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private ImageDeploymentMapper imageDeploymentMapper;
+    private EnvironmentPortPoolService portPoolService;
 
     public TrainingEnvironmentService(ProcessingAgentMapper agentMapper,
                                       ProcessingEnvironmentSlotMapper slotMapper,
@@ -70,6 +75,12 @@ public class TrainingEnvironmentService {
         this.clock = clock;
     }
 
+    @Autowired
+    public void setImageDeploymentMapper(ImageDeploymentMapper imageDeploymentMapper) {
+        this.imageDeploymentMapper = imageDeploymentMapper;
+    }
+    @Autowired public void setPortPoolService(EnvironmentPortPoolService value){this.portPoolService=value;}
+
     @Transactional
     public TrainingEnvironmentOperationView create(CreateTrainingEnvironmentRequest request, int actorUserId,
                                                     String actorRole) {
@@ -79,10 +90,13 @@ public class TrainingEnvironmentService {
         if (agent == null || !Boolean.TRUE.equals(agent.getEnabled()) || agent.getRemovedAt() != null) {
             throw new IllegalArgumentException("处理服务器不可用");
         }
-        ContainerTemplateRecord annotation = requireTemplate(request.getAnnotationTemplateId(),
+        ContainerTemplateRecord annotation = optionalTemplate(request.getAnnotationTemplateId(),
                 request.getAnnotationTemplateVersion(), "ANNOTATION");
-        ContainerTemplateRecord editor = requireTemplate(request.getEditorTemplateId(),
+        ContainerTemplateRecord editor = optionalTemplate(request.getEditorTemplateId(),
                 request.getEditorTemplateVersion(), "EDITOR");
+        if (annotation == null && editor == null) throw new IllegalArgumentException("至少选择一个容器模板");
+        verifyServerImage(request.getAgentId(), annotation);
+        verifyServerImage(request.getAgentId(), editor);
 
         ProcessingEnvironmentSlotRecord assignedToUser = slotMapper.selectByAgentAndUserForUpdate(
                 request.getAgentId(), request.getUserId());
@@ -115,26 +129,31 @@ public class TrainingEnvironmentService {
 
         String environmentId = UUID.randomUUID().toString();
         String operationId = UUID.randomUUID().toString();
-        String workspace = "training/" + request.getUserId() + "/" + request.getCourseId();
+        boolean competition = "COMPETITION".equalsIgnoreCase(request.getEnvironmentType());
+        String workspace = (competition ? "competition/" : "training/") + request.getUserId()
+                + "/" + (request.getCourseId() == null ? "unbound" : request.getCourseId());
         String shortId = environmentId.substring(0, 8);
-        String annotationName = "xkp-train-" + shortId + "-annotation";
-        String editorName = "xkp-train-" + shortId + "-editor";
-        List<EnvironmentPortBinding> annotationPorts = ports(annotation, request.getSlotNumber(), "ANNOTATION");
-        List<EnvironmentPortBinding> editorPorts = ports(editor, request.getSlotNumber(), "EDITOR");
-        reservePorts(slot, annotation, annotationPorts);
-        reservePorts(slot, editor, editorPorts);
+        String prefix = competition ? "xkp-comp-" : "xkp-train-";
+        String annotationName = annotation == null ? null : prefix + shortId + "-annotation";
+        String editorName = editor == null ? null : prefix + shortId + "-editor";
+        List<EnvironmentPortBinding> annotationPorts = annotation == null ? new ArrayList<>() : portPoolService==null?ports(annotation,request.getSlotNumber(),"ANNOTATION",request):poolPorts(environmentId,slot,annotation,competition?"COMPETITION":"COURSE");
+        List<EnvironmentPortBinding> editorPorts = editor == null ? new ArrayList<>() : portPoolService==null?ports(editor,request.getSlotNumber(),"EDITOR",request):poolPorts(environmentId,slot,editor,competition?"COMPETITION":"COURSE");
+        if(portPoolService==null){if(annotation!=null)reservePorts(slot,annotation,annotationPorts);if(editor!=null)reservePorts(slot,editor,editorPorts);}
 
         TrainingEnvironmentRecord environment = new TrainingEnvironmentRecord();
         environment.setEnvironmentId(environmentId);
+        environment.setEnvironmentName(request.getEnvironmentName());
+        environment.setRemark(request.getRemark());
+        environment.setEnvironmentType(competition ? "COMPETITION" : "COURSE");
         environment.setUserId(request.getUserId());
         environment.setCourseId(request.getCourseId());
         environment.setAgentId(request.getAgentId());
         environment.setSlotId(slot.getSlotId());
         environment.setSlotNumber(slot.getSlotNumber());
-        environment.setAnnotationTemplateId(annotation.getTemplateId());
-        environment.setAnnotationTemplateVersion(annotation.getTemplateVersion());
-        environment.setEditorTemplateId(editor.getTemplateId());
-        environment.setEditorTemplateVersion(editor.getTemplateVersion());
+        environment.setAnnotationTemplateId(annotation == null ? null : annotation.getTemplateId());
+        environment.setAnnotationTemplateVersion(annotation == null ? null : annotation.getTemplateVersion());
+        environment.setEditorTemplateId(editor == null ? null : editor.getTemplateId());
+        environment.setEditorTemplateVersion(editor == null ? null : editor.getTemplateVersion());
         environment.setWorkspaceRelativePath(workspace);
         environment.setDesiredState("STOPPED");
         environment.setActualState("CREATING");
@@ -188,8 +207,10 @@ public class TrainingEnvironmentService {
         payload.setEnvironmentId(environment.getEnvironmentId());
         payload.setOperationId(operationId);
         payload.setWorkspaceRelativePath(environment.getWorkspaceRelativePath());
-        payload.setComponents(Arrays.asList(component(annotation, environment.getAnnotationContainerName(), annotationPorts),
-                component(editor, environment.getEditorContainerName(), editorPorts)));
+        List<EnvironmentComponentSpec> components = new ArrayList<>();
+        if (annotation != null) components.add(component(annotation, environment.getAnnotationContainerName(), annotationPorts));
+        if (editor != null) components.add(component(editor, environment.getEditorContainerName(), editorPorts));
+        payload.setComponents(components);
         return payload;
     }
 
@@ -209,15 +230,18 @@ public class TrainingEnvironmentService {
         component.setGpuEnabled(template.getGpuEnabled());
         component.setGpuComputePercent(template.getGpuComputePercent());
         component.setGpuMemoryLimitBytes(template.getGpuMemoryLimitBytes());
+        component.setMpsEnabled(template.getMpsEnabled());
         if (template.getCommandJson() != null) {
             try { component.setCommand(objectMapper.readValue(template.getCommandJson(), List.class)); }
             catch (Exception exception) { throw new IllegalStateException("模板命令无效", exception); }
+        } else if ("EDITOR".equals(template.getComponentType())) {
+            component.setCommand(DefaultEditorCommand.value());
         }
         component.setWorkingDirectory(template.getWorkingDirectory());
         return component;
     }
 
-    private List<EnvironmentPortBinding> ports(ContainerTemplateRecord template, int slot, String componentType) {
+    private List<EnvironmentPortBinding> ports(ContainerTemplateRecord template, int slot, String componentType, CreateTrainingEnvironmentRequest request) {
         try {
             List<ContainerPortSpec> source = objectMapper.readValue(template.getPortsJson(),
                     objectMapper.getTypeFactory().constructCollectionType(List.class, ContainerPortSpec.class));
@@ -227,7 +251,10 @@ public class TrainingEnvironmentService {
                 EnvironmentPortBinding binding = new EnvironmentPortBinding();
                 binding.setContainerPort(port.getContainerPort());
                 binding.setProtocol(port.getProtocol());
-                binding.setHostPort(defaultHostPort(slot, componentType, index++));
+                Integer selected = "ANNOTATION".equals(componentType) ? request.getAnnotationHostPort() : (index == 0 ? request.getEditorVscodeHostPort() : index == 1 ? request.getEditorJupyterHostPort() : request.getEditorT100HostPort());
+                binding.setHostPort(selected ==  null ? defaultHostPort(slot, componentType, index) : selected);
+                validateHostPort(binding.getHostPort(), componentType, index, request.getEnvironmentType());
+                index++;
                 result.add(binding);
             }
             return result;
@@ -278,12 +305,56 @@ public class TrainingEnvironmentService {
         return template;
     }
 
+    private List<EnvironmentPortBinding> poolPorts(String environmentId,ProcessingEnvironmentSlotRecord slot,
+                                                   ContainerTemplateRecord template,String environmentType){
+        try{
+            List<ContainerPortSpec> source=objectMapper.readValue(template.getPortsJson(),
+                    objectMapper.getTypeFactory().constructCollectionType(List.class,ContainerPortSpec.class));
+            List<EnvironmentPortBinding> result=new ArrayList<>();
+            for(ContainerPortSpec port:source){String serviceType=serviceType(template.getComponentType(),port.getContainerPort());
+                EnvironmentPortAllocationRecord allocation=portPoolService.allocate(environmentId,slot.getSlotId(),slot.getAgentId(),environmentType,serviceType,template.getComponentType(),port.getContainerPort(),port.getProtocol());
+                EnvironmentPortBinding binding=new EnvironmentPortBinding();binding.setContainerPort(port.getContainerPort());binding.setHostPort(allocation.getHostPort());binding.setProtocol(port.getProtocol());result.add(binding);}
+            return result;
+        }catch(IllegalArgumentException error){throw error;}catch(Exception error){throw new IllegalArgumentException("模板端口配置无效",error);}
+    }
+    private String serviceType(String componentType,int containerPort){if("ANNOTATION".equals(componentType))return "ANNOTATION";if(containerPort==9090)return "VSCODE";if(containerPort==8888)return "JUPYTER";if(containerPort==5000)return "T100";throw new IllegalArgumentException("代码编辑模板包含未知端口: "+containerPort);}
+
+    private void validateHostPort(int port, String type, int index, String environmentType) {
+        boolean competition = "COMPETITION".equalsIgnoreCase(environmentType);
+        int[] allowed = "ANNOTATION".equals(type) ? (competition ? new int[]{8091,8092,8093,8094} : new int[]{8081,8082,8083,8084})
+                : index == 0 ? (competition ? new int[]{9191,9192,9193,9194} : new int[]{9091,9092,9093,9094})
+                : index == 1 ? (competition ? new int[]{9991,9992,9993,9994} : new int[]{8881,8882,8883,8884})
+                : (competition ? new int[]{5501,5502,5503,5504} : new int[]{5001,5002,5003,5004});
+        for(int candidate:allowed)if(port==candidate)return;
+        throw new IllegalArgumentException("主机端口不在允许范围内: " + port);
+    }
+
+    private ContainerTemplateRecord optionalTemplate(String id, Integer version, String type) {
+        if (id == null && version == null) return null;
+        return requireTemplate(id, version, type);
+    }
+
+    private void verifyServerImage(String agentId, ContainerTemplateRecord template) {
+        if (template == null || imageDeploymentMapper == null) return;
+        ImageDeploymentRecord deployment = imageDeploymentMapper.selectLatestSucceeded(agentId,
+                template.getComponentType());
+        String expectedDigest=template.getImageDigest()==null?template.getImageReference():template.getImageDigest();
+        if (deployment == null || !Objects.equals(expectedDigest, deployment.getTargetDigest())) {
+            throw new IllegalArgumentException("处理服务器镜像版本与模板不一致，请先推送镜像版本");
+        }
+    }
+
     private void validateRequest(CreateTrainingEnvironmentRequest request) {
         if (request == null || request.getUserId() == null || request.getUserId() < 1
-                || request.getCourseId() == null || request.getCourseId() < 1
+                || request.getCourseId() != null && request.getCourseId().trim().isEmpty()
                 || request.getAgentId() == null || request.getSlotNumber() == null
                 || request.getSlotNumber() < 1 || request.getSlotNumber() > 4) {
             throw new IllegalArgumentException("实训环境分配参数不正确");
+        }
+        if (request.getEnvironmentType() == null) request.setEnvironmentType("COURSE");
+        if (!"COURSE".equalsIgnoreCase(request.getEnvironmentType())
+                && !"COMPETITION".equalsIgnoreCase(request.getEnvironmentType())) {
+            throw new IllegalArgumentException("环境类型无效");
         }
     }
 

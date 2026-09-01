@@ -35,6 +35,8 @@ public interface ImageArtifactMapper extends BaseMapper<ImageArtifactRecord> {
 
     @Update("UPDATE image_artifact SET import_state = 'IMPORTING', registry_digest = NULL, "
             + "import_attempt_token = #{attemptToken}, import_lease_expires_at = #{leaseExpiresAt}, "
+            + "import_stage = 'VALIDATING', import_progress = 5, import_completed_layers = 0, "
+            + "import_total_layers = 0, import_updated_at = #{now}, "
             + "failure_code = NULL, failure_message = NULL, updated_at = #{now} "
             + "WHERE artifact_id = #{artifactId} AND review_state = 'APPROVED' "
             + "AND registry_digest IS NULL AND (import_state IN ('NOT_IMPORTED', 'FAILED') OR "
@@ -44,8 +46,24 @@ public interface ImageArtifactMapper extends BaseMapper<ImageArtifactRecord> {
                     @Param("now") LocalDateTime now,
                     @Param("leaseExpiresAt") LocalDateTime leaseExpiresAt);
 
+    @Update("UPDATE image_artifact SET import_stage = #{stage}, import_progress = #{progress}, "
+            + "import_completed_layers = #{completedLayers}, import_total_layers = #{totalLayers}, "
+            + "import_updated_at = #{updatedAt}, updated_at = #{updatedAt} "
+            + "WHERE artifact_id = #{artifactId} AND review_state = 'APPROVED' "
+            + "AND import_state = 'IMPORTING' AND import_attempt_token = #{attemptToken} "
+            + "AND registry_digest IS NULL")
+    int updateImportProgress(@Param("artifactId") String artifactId,
+                             @Param("attemptToken") String attemptToken,
+                             @Param("stage") String stage,
+                             @Param("progress") int progress,
+                             @Param("completedLayers") int completedLayers,
+                             @Param("totalLayers") int totalLayers,
+                             @Param("updatedAt") LocalDateTime updatedAt);
+
     @Update("UPDATE image_artifact SET import_state = 'READY', registry_digest = #{registryDigest}, "
             + "import_attempt_token = NULL, import_lease_expires_at = NULL, "
+            + "import_stage = 'COMPLETED', import_progress = 100, "
+            + "import_completed_layers = import_total_layers, import_updated_at = #{importedAt}, "
             + "failure_code = NULL, failure_message = NULL, imported_at = #{importedAt}, "
             + "updated_at = #{importedAt} WHERE artifact_id = #{artifactId} "
             + "AND review_state = 'APPROVED' AND import_state = 'IMPORTING' "
@@ -57,7 +75,8 @@ public interface ImageArtifactMapper extends BaseMapper<ImageArtifactRecord> {
 
     @Update("UPDATE image_artifact SET import_state = 'FAILED', failure_code = #{failureCode}, "
             + "failure_message = #{failureMessage}, import_attempt_token = NULL, "
-            + "import_lease_expires_at = NULL, updated_at = #{updatedAt} "
+            + "import_lease_expires_at = NULL, import_stage = 'FAILED', "
+            + "import_updated_at = #{updatedAt}, updated_at = #{updatedAt} "
             + "WHERE artifact_id = #{artifactId} AND review_state = 'APPROVED' "
             + "AND import_state = 'IMPORTING' AND import_attempt_token = #{attemptToken} "
             + "AND registry_digest IS NULL")

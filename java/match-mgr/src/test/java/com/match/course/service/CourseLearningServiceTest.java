@@ -1,6 +1,7 @@
 package com.match.course.service;
 
 import com.match.course.persistence.CourseMapper;
+import com.match.course.persistence.CourseRecord;
 import com.match.course.persistence.CourseProgressMapper;
 import com.match.course.persistence.CourseResourceMapper;
 import com.match.course.persistence.CourseResourceRecord;
@@ -16,10 +17,23 @@ import org.mockito.ArgumentCaptor;
 import com.match.course.persistence.CourseProgressRecord;
 
 public class CourseLearningServiceTest {
+    private final CourseMapper courses = mock(CourseMapper.class);
     private final CourseResourceMapper resources = mock(CourseResourceMapper.class);
     private final CourseProgressMapper progressMapper = mock(CourseProgressMapper.class);
-    private final CourseLearningService service = new CourseLearningService(mock(CourseMapper.class), resources,
+    private final CourseLearningService service = new CourseLearningService(courses, resources,
             progressMapper);
+
+    @Test
+    public void returnsPublicFileProxyForPdfPreview() {
+        CourseResourceRecord resource = new CourseResourceRecord();
+        resource.setResourceId("resource-1"); resource.setCourseId("course-1");
+        resource.setResourceType("EBOOK"); resource.setStorageKey("group1/M00/a.pdf"); resource.setEnabled(true);
+        CourseRecord course = new CourseRecord(); course.setCourseId("course-1"); course.setEnabled(true);
+        when(resources.selectById("resource-1")).thenReturn(resource);
+        when(courses.selectById("course-1")).thenReturn(course);
+
+        assertEquals("/files/group1/M00/a.pdf", service.previewUrl("resource-1").get("previewUrl"));
+    }
 
     @Test
     public void rejectsProgressForDisabledResource() {

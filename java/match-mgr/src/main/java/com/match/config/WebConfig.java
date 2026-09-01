@@ -33,7 +33,7 @@ public class WebConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(new SaRouteInterceptor((request, response, handler) -> {
             SaRouter.match("/**")
-                    .notMatch("/user/login", "/competition", "/health", "/error", "/agent/v1/**",
+                    .notMatch("/user/login", "/competition", "/health", "/error", "/files/**", "/agent/v1/**",
                             "/terminal/v1/**",
                             "/v2/api-docs/**", "/swagger-resources/**", "/swagger-ui.html")
                     .check(() -> StpUtil.checkLogin())
@@ -42,9 +42,11 @@ public class WebConfig implements WebMvcConfigurer {
                     .check(participantModeGuard::requireTrainingMode);
             SaRouter.match("/user/competition-environment/**")
                     .check(participantModeGuard::requireCompetitionMode);
-            SaRouter.match("/testPaper/**", "/score/**", "/train-url/**")
+            SaRouter.match("/testPaper/**", "/score/**")
                     .check(participantModeGuard::requireCompetitionMode)
                     .check(participantAccessGuard::requireCompetitionStarted);
+            // /train-url 同时被实训模式的“模型验证”页（TrainingValidation.vue）使用，
+            // 不再要求比赛模式或比赛阶段；仅保留登录校验。
             SaRouter.match("/admin/training-environments/**",
                             "/super-admin/training-environments/**")
                     .check(participantModeGuard::requireAdministrativeTrainingMode);

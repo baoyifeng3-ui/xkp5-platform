@@ -6,6 +6,8 @@ const operationsSource = fs.readFileSync('src/views/operations/ProcessingAgents.
 const apiSource = fs.readFileSync('src/api/ProcessingAgents.js', 'utf8')
 const packageServiceSource = fs.readFileSync('../java/match-mgr/src/main/java/com/match/agent/service/AgentPackageService.java', 'utf8')
 
+assert.ok(operationsSource.includes("targetAgentVersion: '0.2.27'"), 'operations UI must match the deployed Agent target version')
+
 assert.ok(deviceSource.includes('AgentStatusTable'))
 assert.ok(deviceSource.includes('AgentHistoryChart'))
 assert.ok(deviceSource.includes('wakeProcessingAgent'))

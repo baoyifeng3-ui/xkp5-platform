@@ -35,6 +35,8 @@ public class TeamsServiceImpl implements TeamsService {
     private AnnouncementFieldService announcementFieldService;
     @Autowired
     private SystemSettingService systemSettingService;
+    @Autowired
+    private CompetitionAnnouncementService competitionAnnouncementService;
 
     public Map<String, Object> getHomepageData() {
         List<User> participants = userMapper.selectList(null).stream()
@@ -45,9 +47,8 @@ public class TeamsServiceImpl implements TeamsService {
                 .collect(Collectors.toList());
         List<Integer> userIds = participants.stream().map(User::getUserId).collect(Collectors.toList());
         Map<Integer, Teams> teamsByUser = teamsByUser(userIds);
-        Map<Integer, Map<String, String>> customValues = announcementFieldService.valuesByUserIds(userIds);
 
-        List<Map<String, Object>> rows = new ArrayList<>();
+        List<Map<String, Object>> rows = competitionAnnouncementService.list();
         List<Map<String, Object>> progress = new ArrayList<>();
         String paper = systemSettingService.getActivePaper();
         int total = paper.isEmpty() ? 0 : testPaperMapper.selectCount(
@@ -55,17 +56,6 @@ public class TeamsServiceImpl implements TeamsService {
         for (int index = 0; index < participants.size(); index++) {
             User user = participants.get(index);
             Teams team = teamsByUser.get(user.getUserId());
-            String[] people = people(team);
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("userId", user.getUserId());
-            row.put("userName", user.getUserName());
-            row.put("sequence", index + 1);
-            row.put("schoolName", display(team == null ? null : team.getTeamsName()));
-            row.put("teacherName", display(people[0]));
-            row.put("contestantName", display(people[1]));
-            row.putAll(customValues.getOrDefault(user.getUserId(), new LinkedHashMap<>()));
-            rows.add(row);
-
             int present = team == null || team.getSpeedProgress() == null ? 0 : team.getSpeedProgress();
             present = Math.min(Math.max(present, 0), total);
             Map<String, Object> item = new LinkedHashMap<>();
@@ -97,15 +87,6 @@ public class TeamsServiceImpl implements TeamsService {
         return result;
     }
 
-    private String[] people(Teams team) {
-        String[] parts = team == null || team.getTeamsTeacher() == null
-                ? new String[0] : team.getTeamsTeacher().split("\\|", -1);
-        return new String[]{parts.length > 0 ? parts[0] : "", parts.length > 1 ? parts[1] : ""};
-    }
-
-    private String display(String value) {
-        return value == null || value.trim().isEmpty() ? "--" : value.trim();
-    }
     @Override
     public JSONArray  getTeamsList() {
        List<Teams> teamsList = teamsMapper.selectList(null);

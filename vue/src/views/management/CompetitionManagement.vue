@@ -1,7 +1,7 @@
 <template>
   <section class="module-page module-composed-page competition-management-page">
     <header class="module-heading">
-      <div><h1>竞赛管理</h1><p>配置比赛环境、赛程赛规、试卷与参赛账号。</p></div>
+      <div><h1>竞赛管理</h1><p>配置比赛控制、赛程赛规、试卷与评分。</p></div>
     </header>
 
     <nav class="competition-links" aria-label="竞赛管理功能">

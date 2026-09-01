@@ -4,6 +4,10 @@ import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.match.dto.AdminUserView;
 import com.match.dto.AdminUserRequest;
+import com.match.dto.AdminUserBatchRequest;
+import com.match.account.service.AccountSlotService;
+import com.match.environment.persistence.ProcessingEnvironmentSlotRecord;
+import com.match.environment.persistence.TrainingEnvironmentMapper;
 import com.match.entity.AnswerSheet;
 import com.match.entity.Score;
 import com.match.entity.Teams;
@@ -39,6 +43,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.atLeastOnce;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AdminUserManagementServiceTest {
@@ -50,6 +57,8 @@ public class AdminUserManagementServiceTest {
     @Mock private TrainUrlMapper trainUrlMapper;
     @Mock private UserTrainingAssignmentMapper userTrainingAssignmentMapper;
     @Mock private AnnouncementFieldService announcementFieldService;
+    @Mock private AccountSlotService accountSlotService;
+    @Mock private TrainingEnvironmentMapper trainingEnvironmentMapper;
 
     private AdminUserManagementService service;
 
@@ -66,7 +75,9 @@ public class AdminUserManagementServiceTest {
         service = new AdminUserManagementService(userMapper, teamsUserMapper, teamsMapper,
                 answerSheetMapper, scoreMapper, trainUrlMapper, userTrainingAssignmentMapper,
                 announcementFieldService, new SecureRandom());
-        when(announcementFieldService.valuesByUserIds(any())).thenReturn(Collections.emptyMap());
+        when(announcementFieldService.valuesByUserIdsByName(any())).thenReturn(Collections.emptyMap());
+        service.setAccountSlotService(accountSlotService);
+        service.setTrainingEnvironmentMapper(trainingEnvironmentMapper);
     }
 
     @Test
@@ -77,18 +88,30 @@ public class AdminUserManagementServiceTest {
                 user(3, "judge99", "old"),
                 user(4, "user10", "old")));
 
-        List<AdminUserView> created = service.createBatch(2);
+        when(accountSlotService.lockFreeSlots(Collections.singletonList("agent-1")))
+                .thenReturn(Arrays.asList(slot("slot-1", "agent-1", 1), slot("slot-2", "agent-1", 2)));
+        final int[] id = {20};
+        doAnswer(invocation -> { ((User) invocation.getArgument(0)).setUserId(id[0]++); return 1; })
+                .when(userMapper).insert(any(User.class));
+        AdminUserBatchRequest request = new AdminUserBatchRequest();
+        request.setCount(2); request.setAgentIds(Collections.singletonList("agent-1"));
+
+        List<AdminUserView> created = service.createBatch(request, 1);
 
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
-        verify(userMapper, org.mockito.Mockito.times(2)).insert(captor.capture());
+        verify(userMapper, times(2)).insert(captor.capture());
         assertEquals("user11", captor.getAllValues().get(0).getUserName());
         assertEquals("user12", captor.getAllValues().get(1).getUserName());
         assertEquals(2, created.size());
         for (User value : captor.getAllValues()) {
             assertPasswordPolicy(value.getPassword());
             assertTrue(value.getEnabled());
+            assertTrue(value.getMustChangePassword());
             assertFalse(value.getIsAdmin());
         }
+        verify(accountSlotService).bind(20, "slot-1", 1);
+        verify(accountSlotService).bind(21, "slot-2", 1);
+        assertEquals(6, created.get(0).getInitialPassword().length());
     }
 
     @Test
@@ -192,9 +215,70 @@ public class AdminUserManagementServiceTest {
 
     private void assertPasswordPolicy(String password) {
         assertEquals(6, password.length());
-        assertTrue(password.matches(".*[0-9].*"));
-        assertTrue(password.matches(".*[a-z].*"));
-        assertTrue(password.matches(".*[A-Z].*"));
-        assertTrue(password.matches(".*[!@#$%^&*].*"));
+        assertTrue(password.matches("[23456789A-HJ-NP-Za-km-z]{6}"));
+    }
+
+    @Test
+    public void singleCreateBindsSelectedSlot() {
+        AdminUserRequest request = new AdminUserRequest();
+        request.setUserName("student-one"); request.setPassword("234Abc"); request.setSlotId("slot-1");
+        doAnswer(invocation -> { ((User) invocation.getArgument(0)).setUserId(30); return 1; })
+                .when(userMapper).insert(any(User.class));
+
+        service.create(request, 1);
+
+        verify(accountSlotService).bind(30, "slot-1", 1);
+    }
+
+    @Test
+    public void singleCreateAllowsMissingSlot() {
+        AdminUserRequest request = new AdminUserRequest();
+        request.setUserName("student-one"); request.setPassword("234Abc");
+        doAnswer(invocation -> { ((User) invocation.getArgument(0)).setUserId(30); return 1; })
+                .when(userMapper).insert(any(User.class));
+
+        AdminUserView created = service.create(request, 1);
+
+        assertEquals(Integer.valueOf(30), created.getUserId());
+        verify(accountSlotService, never()).bind(any(Integer.class), any(String.class), any(Integer.class));
+    }
+
+    @Test
+    public void batchCreateAllowsMissingServers() {
+        when(userMapper.selectList(any())).thenReturn(Collections.emptyList());
+        doAnswer(invocation -> { ((User) invocation.getArgument(0)).setUserId(40); return 1; })
+                .when(userMapper).insert(any(User.class));
+        AdminUserBatchRequest request = new AdminUserBatchRequest();
+        request.setCount(1); request.setAgentIds(Collections.emptyList());
+
+        List<AdminUserView> created = service.createBatch(request, 1);
+
+        assertEquals(1, created.size());
+        assertEquals(null, created.get(0).getSlotId());
+        verify(accountSlotService, never()).bind(any(Integer.class), any(String.class), any(Integer.class));
+    }
+
+    @Test
+    public void deleteRejectsAccountWithEnvironment() {
+        when(userMapper.selectBatchIds(Collections.singletonList(3))).thenReturn(
+                Collections.singletonList(user(3, "user3", "234Abc")));
+        when(trainingEnvironmentMapper.selectCount(any())).thenReturn(1);
+        try { service.deleteUsers(Collections.singletonList(3)); fail("environment must protect account"); }
+        catch (IllegalArgumentException error) { assertEquals("账号存在实训环境，请先删除环境", error.getMessage()); }
+        verify(userMapper, never()).deleteById(3);
+    }
+
+    @Test
+    public void bulkDisableUpdatesParticipantAccounts() {
+        when(userMapper.selectBatchIds(Arrays.asList(3, 4))).thenReturn(Arrays.asList(
+                user(3, "user3", "234Abc"), user(4, "user4", "234Def")));
+        assertEquals(2, service.setEnabled(Arrays.asList(3, 4), false));
+        verify(userMapper, atLeastOnce()).updateById(any(User.class));
+    }
+
+    private ProcessingEnvironmentSlotRecord slot(String id, String agentId, int number) {
+        ProcessingEnvironmentSlotRecord value = new ProcessingEnvironmentSlotRecord();
+        value.setSlotId(id); value.setAgentId(agentId); value.setSlotNumber(number);
+        return value;
     }
 }

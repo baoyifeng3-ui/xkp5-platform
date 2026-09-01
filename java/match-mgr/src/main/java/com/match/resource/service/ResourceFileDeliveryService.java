@@ -1,0 +1,58 @@
+package com.match.resource.service;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.match.agent.model.AgentCommandView;
+import com.match.agent.persistence.ProcessingAgentMapper;
+import com.match.agent.persistence.ProcessingAgentRecord;
+import com.match.agent.service.AgentCommandService;
+import com.match.environment.persistence.TrainingEnvironmentMapper;
+import com.match.environment.persistence.TrainingEnvironmentRecord;
+import com.match.resource.persistence.PlatformFileMapper;
+import com.match.resource.persistence.PlatformFileRecord;
+import org.springframework.stereotype.Service;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+@Service
+public class ResourceFileDeliveryService {
+    private final PlatformFileMapper files;
+    private final TrainingEnvironmentMapper environments;
+    private final ProcessingAgentMapper agents;
+    private final AgentCommandService commands;
+    private final ObjectMapper objectMapper;
+
+    public ResourceFileDeliveryService(PlatformFileMapper files,
+                                       TrainingEnvironmentMapper environments,
+                                       ProcessingAgentMapper agents, AgentCommandService commands,
+                                       ObjectMapper objectMapper) {
+        this.files = files; this.environments = environments; this.agents = agents;
+        this.commands = commands; this.objectMapper = objectMapper;
+    }
+
+    public AgentCommandView deliverPublicFile(String fileId, String environmentId, Integer userId) {
+        PlatformFileRecord file = files.selectScoped(fileId, "PUBLIC", null);
+        if (file == null) throw new ResourceOperationException(404, "FILE_NOT_FOUND", "公共资源不存在");
+        TrainingEnvironmentRecord environment = environments.selectForUpdate(environmentId);
+        if (environment == null || !userId.equals(environment.getUserId())) {
+            throw new ResourceOperationException(403, "ENVIRONMENT_NOT_OWNED", "实训环境不存在或不属于当前用户");
+        }
+        ProcessingAgentRecord agent = agents.selectForManagement(environment.getAgentId());
+        if (agent == null || !Boolean.TRUE.equals(agent.getEnabled())) {
+            throw new ResourceOperationException(503, "AGENT_UNAVAILABLE", "处理服务器不可用");
+        }
+        try {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("environmentId", environmentId); payload.put("resourceId", fileId);
+            payload.put("resourceType", "PUBLIC"); payload.put("storageKey", file.getStorageKey());
+            payload.put("targetPath", environment.getWorkspaceRelativePath() + "/public-resources/" + file.getFileName());
+            return commands.requestEnvironmentCommand(agent, "DELIVER_COURSE_RESOURCE",
+                    objectMapper.writeValueAsString(payload), userId, "USER",
+                    environmentId + ":PUBLIC_RESOURCE:" + fileId + ":" + file.getSha256());
+        } catch (ResourceOperationException error) {
+            throw error;
+        } catch (Exception error) {
+            throw new ResourceOperationException(503, "DELIVERY_FAILED", "资源下发失败");
+        }
+    }
+}

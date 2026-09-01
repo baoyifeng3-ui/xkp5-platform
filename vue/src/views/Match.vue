@@ -1,5 +1,5 @@
 <template>
-    <div class="m-box">
+    <div class="m-box match-page">
         <div class="m-tips">
             <div class="m-title"></div>
             <div class="tips1">

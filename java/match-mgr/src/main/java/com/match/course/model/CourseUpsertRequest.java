@@ -7,5 +7,7 @@ public class CourseUpsertRequest {
     private String name;
     private String courseType;
     private String description;
+    private String introductionHtml;
+    private String outlineHtml;
     private String coverResourceId;
 }

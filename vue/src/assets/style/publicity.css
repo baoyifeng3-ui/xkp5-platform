@@ -79,7 +79,7 @@
     height: calc(100% - 30px) !important;
 }
 
-.el-table--enable-row-hover .el-table__body tr:hover>td.el-table__cell {
+.p-box .el-table--enable-row-hover .el-table__body tr:hover>td.el-table__cell {
     background-color: var(--ui-text) !important;
 }
 

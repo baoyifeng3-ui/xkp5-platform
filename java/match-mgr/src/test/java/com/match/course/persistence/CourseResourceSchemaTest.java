@@ -4,6 +4,7 @@ import org.junit.Test;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 
 import static org.junit.Assert.assertTrue;
@@ -37,7 +38,11 @@ public class CourseResourceSchemaTest {
     private String read(String path) throws IOException {
         try (InputStream input = getClass().getResourceAsStream(path)) {
             if (input == null) throw new IOException("missing resource " + path);
-            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            byte[] buffer = new byte[4096];
+            int read;
+            while ((read = input.read(buffer)) != -1) output.write(buffer, 0, read);
+            return new String(output.toByteArray(), StandardCharsets.UTF_8);
         }
     }
 }

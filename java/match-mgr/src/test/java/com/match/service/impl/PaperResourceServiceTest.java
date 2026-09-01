@@ -62,6 +62,31 @@ public class PaperResourceServiceTest {
         assertTrue((Boolean) status.get("ready"));
     }
 
+    @Test
+    public void paperWithQuestionsCanBeSelectedWithoutPracticalResources() throws Exception {
+        Path root = temporaryFolder.newFolder("questions-only").toPath();
+        Path dataset = Files.createDirectory(root.resolve("C"));
+        Path annotations = Files.write(root.resolve("annotations.xml"),
+                "<annotations><labels/></annotations>".getBytes(StandardCharsets.UTF_8));
+        stubPaper("C", dataset, annotations);
+        when(subjectService.countByPaper("C")).thenReturn(2);
+
+        new PaperResourceService(paperCatalogService, subjectService).requireSelectable("C");
+    }
+
+    @Test
+    public void validAnnotationsAllowScoringWhenDatasetDirectoryIsEmpty() throws Exception {
+        Path root = temporaryFolder.newFolder("annotations-only").toPath();
+        Path dataset = Files.createDirectory(root.resolve("C"));
+        String xml = "<annotations><labels><label><name>x</name></label></labels>"
+                + "<image name=\"1.jpg\"><box label=\"x\"/></image></annotations>";
+        Path annotations = Files.write(root.resolve("annotations.xml"), xml.getBytes(StandardCharsets.UTF_8));
+        stubPaper("C", dataset, annotations);
+        when(subjectService.countByPaper("C")).thenReturn(1);
+
+        new PaperResourceService(paperCatalogService, subjectService).requireReady("C");
+    }
+
     private void stubPaper(String paper, Path dataset, Path annotations) {
         when(paperCatalogService.requireRegistered(paper)).thenReturn(paper);
         when(paperCatalogService.datasetDirectory(paper)).thenReturn(dataset);

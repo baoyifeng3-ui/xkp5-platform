@@ -16,6 +16,14 @@
     "test:preview": "node scripts/test-participant-preview-contract.js",
     "test:platform-ui": "node scripts/test-platform-ui-contract.js"
     ,"test:course-platform": "node scripts/test-course-platform-contract.js"
+    ,"test:image-registry": "node scripts/test-image-registry-contract.js"
+    ,"test:t100": "node scripts/test-t100-paper.js"
+    ,"test:training-environment": "node scripts/test-training-environment-creation-contract.js"
+    ,"test:image-batch-deployment": "node scripts/test-image-batch-deployment-contract.js"
+    ,"test:image-upload-performance": "node scripts/test-image-upload-performance-contract.js"
+    ,"test:image-upload-retry": "node scripts/test-image-upload-retry-contract.js"
+    ,"test:admin-demo": "node scripts/test-admin-demo-entry-contract.js"
+    ,"test:large-image-completion": "node scripts/test-large-image-completion-contract.js"
   },
   "engines": {
     "node": ">=16 <23"

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.match.agent.model.AgentMetricSnapshot;
 import com.match.dashboard.model.DashboardAlertSummary;
 import com.match.dashboard.model.DashboardOverview;
+import com.match.dashboard.model.DashboardAgentResource;
 import com.match.dashboard.model.DashboardResourceSummary;
 import com.match.dashboard.persistence.DashboardOverviewMapper;
 import com.match.licensing.model.LicenseState;
@@ -20,6 +21,9 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Collections;
+import java.util.stream.Collectors;
+import com.match.agent.persistence.ProcessingAgentRecord;
 
 @Service
 public class DashboardOverviewService {
@@ -72,9 +76,42 @@ public class DashboardOverviewService {
         overview.setAgentModes(agentModes());
         overview.setEnvironments(environments);
         overview.setOnlineUsers(activityService.onlineUserCount());
+        overview.setTotalUsers(mapper.countEnabledUsers());
+        overview.setPlatformMode(mapper.selectPlatformMode());
+        overview.setAgentResources(agentResources(mapper.selectDashboardAgents(), onlineCutoff));
         overview.setAlerts(alerts);
         overview.setResources(resources(mapper.selectOnlineMetricJson(onlineCutoff)));
         return overview;
+    }
+
+    private List<DashboardAgentResource> agentResources(List<ProcessingAgentRecord> records,
+                                                        LocalDateTime onlineCutoff) {
+        if (records == null) return Collections.emptyList();
+        return records.stream().map(record -> {
+            DashboardAgentResource result = new DashboardAgentResource();
+            result.setAgentId(record.getAgentId());
+            result.setDisplayName(record.getDisplayName());
+            result.setPrimaryIp(record.getPrimaryIp());
+            result.setLastSeenAt(record.getLastSeenAt());
+            result.setOnline(Boolean.TRUE.equals(record.getEnabled()) && record.getLastSeenAt() != null
+                    && !record.getLastSeenAt().isBefore(onlineCutoff));
+            AgentMetricSnapshot metric = parseMetric(record.getLatestMetrics());
+            if (metric != null) {
+                result.setCpuPercent(decimal(metric.getCpuPercent()));
+                result.setGpuPercent(decimal(metric.getGpuPercent()));
+                result.setMemoryPercent(decimal(metric.getRamPercent()));
+                result.setDiskPercent(decimal(metric.getWorkspaceDiskPercent() == null
+                        ? metric.getSystemDiskPercent() : metric.getWorkspaceDiskPercent()));
+                result.setNetworkReceiveBytesPerSecond(metric.getNetworkReceiveBytesPerSecond());
+                result.setNetworkSendBytesPerSecond(metric.getNetworkSendBytesPerSecond());
+                result.setRunningContainerCount(metric.getRunningContainerCount());
+            }
+            return result;
+        }).collect(Collectors.toList());
+    }
+
+    private Double decimal(BigDecimal value) {
+        return value == null ? null : value.doubleValue();
     }
 
     private DashboardOverview.AgentModeSummary agentModes() {

@@ -25,6 +25,11 @@ public class ImageArtifactRecord {
     private LocalDateTime importLeaseExpiresAt;
     private String reviewState;
     private String importState;
+    private String importStage;
+    private Integer importProgress;
+    private Integer importCompletedLayers;
+    private Integer importTotalLayers;
+    private LocalDateTime importUpdatedAt;
     private String failureCode;
     private String failureMessage;
     private Integer reviewedBy;

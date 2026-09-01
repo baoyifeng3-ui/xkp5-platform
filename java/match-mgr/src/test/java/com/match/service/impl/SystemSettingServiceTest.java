@@ -52,6 +52,19 @@ public class SystemSettingServiceTest {
     }
 
     @Test
+    public void returnsConfiguredLogoAndEnglishSubtitle() {
+        when(settingMapper.selectById(SystemSettingService.PLATFORM_LOGO_URL))
+                .thenReturn(setting(SystemSettingService.PLATFORM_LOGO_URL, " /files/logo.png "));
+        when(settingMapper.selectById(SystemSettingService.LOGIN_ENGLISH_SUBTITLE))
+                .thenReturn(setting(SystemSettingService.LOGIN_ENGLISH_SUBTITLE, " AI TRAINING PLATFORM "));
+
+        Map<String, String> settings = service.getPlatformSettings();
+
+        assertEquals("/files/logo.png", settings.get("platformLogoUrl"));
+        assertEquals("AI TRAINING PLATFORM", settings.get("loginEnglishSubtitle"));
+    }
+
+    @Test
     public void usesInputStrategyForStringSettingKey() throws Exception {
         TableId tableId = SystemSetting.class.getDeclaredField("settingKey").getAnnotation(TableId.class);
 

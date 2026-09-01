@@ -27,5 +27,7 @@ public class AgentMetricSnapshot {
     private String dockerVersion;
     private Integer runningEnvironmentCount;
     private Integer runningContainerCount;
+    private Long networkReceiveBytesPerSecond;
+    private Long networkSendBytesPerSecond;
     private Map<String, String> collectorErrors;
 }

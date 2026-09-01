@@ -1,5 +1,5 @@
 const previewDestinations = [
-  '/course-platform', '/resource-center', '/training-environment',
+  '/course-platform', '/resource-center', '/training-environment', '/training-validation',
   '/Publicity', '/Home', '/Question', '/Detect', '/competition-practical'
 ]
 const previewDestinationSet = new Set(previewDestinations)

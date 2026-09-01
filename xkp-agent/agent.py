@@ -112,8 +112,35 @@ class Agent:
         command_id = command['commandId']
         lease = command['leaseToken']
         self.request('POST', '/commands/' + command_id + '/start', {'leaseToken': lease}, auth=True)
-        result = {'success': False, 'code': 'UNSUPPORTED_COMMAND', 'message': 'command handler not installed'}
+        command_type = command.get('type') or command.get('commandType')
+        payload = command.get('payload') or {}
+        if command_type == 'DEPLOY_IMAGE':
+            result = self.deploy_image(payload)
+        else:
+            result = {'success': False, 'code': 'UNSUPPORTED_COMMAND',
+                      'message': 'command handler not installed: %s' % command_type}
         self.request('POST', '/commands/' + command_id + '/result', dict(result, leaseToken=lease), auth=True)
+
+    def deploy_image(self, payload):
+        digest = payload.get('registryDigest')
+        if not isinstance(digest, str) or not digest.startswith('sha256:'):
+            return {'success': False, 'code': 'INVALID_IMAGE_DIGEST',
+                    'message': 'registryDigest is required'}
+        if not self.docker_available():
+            return {'success': False, 'code': 'DOCKER_UNAVAILABLE',
+                    'message': 'Docker service is unavailable'}
+        try:
+            images = subprocess.check_output(
+                ['docker', 'images', '--no-trunc', '--format', '{{.ID}}'],
+                text=True, stderr=subprocess.STDOUT, timeout=30).splitlines()
+            if digest in images or digest.replace('sha256:', '') in images:
+                return {'success': True, 'code': 'SUCCEEDED',
+                        'message': 'image is available on Agent',
+                        'details': {'digest': digest, 'updatePolicy': payload.get('updatePolicy')}}
+            return {'success': False, 'code': 'IMAGE_NOT_AVAILABLE',
+                    'message': 'image digest is not present on Agent: %s' % digest}
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            return {'success': False, 'code': 'IMAGE_INSPECT_FAILED', 'message': str(error)}
 
     def run(self):
         if not self.load_identity():

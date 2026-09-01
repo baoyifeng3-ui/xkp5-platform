@@ -8,6 +8,7 @@ import com.match.environment.persistence.CompetitionEnvironmentMapper;
 import com.match.environment.persistence.CompetitionEnvironmentRecord;
 import com.match.environment.persistence.TrainingEnvironmentMapper;
 import com.match.environment.persistence.TrainingEnvironmentRecord;
+import com.match.environment.persistence.EnvironmentPortAllocationMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,16 +24,19 @@ public class EnvironmentOperationReconciler {
     private final EnvironmentOperationMapper operationMapper;
     private final TrainingEnvironmentMapper environmentMapper;
     private final CompetitionEnvironmentMapper competitionEnvironmentMapper;
+    private final EnvironmentPortAllocationMapper portAllocationMapper;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
     public EnvironmentOperationReconciler(EnvironmentOperationMapper operationMapper,
                                           TrainingEnvironmentMapper environmentMapper,
                                           CompetitionEnvironmentMapper competitionEnvironmentMapper,
+                                          EnvironmentPortAllocationMapper portAllocationMapper,
                                           ObjectMapper objectMapper, Clock clock) {
         this.operationMapper = operationMapper;
         this.environmentMapper = environmentMapper;
         this.competitionEnvironmentMapper = competitionEnvironmentMapper;
+        this.portAllocationMapper = portAllocationMapper;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
@@ -65,8 +69,18 @@ public class EnvironmentOperationReconciler {
         operationMapper.markTerminal(operation.getOperationId(), operationState, now, resultCode,
                 resultMessage, componentResultsJson);
         if (training != null) {
+            if (success && "DELETE".equals(operation.getOperationType())) {
+                portAllocationMapper.deleteByEnvironment(operation.getEnvironmentId());
+                environmentMapper.deleteById(operation.getEnvironmentId());
+                return;
+            }
+            String annotationState = components.annotation == null
+                    ? training.getAnnotationContainerState() : components.annotation;
+            String editorState = components.editor == null
+                    ? training.getEditorContainerState() : components.editor;
             environmentMapper.reconcileOperation(operation.getEnvironmentId(), operation.getOperationId(),
-                    actualState, components.annotation, components.editor, now);
+                    actualState, annotationState == null ? "ERROR" : annotationState,
+                    editorState == null ? "ERROR" : editorState, now);
         } else {
             String verifiedResult = competitionVerified ? boundedResult : null;
             LocalDateTime verifiedAt = verifiedResult == null ? null : now;

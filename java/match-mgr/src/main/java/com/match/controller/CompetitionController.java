@@ -77,7 +77,7 @@ public class CompetitionController {
     public ResponseResult<Object> set(@RequestBody PaperSelectionRequest request) {
         adminGuard.requireAdmin();
         if (request.getPaperType() != null && !request.getPaperType().trim().isEmpty()) {
-            paperResourceService.requireReady(request.getPaperType());
+            paperResourceService.requireSelectable(request.getPaperType());
         }
         String activePaper = settingService.setActivePaper(request.getPaperType(), StpUtil.getLoginIdAsInt());
         return Response.makeOKRsp(Collections.singletonMap("activePaper", activePaper));
@@ -96,6 +96,7 @@ public class CompetitionController {
         adminGuard.requireAdmin();
         return Response.makeOKRsp(settingService.setPlatformSettings(
                 request.getPlatformName(), request.getThemeColor(), request.getLoginBackgroundUrl(),
+                request.getPlatformLogoUrl(), request.getLoginEnglishSubtitle(),
                 request.getLoginBrandName(), request.getLoginTitle(), request.getLoginDescription(),
                 request.getLoginCopyright(),
                 StpUtil.getLoginIdAsInt()));
@@ -115,6 +116,22 @@ public class CompetitionController {
         String path = FastDFSClient.uploadFile(file);
         if (path == null || path.trim().isEmpty()) throw new IllegalStateException("背景图片上传失败，请稍后重试");
         return Response.makeOKRsp(Collections.singletonMap("loginBackgroundUrl", FastDFSClient.getResAccessUrl(path)));
+    }
+
+    @PostMapping("/settings/platform-logo")
+    public ResponseResult<Object> uploadPlatformLogo(@RequestParam("file") MultipartFile file) {
+        adminGuard.requireAdmin();
+        if (file == null || file.isEmpty()) throw new IllegalArgumentException("请选择平台 Logo");
+        if (file.getSize() > 2L * 1024 * 1024) throw new IllegalArgumentException("平台 Logo 不能超过 2 MB");
+        String contentType = String.valueOf(file.getContentType()).toLowerCase(Locale.ROOT);
+        String extension = FilenameUtils.getExtension(file.getOriginalFilename()).toLowerCase(Locale.ROOT);
+        if (!Arrays.asList("image/jpeg", "image/png", "image/webp", "image/svg+xml").contains(contentType)
+                || !Arrays.asList("jpg", "jpeg", "png", "webp", "svg").contains(extension)) {
+            throw new IllegalArgumentException("平台 Logo 仅支持 JPEG、PNG、WebP 或 SVG");
+        }
+        String path = FastDFSClient.uploadFile(file);
+        if (path == null || path.trim().isEmpty()) throw new IllegalStateException("平台 Logo 上传失败，请稍后重试");
+        return Response.makeOKRsp(Collections.singletonMap("platformLogoUrl", FastDFSClient.getResAccessUrl(path)));
     }
 
     @PutMapping("/content")

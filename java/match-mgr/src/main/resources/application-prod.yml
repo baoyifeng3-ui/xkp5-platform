@@ -12,12 +12,12 @@ spring:
     baseline-version: 0
   servlet:
     multipart:
-      max-file-size: 20MB
-      max-request-size: 100MB
+      max-file-size: 50GB
+      max-request-size: 50GB
 
 fdfs:
   connect-timeout: 15000
-  so-timeout: 15000
+  so-timeout: 600000
   thumb-image:
     height: 1000
     width: 1000
@@ -26,6 +26,7 @@ fdfs:
   web-server-url: ${MATCH_FASTDFS_HTTP:http://fastdfs-storage:8888/}
 
 match:
+  competition-password-key: ${MATCH_COMPETITION_PASSWORD_KEY}
   terminal:
     agent-relay-url: ${TERMINAL_AGENT_RELAY_URL}
   allowed-origins: ${MATCH_ALLOWED_ORIGINS:http://localhost:19140,http://127.0.0.1:19140,http://172.16.33.154:19140,http://172.16.33.158:19140}

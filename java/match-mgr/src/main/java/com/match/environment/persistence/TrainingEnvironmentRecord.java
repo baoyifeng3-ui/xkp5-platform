@@ -12,8 +12,11 @@ import java.time.LocalDateTime;
 public class TrainingEnvironmentRecord {
     @TableId(value = "environment_id", type = IdType.INPUT)
     private String environmentId;
+    private String environmentName;
+    private String remark;
+    private String environmentType;
     private Integer userId;
-    private Integer courseId;
+    private String courseId;
     private String agentId;
     private String slotId;
     private Integer slotNumber;

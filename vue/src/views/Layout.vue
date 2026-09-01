@@ -67,9 +67,6 @@ export default {
         { key: 'paper', activeKey: 'paper', label: '当前赛卷', icon: 'el-icon-document', destination: 3 },
         { key: 'verification', activeKey: 'verification', label: '成果验证', icon: 'el-icon-circle-check', destination: 4 }
       ]
-      if (!this.isAdmin || this.previewOnly) {
-        participantItems.push({ key: 'practical', activeKey: 'practical', label: '比赛实操', icon: 'el-icon-monitor', destination: 5 })
-      }
       if (!this.showAdminNavigation) return participantItems
       return participantItems.concat([
         { key: 'admin-timer', activeKey: 'admin-timer', label: '比赛控制', icon: 'el-icon-odometer', adminTab: 'timer' },
@@ -82,7 +79,7 @@ export default {
       ])
     },
     preStartLocked () {
-      return !this.isAdmin && this.countdownSnapshot && this.countdownSnapshot.accessPhase === 'PRE_START'
+      return !this.isAdmin && this.countdownSnapshot && ['BEFORE_LOGIN', 'PRE_START', 'UNSCHEDULED'].includes(this.countdownSnapshot.accessPhase)
     },
     preStartTimeText () {
       if (!this.countdownSnapshot || !this.countdownSnapshot.scheduledStartTime) return '00:00:00'

@@ -1,0 +1,3 @@
+package com.match.learning.web;
+import com.match.security.RoleGuard; import com.match.learning.persistence.LearningAnalysisMapper; import com.match.util.result.*; import org.springframework.web.bind.annotation.*;
+@RestController @RequestMapping("/user/learning-evaluations") public class UserLearningEvaluationController { private final RoleGuard roles; private final LearningAnalysisMapper mapper; public UserLearningEvaluationController(RoleGuard r,LearningAnalysisMapper m){roles=r;mapper=m;} @GetMapping public ResponseResult<Object> list(){return Response.makeOKRsp(mapper.evaluations(roles.requireUser().getUserId()));} }

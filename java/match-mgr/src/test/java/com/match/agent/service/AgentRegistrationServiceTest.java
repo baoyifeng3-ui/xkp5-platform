@@ -73,13 +73,23 @@ public class AgentRegistrationServiceTest {
     }
 
     @Test
-    public void rejectsDuplicateMachineIdentity() {
+    public void refreshesCredentialForAlreadyRegisteredMachine() {
         RegistrationTokenRecord token = validToken();
         when(tokenMapper.selectByDigestForUpdate(Digests.sha256("one-time-token"))).thenReturn(token);
-        when(agentMapper.selectByMachineDigest(validRequest().getMachineDigest()))
-                .thenReturn(new ProcessingAgentRecord());
+        ProcessingAgentRecord existing = new ProcessingAgentRecord();
+        existing.setAgentId("existing-agent");
+        when(agentMapper.selectByMachineDigest(validRequest().getMachineDigest())).thenReturn(existing);
+        when(agentMapper.refreshRegistration(org.mockito.ArgumentMatchers.eq("existing-agent"),
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class))).thenReturn(1);
 
-        assertProtocolCode("MACHINE_ALREADY_REGISTERED", () -> service.register(validRequest()));
+        AgentRegistrationResponse response = service.register(validRequest());
+        assertEquals("existing-agent", response.getAgentId());
+        assertEquals(43, response.getCredential().length());
+        assertEquals(LocalDateTime.ofInstant(NOW, ZoneOffset.UTC), token.getConsumedAt());
+        verify(tokenMapper).updateById(token);
     }
 
     private RegistrationTokenRecord validToken() {

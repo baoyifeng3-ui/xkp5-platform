@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 public class EnvironmentPortAllocationRecord {
     @TableId(value = "allocation_id", type = IdType.INPUT)
     private String allocationId;
+    private String environmentId;
     private String slotId;
     private String agentId;
     private String componentType;

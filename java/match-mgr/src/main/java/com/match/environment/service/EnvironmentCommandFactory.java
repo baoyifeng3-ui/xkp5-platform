@@ -48,6 +48,58 @@ public class EnvironmentCommandFactory {
                 environment.getEditorContainerName(), environment.getEditorConfigFingerprint(), true);
     }
 
+    public String createControlPayloadJson(TrainingEnvironmentRecord environment, String operationId) {
+        ContainerTemplateRecord annotation = optionalTemplate(environment.getAnnotationTemplateId(),
+                environment.getAnnotationTemplateVersion(), "ANNOTATION");
+        ContainerTemplateRecord editor = optionalTemplate(environment.getEditorTemplateId(),
+                environment.getEditorTemplateVersion(), "EDITOR");
+        return controlPayload(environment.getEnvironmentId(), operationId,
+                identity(annotation, environment.getAnnotationContainerName(), null),
+                identity(editor, environment.getEditorContainerName(), null));
+    }
+
+    public String createControlPayloadJson(CompetitionEnvironmentRecord environment, String operationId) {
+        ContainerTemplateRecord annotation = optionalTemplate(environment.getAnnotationTemplateId(),
+                environment.getAnnotationTemplateVersion(), "ANNOTATION");
+        ContainerTemplateRecord editor = optionalTemplate(environment.getEditorTemplateId(),
+                environment.getEditorTemplateVersion(), "EDITOR");
+        return controlPayload(environment.getEnvironmentId(), operationId,
+                identity(annotation, environment.getAnnotationContainerName(),
+                        environment.getAnnotationConfigFingerprint()),
+                identity(editor, environment.getEditorContainerName(),
+                        environment.getEditorConfigFingerprint()));
+    }
+
+    private String controlPayload(String environmentId, String operationId,
+                                  EnvironmentComponentSpec annotation,
+                                  EnvironmentComponentSpec editor) {
+        EnvironmentCommandPayload payload = new EnvironmentCommandPayload();
+        payload.setEnvironmentId(environmentId);
+        payload.setOperationId(operationId);
+        List<EnvironmentComponentSpec> components = new ArrayList<>();
+        if (annotation != null) components.add(annotation);
+        if (editor != null) components.add(editor);
+        payload.setComponents(components);
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (Exception exception) {
+            throw new IllegalStateException("环境命令无法序列化", exception);
+        }
+    }
+
+    private EnvironmentComponentSpec identity(ContainerTemplateRecord template, String containerName,
+                                               String pinnedFingerprint) {
+        if (template == null) return null;
+        EnvironmentComponentSpec component = new EnvironmentComponentSpec();
+        component.setComponentType(template.getComponentType());
+        component.setContainerName(containerName);
+        component.setConfigFingerprint(pinnedFingerprint == null
+                ? template.getConfigFingerprint() : pinnedFingerprint);
+        component.setMpsEnabled(template.getMpsEnabled());
+        component.setGpuComputePercent(template.getGpuComputePercent());
+        return component;
+    }
+
     private String createPayloadJson(String environmentId, String operationId, String workspaceRelativePath,
                                      String slotId, String annotationTemplateId,
                                      Integer annotationTemplateVersion, String annotationContainerName,
@@ -55,28 +107,32 @@ public class EnvironmentCommandFactory {
                                      String editorTemplateId, Integer editorTemplateVersion,
                                      String editorContainerName, String editorConfigFingerprint,
                                      boolean pinnedCompetitionPair) {
-        ContainerTemplateRecord annotation = requireTemplate(annotationTemplateId,
+        ContainerTemplateRecord annotation = optionalTemplate(annotationTemplateId,
                 annotationTemplateVersion, "ANNOTATION");
-        ContainerTemplateRecord editor = requireTemplate(editorTemplateId,
+        ContainerTemplateRecord editor = optionalTemplate(editorTemplateId,
                 editorTemplateVersion, "EDITOR");
         requirePinnedFingerprint(annotation, annotationConfigFingerprint, "ANNOTATION",
                 pinnedCompetitionPair);
         requirePinnedFingerprint(editor, editorConfigFingerprint, "EDITOR",
                 pinnedCompetitionPair);
-        List<EnvironmentPortAllocationRecord> allocations = portMapper.selectBySlot(slotId);
+        List<EnvironmentPortAllocationRecord> allocations = portMapper.selectByEnvironment(environmentId);
+        if(allocations==null||allocations.isEmpty())allocations=portMapper.selectBySlot(slotId);
         EnvironmentCommandPayload payload = new EnvironmentCommandPayload();
         payload.setEnvironmentId(environmentId);
         payload.setOperationId(operationId);
         payload.setWorkspaceRelativePath(workspaceRelativePath);
-        payload.setComponents(Arrays.asList(
-                component(annotation, annotationContainerName, allocations, pinnedCompetitionPair),
-                component(editor, editorContainerName, allocations, pinnedCompetitionPair)));
+        List<EnvironmentComponentSpec> components=new ArrayList<>();
+        if(annotation!=null)components.add(component(annotation,annotationContainerName,allocations,pinnedCompetitionPair));
+        if(editor!=null)components.add(component(editor,editorContainerName,allocations,pinnedCompetitionPair));
+        payload.setComponents(components);
         try {
             return objectMapper.writeValueAsString(payload);
         } catch (Exception exception) {
             throw new IllegalStateException("环境命令无法序列化", exception);
         }
     }
+
+    private ContainerTemplateRecord optionalTemplate(String id,Integer version,String type){if(id==null&&version==null)return null;return requireTemplate(id,version,type);}
 
     private EnvironmentComponentSpec component(ContainerTemplateRecord template, String containerName,
                                                List<EnvironmentPortAllocationRecord> allocations,
@@ -97,6 +153,7 @@ public class EnvironmentCommandFactory {
         component.setGpuEnabled(template.getGpuEnabled());
         component.setGpuComputePercent(template.getGpuComputePercent());
         component.setGpuMemoryLimitBytes(template.getGpuMemoryLimitBytes());
+        component.setMpsEnabled(template.getMpsEnabled());
         component.setWorkingDirectory(template.getWorkingDirectory());
         if (template.getCommandJson() != null) {
             try {
@@ -104,6 +161,8 @@ public class EnvironmentCommandFactory {
             } catch (Exception exception) {
                 throw new IllegalStateException("模板命令无效", exception);
             }
+        } else if ("EDITOR".equals(template.getComponentType())) {
+            component.setCommand(DefaultEditorCommand.value());
         }
         return component;
     }

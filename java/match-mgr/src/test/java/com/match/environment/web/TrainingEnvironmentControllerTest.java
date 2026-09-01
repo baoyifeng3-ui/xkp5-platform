@@ -2,9 +2,19 @@ package com.match.environment.web;
 
 import com.match.entity.User;
 import com.match.environment.service.EnvironmentOperationService;
+import com.match.environment.persistence.TrainingEnvironmentRecord;
+import com.match.environment.persistence.ActiveClassSessionRecord;
+import com.match.environment.service.ActiveClassSessionService;
 import com.match.security.RoleGuard;
 import com.match.security.UserRole;
+import com.match.util.result.ResponseResult;
 import org.junit.Test;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.Assert.assertEquals;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -39,10 +49,58 @@ public class TrainingEnvironmentControllerTest {
         UserTrainingEnvironmentController controller =
                 new UserTrainingEnvironmentController(roleGuard, service);
 
-        controller.list();
+        controller.list(false);
         controller.start("environment-1");
 
         verify(service).listForUser(21);
+        verify(service).start("environment-1", 21, "USER");
+    }
+
+    @Test
+    public void normalUserEnvironmentIncludesItsAccountPlacement() {
+        RoleGuard roleGuard = mock(RoleGuard.class);
+        EnvironmentOperationService service = mock(EnvironmentOperationService.class);
+        User student = user(21);
+        student.setUserName("student21");
+        TrainingEnvironmentRecord environment = new TrainingEnvironmentRecord();
+        environment.setEnvironmentId("environment-1");
+        environment.setUserId(21);
+        environment.setAgentId("agent-1");
+        environment.setSlotNumber(3);
+        when(roleGuard.requireUser()).thenReturn(student);
+        when(service.listForUser(21)).thenReturn(Collections.singletonList(environment));
+
+        UserTrainingEnvironmentController controller =
+                new UserTrainingEnvironmentController(roleGuard, service);
+        ResponseResult<Object> response = controller.list(false);
+        Map<String, Object> row = (Map<String, Object>) ((List<?>) response.getData()).get(0);
+
+        assertEquals(21, row.get("userId"));
+        assertEquals("student21", row.get("userName"));
+        assertEquals("agent-1", row.get("agentId"));
+        assertEquals(3, row.get("slotNumber"));
+    }
+
+    @Test
+    public void activeCourseAllowsItsMatchingUserEnvironment() {
+        RoleGuard roleGuard = mock(RoleGuard.class);
+        EnvironmentOperationService service = mock(EnvironmentOperationService.class);
+        ActiveClassSessionService classes = mock(ActiveClassSessionService.class);
+        User student = user(21);
+        TrainingEnvironmentRecord environment = new TrainingEnvironmentRecord();
+        environment.setEnvironmentId("environment-1");
+        environment.setCourseId("course-1");
+        ActiveClassSessionRecord session = new ActiveClassSessionRecord();
+        session.setActive(true);
+        session.setCourseId("course-1");
+        when(roleGuard.requireUser()).thenReturn(student);
+        when(service.listForUser(21)).thenReturn(Collections.singletonList(environment));
+        when(classes.current()).thenReturn(session);
+        UserTrainingEnvironmentController controller = new UserTrainingEnvironmentController(roleGuard, service);
+        controller.setClassSessionService(classes);
+
+        controller.start("environment-1");
+
         verify(service).start("environment-1", 21, "USER");
     }
 

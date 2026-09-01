@@ -28,6 +28,8 @@ public class PlatformModeService {
     private final AgentAuditService auditService;
     private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
+    private CompetitionCredentialService competitionCredentials;
+    @org.springframework.beans.factory.annotation.Autowired public void setCompetitionCredentialService(CompetitionCredentialService value){this.competitionCredentials=value;}
 
     public PlatformModeService(PlatformModeMapper mapper, RoleGuard roleGuard,
                                LicenseGuard licenseGuard, AgentAuditService auditService,
@@ -64,6 +66,8 @@ public class PlatformModeService {
             throw new ModeConflictException("PLATFORM_MODE_CONFLICT",
                     "Platform mode changed concurrently");
         }
+
+        if(competitionCredentials!=null){if(COMPETITION.equals(target))competitionCredentials.activate(nextGeneration,actorUserId);else competitionCredentials.restore(current.getGeneration(),actorUserId);}
 
         auditService.recordSuccess("PLATFORM_MODE_TO_" + target, actorUserId, null, null);
         eventPublisher.publishEvent(new PlatformModeChangedEvent(current.getMode(), target,

@@ -30,9 +30,31 @@ public interface TrainingEnvironmentMapper extends BaseMapper<TrainingEnvironmen
     @Select("SELECT * FROM training_environment ORDER BY created_at DESC, environment_id DESC")
     List<TrainingEnvironmentRecord> selectAllEnvironments();
 
+    @Select("SELECT * FROM training_environment WHERE course_id = #{courseId} ORDER BY environment_name, user_id, environment_id")
+    List<TrainingEnvironmentRecord> selectByCourse(@Param("courseId") String courseId);
+
+    @Select("SELECT * FROM training_environment WHERE course_id IS NULL AND environment_type = 'COURSE' ORDER BY user_id, environment_id")
+    List<TrainingEnvironmentRecord> selectDefaultEnvironments();
+
+    @Select("SELECT * FROM training_environment WHERE course_id IS NULL AND environment_type = 'COURSE' "
+            + "AND environment_name = #{environmentName} ORDER BY user_id, environment_id")
+    List<TrainingEnvironmentRecord> selectIndependentByName(@Param("environmentName") String environmentName);
+
     @Select("SELECT * FROM training_environment WHERE desired_state <> 'STOPPED' "
             + "OR actual_state <> 'STOPPED' ORDER BY environment_id")
     List<TrainingEnvironmentRecord> selectRequiringLicenseStop();
+
+    @Select("SELECT * FROM training_environment WHERE actual_state='WAITING_DEPENDENCY' "
+            + "AND desired_state='RUNNING' ORDER BY updated_at,environment_id")
+    List<TrainingEnvironmentRecord> selectWaitingDependencies();
+
+    @Update("UPDATE training_environment SET actual_state='STARTING', updated_by=#{updatedBy}, "
+            + "updated_at=#{updatedAt}, lock_version=lock_version+1 WHERE environment_id=#{environmentId} "
+            + "AND current_operation_id=#{operationId} AND actual_state='WAITING_DEPENDENCY'")
+    int dispatchWaitingStart(@Param("environmentId") String environmentId,
+                             @Param("operationId") String operationId,
+                             @Param("updatedBy") int updatedBy,
+                             @Param("updatedAt") LocalDateTime updatedAt);
 
     @Update("UPDATE training_environment SET desired_state = #{desiredState}, "
             + "actual_state = #{actualState}, current_operation_id = #{operationId}, "

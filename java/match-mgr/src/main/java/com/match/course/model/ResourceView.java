@@ -7,6 +7,8 @@ public class ResourceView {
     String resourceId;
     String courseId;
     String resourceType;
+    String chapterId;
+    String practiceTool;
     String name;
     Long contentLength;
     String mimeType;

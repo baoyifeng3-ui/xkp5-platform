@@ -3,6 +3,12 @@ package com.match.environment.web;
 import com.match.entity.User;
 import com.match.environment.model.BindCompetitionSlotRequest;
 import com.match.environment.service.CompetitionSlotBindingService;
+import com.match.environment.service.EnvironmentOperationService;
+import com.match.environment.persistence.EnvironmentPortAllocationMapper;
+import com.match.environment.persistence.EnvironmentPortAllocationRecord;
+import com.match.environment.persistence.TrainingEnvironmentRecord;
+import com.match.agent.persistence.ProcessingAgentMapper;
+import com.match.agent.persistence.ProcessingAgentRecord;
 import com.match.security.AdminAccessException;
 import com.match.security.LoginSession;
 import com.match.security.RoleGuard;
@@ -14,6 +20,8 @@ import static org.junit.Assert.fail;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import java.util.Collections;
+import java.util.Map;
 
 public class CompetitionSlotControllerTest {
     private static final String SLOT_ID = "22222222-2222-4222-8222-222222222222";
@@ -57,6 +65,40 @@ public class CompetitionSlotControllerTest {
         } catch (AdminAccessException expected) {
             assertEquals("仅普通用户可以执行此操作", expected.getMessage());
         }
+    }
+
+    @Test
+    public void participantCompetitionEndpointUsesCurrentCompetitionTrainingEnvironment() {
+        RoleGuard guard = mock(RoleGuard.class);
+        CompetitionSlotBindingService legacy = mock(CompetitionSlotBindingService.class);
+        EnvironmentOperationService operations = mock(EnvironmentOperationService.class);
+        EnvironmentPortAllocationMapper ports = mock(EnvironmentPortAllocationMapper.class);
+        ProcessingAgentMapper agents = mock(ProcessingAgentMapper.class);
+        User participant = new User();
+        participant.setUserId(21);
+        TrainingEnvironmentRecord environment = new TrainingEnvironmentRecord();
+        environment.setEnvironmentId("environment-1");
+        environment.setEnvironmentType("COMPETITION");
+        environment.setAgentId("agent-1");
+        environment.setActualState("RUNNING");
+        ProcessingAgentRecord agent = new ProcessingAgentRecord();
+        agent.setPrimaryIp("10.0.0.8");
+        EnvironmentPortAllocationRecord t100 = new EnvironmentPortAllocationRecord();
+        t100.setComponentType("EDITOR");
+        t100.setContainerPort(5000);
+        t100.setHostPort(5501);
+        when(guard.requireUser()).thenReturn(participant);
+        when(operations.listForUser(21)).thenReturn(Collections.singletonList(environment));
+        when(agents.selectForManagement("agent-1")).thenReturn(agent);
+        when(ports.selectByEnvironment("environment-1")).thenReturn(Collections.singletonList(t100));
+
+        UserCompetitionEnvironmentController controller = new UserCompetitionEnvironmentController(
+                guard, legacy, operations, ports, agents);
+        Map<?, ?> view = (Map<?, ?>) controller.current().getData();
+
+        assertEquals("environment-1", view.get("environmentId"));
+        assertEquals("RUNNING", view.get("readiness"));
+        assertEquals("10.0.0.8:5501", view.get("t100Url"));
     }
 
     private void assertAdminBoundary(String role, boolean enabled) {

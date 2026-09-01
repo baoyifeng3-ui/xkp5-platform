@@ -5,7 +5,10 @@ import com.match.agent.service.RegistrationTokenService;
 import com.match.agent.service.AgentAdministrationService;
 import com.match.agent.service.AgentPackageService;
 import com.match.agent.service.AgentConnectivityService;
+import com.match.agent.service.AgentUpgradeService;
 import com.match.agent.model.AgentPackageRequest;
+import com.match.agent.model.RemoteAgentDeployRequest;
+import com.match.agent.service.RemoteAgentDeploymentService;
 import com.match.entity.User;
 import com.match.security.RoleGuard;
 import com.match.util.result.Response;
@@ -30,6 +33,8 @@ public class SuperAdminAgentController {
     private final AgentAdministrationService administrationService;
     private final AgentPackageService packageService;
     private final AgentConnectivityService connectivityService;
+    private AgentUpgradeService upgradeService;
+    private RemoteAgentDeploymentService remoteDeploymentService;
 
     public SuperAdminAgentController(RoleGuard roleGuard, RegistrationTokenService tokenService,
                                      AgentAdministrationService administrationService) {
@@ -46,6 +51,24 @@ public class SuperAdminAgentController {
         this.administrationService = administrationService;
         this.packageService = packageService;
         this.connectivityService = connectivityService;
+    }
+
+    @Autowired
+    public void setUpgradeService(AgentUpgradeService upgradeService) { this.upgradeService = upgradeService; }
+
+    @Autowired
+    public void setRemoteDeploymentService(RemoteAgentDeploymentService service) { this.remoteDeploymentService = service; }
+
+    @PostMapping("/remote-deploy")
+    public ResponseResult<Object> remoteDeploy(@RequestBody RemoteAgentDeployRequest request) {
+        User actor = roleGuard.requireSuperAdmin();
+        return Response.makeOKRsp(remoteDeploymentService.deploy(actor.getUserId(), request));
+    }
+
+    @PostMapping("/{agentId}/upgrade")
+    public ResponseResult<Object> upgrade(@PathVariable("agentId") String agentId) {
+        User actor = roleGuard.requireSuperAdmin();
+        return Response.makeOKRsp(upgradeService.upgrade(agentId, actor.getUserId()));
     }
 
     @GetMapping("/connectivity")

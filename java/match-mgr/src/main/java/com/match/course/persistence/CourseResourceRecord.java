@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 @TableName("course_resource")
 public class CourseResourceRecord {
     @TableId(value = "resource_id", type = IdType.INPUT) private String resourceId;
-    private String courseId; private String resourceType; private String name; private String storageKey;
+    private String courseId; private String resourceType; private String chapterId; private String practiceTool; private String name; private String storageKey;
     private Long contentLength; private String sha256; private String mimeType; private Integer sortOrder;
     private Boolean enabled; private Integer createdBy; private LocalDateTime createdAt; private LocalDateTime updatedAt;
 }

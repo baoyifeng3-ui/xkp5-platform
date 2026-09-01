@@ -1,0 +1,1 @@
+ALTER TABLE image_artifact MODIFY sha256 CHAR(64) NULL;

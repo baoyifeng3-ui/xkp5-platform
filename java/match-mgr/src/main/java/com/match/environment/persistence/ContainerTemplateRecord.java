@@ -18,6 +18,7 @@ public class ContainerTemplateRecord {
     private String componentType;
     private Boolean enabled;
     private String imageReference;
+    private String imageDigest;
     private String runtimeName;
     private String restartPolicy;
     private String portsJson;
@@ -27,6 +28,7 @@ public class ContainerTemplateRecord {
     private Integer cpuLimitMillis;
     private Long memoryLimitBytes;
     private Boolean gpuEnabled;
+    private Boolean mpsEnabled;
     private Integer gpuComputePercent;
     private Long gpuMemoryLimitBytes;
     private String configFingerprint;

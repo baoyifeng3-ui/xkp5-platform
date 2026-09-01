@@ -88,6 +88,7 @@ public class TestPaperController {
     @PostMapping("addAnswer")
     public ResponseResult<Object> addAnswer(AnswerSheet answerSheet, MultipartFile[] files,
                                             String[] retainedImages) {
+        participantAccessGuard.requireCompetitionStarted();
         participantAccessGuard.requireParticipant();
         answerSheet.setUserId(StpUtil.getLoginIdAsInt());
         Subject subject = subjectManagementService.requireSubject(answerSheet.getSubjectId());
@@ -130,6 +131,7 @@ public class TestPaperController {
 
     @PostMapping("submit")
     public ResponseResult<Object> submit(String testPaperType) {
+        participantAccessGuard.requireCompetitionStarted();
         participantAccessGuard.requireParticipant();
         String activePaper = systemSettingService.getActivePaper();
         if (activePaper.isEmpty() || testPaperType == null
@@ -180,6 +182,7 @@ public class TestPaperController {
 
     @GetMapping("getAnswer")
     public ResponseResult<Object> getAnswer(User user,Subject subject) {
+            participantAccessGuard.requireCompetitionStarted();
             user.setUserId(StpUtil.getLoginIdAsInt());
             String activePaper = systemSettingService.getActivePaper();
             if (activePaper.isEmpty()) {

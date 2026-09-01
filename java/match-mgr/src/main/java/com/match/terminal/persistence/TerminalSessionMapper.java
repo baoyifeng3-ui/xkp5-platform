@@ -9,6 +9,12 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public interface TerminalSessionMapper {
+    @Update("UPDATE processing_agent_terminal_session SET polling_output_cursor=#{cursor},updated_at=#{now} WHERE session_id=#{sessionId} AND polling_output_cursor=#{previous}")
+    int advanceOutputCursor(@Param("sessionId") String sessionId, @Param("previous") long previous,
+                            @Param("cursor") long cursor, @Param("now") LocalDateTime now);
+
+    @Update("UPDATE processing_agent_terminal_session SET state='ACTIVE',active_at=#{now},updated_at=#{now} WHERE session_id=#{sessionId} AND state='WAITING_AGENT'")
+    int markPollingActive(@Param("sessionId") String sessionId,@Param("now") LocalDateTime now);
     @Select("SELECT * FROM processing_agent_terminal_session "
             + "WHERE session_id = #{sessionId} LIMIT 1")
     TerminalSessionRecord selectById(@Param("sessionId") String sessionId);

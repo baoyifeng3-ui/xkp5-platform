@@ -14,7 +14,7 @@
     width: 100px !important;
 }
 
-.el-carousel__item h3 {
+.detect-page .el-carousel__item h3 {
     color: #475669;
     font-size: 14px;
     opacity: 0.75;
@@ -22,28 +22,28 @@
     margin: 0;
 }
 
-.el-carousel__item:nth-child(2n) {
+.detect-page .el-carousel__item:nth-child(2n) {
     background-color: #99a9bf;
 }
 
-.el-carousel__item:nth-child(2n+1) {
+.detect-page .el-carousel__item:nth-child(2n+1) {
     background-color: #d3dce6;
 }
 
-.el-carousel {
+.detect-page .el-carousel {
     width: 900px;
     margin: 0 auto;
 }
 
-.light .el-carousel {
+.detect-page .light .el-carousel {
     background-color: #022f5d !important;
 }
 
-.el-carousel__item {
+.detect-page .el-carousel__item {
     background-color: transparent !important;
 }
 
-.el-carousel__item img {
+.detect-page .el-carousel__item img {
     width: auto;
     max-height: 460px;
     left: 0;

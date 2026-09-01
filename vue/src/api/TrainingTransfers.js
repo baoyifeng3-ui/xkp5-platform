@@ -1,0 +1,1 @@
+import request from '@/utils/request';export const uploadTrainingDataset=(environmentId,file,onUploadProgress)=>{const data=new FormData();data.append('environmentId',environmentId);data.append('file',file);return request.post('/training-transfers',data,{timeout:0,onUploadProgress})};export const listTrainingTransfers=()=>request.get('/training-transfers')
