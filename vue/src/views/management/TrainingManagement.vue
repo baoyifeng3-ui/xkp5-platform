@@ -344,7 +344,15 @@ export default {
     async remove(v) {
       await this.$confirm("确认强制删除该环境及服务器容器？", "删除", { type: "warning" });
       await deleteAdminTrainingEnvironment(v.environmentId);
-      await this.load();
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await this.load();
+        if (!this.environments.some(item => item.environmentId === v.environmentId)) {
+          this.$message.success("环境及服务器容器已删除");
+          return;
+        }
+      }
+      this.$message.warning("删除命令已提交，服务器尚未确认容器删除");
     },
     async removeGroup(group) {
       await this.$confirm(

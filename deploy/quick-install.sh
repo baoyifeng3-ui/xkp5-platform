@@ -14,6 +14,7 @@ Usage: quick-install.sh [options]
   --source-dir DIR              Prepared XKP5 source/release directory
   --install-dir DIR             Install target (default /opt/xkp5-platform)
   --compose-file FILE           Compose filename in source (default compose.prod.yml)
+  --ubuntu-version VERSION      Required Ubuntu version (default 22.04)
   --server-ip IP                Fixed management IPv4
   --license-public-keys VALUE   keyId=base64X509PublicKey pairs
   --configure-ufw               Open 19140/tcp and 19443/tcp
@@ -26,6 +27,7 @@ EOF
 source_dir=
 install_dir=/opt/xkp5-platform
 compose_file=compose.prod.yml
+ubuntu_version=22.04
 server_ip=
 license_public_keys=
 configure_ufw=0
@@ -37,6 +39,7 @@ while (($#)); do
     --source-dir) source_dir=${2:-}; shift 2 ;;
     --install-dir) install_dir=${2:-}; shift 2 ;;
     --compose-file) compose_file=${2:-}; shift 2 ;;
+    --ubuntu-version) ubuntu_version=${2:-}; shift 2 ;;
     --server-ip) server_ip=${2:-}; shift 2 ;;
     --license-public-keys) license_public_keys=${2:-}; shift 2 ;;
     --configure-ufw) configure_ufw=1; shift ;;
@@ -51,7 +54,8 @@ done
 [[ -r /etc/os-release ]] || die '/etc/os-release is missing'
 # shellcheck disable=SC1091
 . /etc/os-release
-[[ ${ID:-} == ubuntu && ${VERSION_ID:-} == 22.04 ]] || die 'Ubuntu 22.04 is required'
+[[ $ubuntu_version == 20.04 || $ubuntu_version == 22.04 ]] || die "Unsupported Ubuntu version: $ubuntu_version"
+[[ ${ID:-} == ubuntu && ${VERSION_ID:-} == "$ubuntu_version" ]] || die "Ubuntu $ubuntu_version is required"
 [[ $(dpkg --print-architecture) == amd64 ]] || die 'amd64 is required'
 
 for command_name in docker curl openssl htpasswd install findmnt ip realpath; do
@@ -100,22 +104,27 @@ agent_tls_dir=/etc/xkp/agent-tls
 registry_tls_dir=/etc/xkp/registry-tls
 registry_auth_dir=/etc/xkp/registry-auth
 registry_secrets_dir=/etc/xkp/registry-secrets
-mkdir -p "$config_dir" "$agent_tls_dir" "$registry_tls_dir" "$registry_auth_dir" "$registry_secrets_dir"
-chmod 0700 "$config_dir" "$registry_tls_dir" "$registry_auth_dir" "$registry_secrets_dir"
+code_server_tls_dir=/etc/xkp/code-server-tls
+mkdir -p "$config_dir" "$agent_tls_dir" "$registry_tls_dir" "$registry_auth_dir" "$registry_secrets_dir" "$code_server_tls_dir"
+chmod 0700 "$config_dir" "$registry_tls_dir" "$registry_auth_dir" "$registry_secrets_dir" "$code_server_tls_dir"
 
 db_password=$(openssl rand -hex 32)
-competition_key=$(openssl rand -hex 32)
+competition_key=$(openssl rand -base64 32 | tr -d '\n')
 registry_password=$(openssl rand -hex 32)
 registry_user=xkp-importer
 
 host_identity_script="$install_dir/deploy/host-identity.sh"
 agent_ca_script="$install_dir/deploy/agent-ca.sh"
+code_server_ca_script="$install_dir/deploy/code-server-ca.sh"
 [[ -x $host_identity_script ]] || host_identity_script="$install_dir/host-identity.sh"
 [[ -x $agent_ca_script ]] || agent_ca_script="$install_dir/agent-ca.sh"
-[[ -x $host_identity_script && -x $agent_ca_script ]] || die 'Host identity or Agent CA script is missing'
+[[ -x $code_server_ca_script ]] || code_server_ca_script="$install_dir/code-server-ca.sh"
+[[ -x $host_identity_script && -x $agent_ca_script && -x $code_server_ca_script ]] || die 'Host identity or TLS script is missing'
 log 'Initializing host identity and Agent TLS'
 XKP_HOST_IDENTITY_OUTPUT=/etc/xkp/host-identity.json "$host_identity_script"
 "$agent_ca_script" --management-ip "$server_ip" --output "$agent_tls_dir"
+"$code_server_ca_script" --ca-dir "$code_server_tls_dir" --agent-id bootstrap --agent-ip "$server_ip"
+rm -rf "$code_server_tls_dir/agents"
 
 log 'Creating internal Registry TLS and credentials'
 openssl genrsa -out "$registry_tls_dir/ca.key" 4096 >/dev/null 2>&1
@@ -165,7 +174,12 @@ TERMINAL_AGENT_RELAY_URL=wss://$server_ip:19443/terminal/v1/agent
 XKP_AGENT_MANAGEMENT_URL=https://$server_ip:19443
 XKP_LICENSE_PUBLIC_KEYS=$license_public_keys
 XKP_AGENT_TLS_DIR=$agent_tls_dir
+XKP_CODE_SERVER_TLS_DIR=$code_server_tls_dir
+XKP_CODE_SERVER_ROOT_CA_FILE=$code_server_tls_dir/rootCA.pem
+XKP_CODE_SERVER_CA_KEY_FILE=$code_server_tls_dir/ca.key
 XKP_AGENT_PACKAGE_DIR=$install_dir/xkp-agent
+MATCH_SSH_BRIDGE_URL=${MATCH_SSH_BRIDGE_URL:-http://127.0.0.1:19245}
+MATCH_SSH_BRIDGE_TOKEN=${MATCH_SSH_BRIDGE_TOKEN:-xkp5-development-ssh-bridge}
 XKP_REGISTRY_IMAGE=$registry_image
 XKP_REGISTRY_IMPORTER_IMAGE=$registry_importer_image
 XKP_REGISTRY_TLS_DIR=$registry_tls_dir

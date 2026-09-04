@@ -1,6 +1,6 @@
 <template>
   <el-dialog title="部署模型到 T100" :visible.sync="visible" width="640px">
-    <p>从代码容器的 <code>/home/student</code> 选择文件，部署到 <code>/usr/local/zy-T100/utils_x86/models/A</code>。</p>
+    <p>模型文件部署到 <code>/usr/local/zy-T100/utils_x86/models/A</code>，配置文件部署到 <code>/usr/local/zy-T100/utils_x86</code>。</p>
     <el-form label-width="90px">
       <el-form-item label="模型文件">
         <el-select v-model="modelPath" filterable placeholder="请选择模型文件">

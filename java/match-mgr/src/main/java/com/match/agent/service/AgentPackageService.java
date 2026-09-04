@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.util.zip.GZIPOutputStream;
 import com.match.terminal.service.SshBridgeService;
@@ -24,16 +25,22 @@ public class AgentPackageService {
     private final Path packageRoot;
     private final Path caFile;
     private final String managementUrl;
+    private final Path codeServerCaFile;
+    private final Path codeServerRootCaFile;
     private SshBridgeService sshBridgeService;
 
     public AgentPackageService(RegistrationTokenService tokenService,
                                @Value("${xkp.agent.package-root:/opt/xkp-agent-package}") String packageRoot,
                                @Value("${xkp.agent.ca-file:/etc/xkp/agent-tls/ca.crt}") String caFile,
-                               @Value("${xkp.agent.management-url:https://172.16.33.182:19443}") String managementUrl) {
+                               @Value("${xkp.agent.management-url:https://172.16.33.182:19443}") String managementUrl,
+                               @Value("${xkp.code-server.ca-key-file:/etc/xkp/code-server-tls/ca.key}") String codeServerCaFile,
+                               @Value("${xkp.code-server.root-ca-file:/etc/xkp/code-server-tls/rootCA.pem}") String codeServerRootCaFile) {
         this.tokenService = tokenService;
         this.packageRoot = Paths.get(packageRoot).toAbsolutePath().normalize();
         this.caFile = Paths.get(caFile).toAbsolutePath().normalize();
         this.managementUrl = managementUrl;
+        this.codeServerCaFile = Paths.get(codeServerCaFile).toAbsolutePath().normalize();
+        this.codeServerRootCaFile = Paths.get(codeServerRootCaFile).toAbsolutePath().normalize();
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -56,6 +63,9 @@ public class AgentPackageService {
         if (!Files.isRegularFile(caFile)) {
             throw new IllegalArgumentException("Agent CA 证书不存在，请先配置管理平台 Agent CA");
         }
+        if (!Files.isRegularFile(codeServerCaFile) || !Files.isRegularFile(codeServerRootCaFile)) {
+            throw new IllegalArgumentException("Code-server TLS 根证书不可用");
+        }
         if (sshBridgeService == null) throw new IllegalStateException("管理服务器 SSH 服务不可用");
         String managementSshPublicKey = sshBridgeService.publicKey();
         RegistrationTokenView token = tokenService.create(actorUserId, request.getLabel());
@@ -63,7 +73,9 @@ public class AgentPackageService {
         String workspace = request.getWorkspace() == null || request.getWorkspace().trim().isEmpty()
                 ? "/srv/xkp" : request.getWorkspace().trim();
         ByteArrayOutputStream output = new ByteArrayOutputStream();
+        Path leafDir = null;
         try (GZIPOutputStream gzip = new GZIPOutputStream(output)) {
+            leafDir = codeServerLeaf(request.getServerIp());
             addFile(gzip, "dist/xkp-agent-linux-amd64", packageRoot.resolve("dist/xkp-agent-linux-amd64"), 0755);
             addFile(gzip, "deploy/install.sh", packageRoot.resolve("deploy/install.sh"), 0755);
             addFile(gzip, "deploy/one-click-install.sh", packageRoot.resolve("deploy/one-click-install.sh"), 0755);
@@ -71,12 +83,16 @@ public class AgentPackageService {
             addFile(gzip, "deploy/verify.sh", packageRoot.resolve("deploy/verify.sh"), 0755);
             addFile(gzip, "deploy/xkp-agent.service", packageRoot.resolve("deploy/xkp-agent.service"), 0644);
             addFile(gzip, "deploy/ca.crt", caFile, 0644);
+            addFile(gzip, "deploy/code-cert.pem", leafDir.resolve("code-cert.pem"), 0644);
+            addFile(gzip, "deploy/code-cert-key.pem", leafDir.resolve("code-cert-key.pem"), 0600);
             addText(gzip, "deploy/management-ssh.pub", managementSshPublicKey + "\n", 0644);
             addText(gzip, "install-server.sh", wrapper(token.getToken(), displayName, workspace), 0755);
             addText(gzip, "INSTALL.txt", instructions(displayName, request.getServerIp()), 0644);
             gzip.write(new byte[1024]);
         } catch (IOException exception) {
             throw new IllegalStateException("Agent 部署包生成失败", exception);
+        } finally {
+            if (leafDir != null) try { Files.walk(leafDir).sorted(java.util.Comparator.reverseOrder()).forEach(path -> { try { Files.deleteIfExists(path); } catch (IOException ignored) { } }); } catch (IOException ignored) { }
         }
         return new PackageArtifact(output.toByteArray(), safeFileName(displayName) + "-xkp-agent.tar.gz");
     }
@@ -95,6 +111,7 @@ public class AgentPackageService {
                 + "chmod 600 \"$ssh_home/.ssh/authorized_keys\"\n"
                 + "exec bash deploy/install.sh --binary dist/xkp-agent-linux-amd64 "
                 + "--management-url " + shellQuote(managementUrl) + " --ca deploy/ca.crt "
+                + "--code-server-cert deploy/code-cert.pem --code-server-key deploy/code-cert-key.pem "
                 + "--registration-token " + shellQuote(token) + " --display-name "
                 + shellQuote(displayName) + " --workspace " + shellQuote(workspace) + "\n";
     }
@@ -113,6 +130,24 @@ public class AgentPackageService {
             while ((read = input.read(buffer)) != -1) { output.write(buffer, 0, read); written += read; }
             writePadding(output, written);
         }
+    }
+
+    private Path codeServerLeaf(String ip) {
+        if (ip == null || !ip.matches("(?:[0-9]{1,3}\\.){3}[0-9]{1,3}")) throw new IllegalArgumentException("处理服务器 IP 无效");
+        String[] octets = ip.split("\\."); for (String octet : octets) if (Integer.parseInt(octet) > 255) throw new IllegalArgumentException("处理服务器 IP 无效");
+        try {
+            Path dir = Files.createTempDirectory("xkp-code-server-leaf-"); Path config = dir.resolve("openssl.cnf");
+            Files.write(config, ("[req]\ndistinguished_name=dn\nreq_extensions=ext\nprompt=no\n[dn]\nCN=" + ip + "\n[ext]\nsubjectAltName=IP:" + ip + "\nextendedKeyUsage=serverAuth\n").getBytes(StandardCharsets.UTF_8), StandardOpenOption.CREATE);
+            run("openssl", "genrsa", "-out", dir.resolve("code-cert-key.pem").toString(), "3072");
+            run("openssl", "req", "-new", "-key", dir.resolve("code-cert-key.pem").toString(), "-out", dir.resolve("leaf.csr").toString(), "-config", config.toString());
+            run("openssl", "x509", "-req", "-sha256", "-days", "825", "-in", dir.resolve("leaf.csr").toString(), "-CA", codeServerRootCaFile.toString(), "-CAkey", codeServerCaFile.toString(), "-CAcreateserial", "-out", dir.resolve("code-cert.pem").toString(), "-extfile", config.toString(), "-extensions", "ext");
+            return dir;
+        } catch (Exception error) { throw new IllegalStateException("Code-server 证书签发失败", error); }
+    }
+
+    private static void run(String... command) throws IOException, InterruptedException {
+        Process process = new ProcessBuilder(command).redirectErrorStream(true).start(); byte[] output = process.getInputStream().readAllBytes();
+        if (process.waitFor() != 0) throw new IOException(new String(output, StandardCharsets.UTF_8));
     }
 
     public Path upgradeBinary() {

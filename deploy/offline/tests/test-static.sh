@@ -65,6 +65,35 @@ grep -q 'host-identity.sh' "$OFFLINE_DIR/build-release.sh" \
   || fail "Release build must include host-identity.sh"
 grep -q 'agent-ca.sh' "$OFFLINE_DIR/build-release.sh" \
   || fail "Release build must include agent-ca.sh"
+grep -q 'registry-data.tar.gz' "$OFFLINE_DIR/build-release.sh" \
+  || fail "Release build must snapshot uploaded Registry images"
+grep -q 'registry-staging.tar.gz' "$OFFLINE_DIR/build-release.sh" \
+  || fail "Release build must snapshot image deployment archives"
+grep -q 'registry-staging.tar.gz' "$OFFLINE_DIR/_common.sh" \
+  || fail "Offline restore must restore image deployment archives"
+[[ -f "$OFFLINE_DIR/sanitize-portable-seed.sql" ]] \
+  || fail "Portable seed sanitizer is missing"
+grep -q 'sanitize-portable-seed.sql' "$OFFLINE_DIR/build-release.sh" \
+  || fail "Full release must sanitize its exported database snapshot"
+for table in training_environment container_template processing_agent image_deployment \
+  processing_agent_terminal_session platform_license platform_installation; do
+  grep -q "DELETE FROM $table" "$OFFLINE_DIR/sanitize-portable-seed.sql" \
+    || fail "Portable seed sanitizer must clear $table"
+done
+grep -q "SET mode = 'TRAINING'" "$OFFLINE_DIR/sanitize-portable-seed.sql" \
+  || fail "Portable seed sanitizer must reset platform mode"
+grep -q "Source platform must be in TRAINING mode" "$OFFLINE_DIR/build-release.sh" \
+  || fail "Full release must reject snapshots captured in competition mode"
+grep -q 'archive_sha256=.*sha256sum.*final_archive' "$REPO_ROOT/deploy/quick-offline-release.sh" \
+  || fail "Quick release must calculate the final archive checksum"
+grep -q 'expected_archive_sha256=.*archive_sha256' "$REPO_ROOT/deploy/quick-offline-release.sh" \
+  || fail "Quick release must write the archive checksum into its installer"
+grep -q 'restore_registry_archive' "$OFFLINE_DIR/_common.sh" \
+  || fail "Offline helpers must restore uploaded Registry images"
+grep -q 'restore_registry_archive' "$REPO_ROOT/install-xkp5-offline.sh" \
+  || fail "Quick offline install must restore uploaded Registry images"
+grep -q 'Expected 7 running containers' "$OFFLINE_DIR/verify.sh" \
+  || fail "Offline verification must include Registry services"
 grep -q 'host-identity.sh' "$OFFLINE_DIR/install.sh" \
   || fail "Offline install must initialize the host identity"
 

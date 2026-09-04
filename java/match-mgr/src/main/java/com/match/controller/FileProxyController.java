@@ -24,6 +24,9 @@ public class FileProxyController {
         else if (lower.endsWith(".png")) type = MediaType.IMAGE_PNG;
         else if (lower.endsWith(".webp")) type = MediaType.parseMediaType("image/webp");
         else if (lower.endsWith(".pdf")) type = MediaType.APPLICATION_PDF;
+        else if (lower.endsWith(".txt") || lower.endsWith(".csv") || lower.endsWith(".log") || lower.endsWith(".md")) type = MediaType.TEXT_PLAIN;
+        else if (lower.endsWith(".json")) type = MediaType.APPLICATION_JSON;
+        else if (lower.endsWith(".html") || lower.endsWith(".htm")) type = MediaType.TEXT_HTML;
         return ResponseEntity.ok().cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS)).contentType(type)
                 .body(FastDFSClient.downloadBytes(key));
     }

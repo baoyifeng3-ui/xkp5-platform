@@ -31,8 +31,11 @@ public class ResourceFileDeliveryService {
     }
 
     public AgentCommandView deliverPublicFile(String fileId, String environmentId, Integer userId) {
-        PlatformFileRecord file = files.selectScoped(fileId, "PUBLIC", null);
-        if (file == null) throw new ResourceOperationException(404, "FILE_NOT_FOUND", "公共资源不存在");
+        return deliverFile(fileId, environmentId, userId, "PUBLIC");
+    }
+    public AgentCommandView deliverFile(String fileId, String environmentId, Integer userId, String space) {
+        PlatformFileRecord file = files.selectScoped(fileId, space, space.equals("HOMEWORK") ? userId : null);
+        if (file == null) throw new ResourceOperationException(404, "FILE_NOT_FOUND", "资源不存在");
         TrainingEnvironmentRecord environment = environments.selectForUpdate(environmentId);
         if (environment == null || !userId.equals(environment.getUserId())) {
             throw new ResourceOperationException(403, "ENVIRONMENT_NOT_OWNED", "实训环境不存在或不属于当前用户");
@@ -43,12 +46,12 @@ public class ResourceFileDeliveryService {
         }
         try {
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("environmentId", environmentId); payload.put("resourceId", fileId);
-            payload.put("resourceType", "PUBLIC"); payload.put("storageKey", file.getStorageKey());
-            payload.put("targetPath", environment.getWorkspaceRelativePath() + "/public-resources/" + file.getFileName());
-            return commands.requestEnvironmentCommand(agent, "DELIVER_COURSE_RESOURCE",
+            payload.put("downloadPath", "/agent/v1/files/" + file.getStorageKey());
+            payload.put("targetRelativePath", environment.getWorkspaceRelativePath() + "/resource-downloads/" + file.getFileName());
+            payload.put("sha256", file.getSha256());
+            return commands.requestEnvironmentCommand(agent, "TRANSFER_FILE",
                     objectMapper.writeValueAsString(payload), userId, "USER",
-                    environmentId + ":PUBLIC_RESOURCE:" + fileId + ":" + file.getSha256());
+                    environmentId + ":RESOURCE:" + fileId);
         } catch (ResourceOperationException error) {
             throw error;
         } catch (Exception error) {

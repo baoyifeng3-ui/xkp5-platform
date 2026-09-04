@@ -39,7 +39,7 @@ public class ActiveClassSessionService {
         java.util.List<TrainingEnvironmentRecord> rows = environments.selectByCourse(courseId);
         if (rows == null || rows.isEmpty()) throw new IllegalArgumentException("该课程尚未创建实训环境");
         requireOnlineOrIgnored(rows, ignoreOffline);
-        ActiveClassSessionRecord session = sessions.selectCurrentForUpdate();
+        ActiveClassSessionRecord session = currentForUpdate();
         session.setEnvironmentId(null); session.setEnvironmentName(null); session.setCourseId(courseId); session.setEditorTool(normalizeTool(editorTool)); session.setActive(true);
         session.setStartedBy(actorId); session.setStartedAt(LocalDateTime.now()); session.setUpdatedAt(LocalDateTime.now());
         sessions.activate(null, null, courseId, session.getEditorTool(), actorId, session.getUpdatedAt());
@@ -53,7 +53,7 @@ public class ActiveClassSessionService {
         java.util.List<TrainingEnvironmentRecord> rows = environments.selectIndependentByName(environmentName);
         if (rows == null || rows.isEmpty()) throw new IllegalArgumentException("独立实训环境不存在");
         requireOnlineOrIgnored(rows, ignoreOffline);
-        ActiveClassSessionRecord session = sessions.selectCurrentForUpdate();
+        ActiveClassSessionRecord session = currentForUpdate();
         session.setEnvironmentId(null); session.setEnvironmentName(environmentName); session.setCourseId(null); session.setEditorTool(normalizeTool(editorTool)); session.setActive(true);
         session.setStartedBy(actorId); session.setStartedAt(LocalDateTime.now()); session.setUpdatedAt(LocalDateTime.now());
         sessions.activate(null, environmentName, null, session.getEditorTool(), actorId, session.getUpdatedAt());
@@ -140,16 +140,27 @@ public class ActiveClassSessionService {
         TrainingEnvironmentRecord environment = environments.selectForUpdate(environmentId);
         if (environment == null || !"COURSE".equals(environment.getEnvironmentType()))
             throw new IllegalArgumentException("请选择课程实训环境");
-        ActiveClassSessionRecord session = sessions.selectCurrentForUpdate();
+        ActiveClassSessionRecord session = currentForUpdate();
         session.setEnvironmentId(environmentId); session.setEnvironmentName(environment.getEnvironmentName()); session.setCourseId(environment.getCourseId()); session.setEditorTool("VSCODE");
         session.setActive(true); session.setStartedBy(actorId); session.setStartedAt(LocalDateTime.now());
         session.setUpdatedAt(LocalDateTime.now()); sessions.activate(environmentId, environment.getEnvironmentName(), environment.getCourseId(),
                 session.getEditorTool(), actorId, session.getUpdatedAt()); return session;
     }
     @Transactional public ActiveClassSessionRecord stop(Integer actorId) {
-        ActiveClassSessionRecord session = sessions.selectCurrentForUpdate();
+        ActiveClassSessionRecord session = currentForUpdate();
         session.setActive(false); session.setEnvironmentId(null); session.setEnvironmentName(null); session.setCourseId(null); session.setEditorTool(null);
         session.setStartedBy(actorId); session.setUpdatedAt(LocalDateTime.now()); sessions.deactivate(actorId, session.getUpdatedAt());
+        return session;
+    }
+
+    private ActiveClassSessionRecord currentForUpdate() {
+        sessions.ensureCurrent();
+        ActiveClassSessionRecord session = sessions.selectCurrentForUpdate();
+        if (session == null) {
+            session = new ActiveClassSessionRecord();
+            session.setSessionKey("CURRENT"); session.setActive(false); session.setUpdatedAt(LocalDateTime.now());
+            sessions.insert(session);
+        }
         return session;
     }
 }

@@ -178,8 +178,6 @@ public class AdminUserManagementService {
         boolean assignSlots = request.getAgentIds() != null && !request.getAgentIds().isEmpty();
         List<ProcessingEnvironmentSlotRecord> freeSlots = !assignSlots
                 ? Collections.emptyList() : accountSlotService.lockFreeSlots(request.getAgentIds());
-        if (assignSlots && freeSlots.size() < request.getCount())
-            throw new IllegalArgumentException("所选服务器空闲槽位不足");
         List<User> existingUsers = userMapper.selectList(
                 Wrappers.<User>lambdaQuery().orderByAsc(User::getUserId));
         int nextSequence = nextSequence(existingUsers);
@@ -199,7 +197,7 @@ public class AdminUserManagementService {
             announcementFieldService.saveCustomValues(user.getUserId(), request.getCustomFields(), actorId);
             AdminUserView view = toView(user, team);
             view.setInitialPassword(initialPassword);
-            if (assignSlots) {
+            if (assignSlots && index < freeSlots.size()) {
                 ProcessingEnvironmentSlotRecord slot = freeSlots.get(index);
                 accountSlotService.bind(user.getUserId(), slot.getSlotId(), actorId);
                 view.setSlotId(slot.getSlotId()); view.setSlotNumber(slot.getSlotNumber());

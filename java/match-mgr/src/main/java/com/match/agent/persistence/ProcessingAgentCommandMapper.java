@@ -9,6 +9,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public interface ProcessingAgentCommandMapper extends BaseMapper<ProcessingAgentCommandRecord> {
+    @Update("UPDATE processing_agent_command SET state='FAILED', active_dedup_key=NULL, completed_at=#{now}, result_code='CANCELLED_BY_ENVIRONMENT_DELETE', result_message='Cancelled because environment was deleted', updated_at=#{now} WHERE agent_id=#{agentId} AND state IN ('PENDING','LEASED','RUNNING') AND JSON_UNQUOTE(JSON_EXTRACT(payload_json,'$.environmentId'))=#{environmentId}")
+    int cancelEnvironmentCommands(@Param("agentId") String agentId, @Param("environmentId") String environmentId, @Param("now") LocalDateTime now);
     @Select("SELECT * FROM processing_agent_command "
             + "WHERE BINARY command_id = BINARY #{commandId} "
             + "AND BINARY agent_id = BINARY #{agentId} AND BINARY state = BINARY 'RUNNING' "

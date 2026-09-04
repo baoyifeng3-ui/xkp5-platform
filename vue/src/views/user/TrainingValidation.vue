@@ -145,7 +145,7 @@ export default {
         if (!image) throw new Error("图片内容为空");
         const response = await this.$axios.post(
           `http://${t100Url}/api/v2/t100`,
-          { image, name: "training/validation.jpg" }
+          { image, name: "training/validation.jpg", paperType: /^[A-Z]$/.test(this.$store.state.Match.activePaper) ? this.$store.state.Match.activePaper : "A" }
         );
         if (!response.data || Number(response.data.code) !== 1)
           throw new Error(

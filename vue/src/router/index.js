@@ -301,13 +301,14 @@ router.beforeEach((to, from, next) => {
     return next(landingRoute());
   }
   const classPolicy = getClassPolicy();
-  if (getRole() === "USER" && classPolicy.active === true && classPolicy.courseId && to.path === "/training-environment") {
+  const trainingMode = getPlatformMode() === "TRAINING";
+  if (trainingMode && getRole() === "USER" && classPolicy.active === true && classPolicy.courseId && to.path === "/training-environment") {
     return next({ path: "/course-platform", query: { courseId: classPolicy.courseId } });
   }
   const selectedClassCourse = getRole() === "USER" && classPolicy.active === true && classPolicy.courseId &&
     to.path === "/course-platform" && String(to.query.courseId || "") === String(classPolicy.courseId);
   if (
-    getRole() === "USER" &&
+    trainingMode && getRole() === "USER" &&
     classPolicy.active === true &&
     !selectedClassCourse &&
     ![

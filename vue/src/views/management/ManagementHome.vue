@@ -15,15 +15,17 @@
           }}</el-button
         >
         <el-button
-          type="primary"
+          :type="classInSession ? 'info' : 'primary'"
           icon="el-icon-video-play"
+          :disabled="classInSession"
           @click="openClassDialog"
-          >一键上课</el-button
+          >{{ classInSession ? "上课中" : "一键上课" }}</el-button
         >
         <el-button
-          type="warning"
+          :type="classInSession ? 'warning' : 'info'"
           icon="el-icon-video-pause"
           :loading="classStopping"
+          :disabled="!classInSession"
           @click="stopAllClasses"
           >一键下课</el-button
         >
@@ -213,7 +215,7 @@
         ><el-button
           type="primary"
           :loading="classStarting"
-          @click="startSelectedClass"
+          @click.native="startSelectedClass"
           >确认上课</el-button
         ></span
       ></el-dialog
@@ -401,6 +403,7 @@ export default {
         });
       return Object.values(groups);
     },
+    classInSession() { return Boolean(this.classStatus && this.classStatus.active); },
     attendanceHasName() { return Boolean(this.attendance && (this.attendance.rows || []).some(x => x.name)); },
   },
   mounted() {
@@ -510,14 +513,16 @@ export default {
         : date.toLocaleString("zh-CN", { hour12: false });
     },
     environmentLabel(item) {
-      return `${item.environmentName || "实训环境"} · 用户 ${item.userId} · ${
+      return `${item.environmentName || "实训环境"} · ${
+        item.userName || item.name || item.userId || "未指定用户"
+      } · ${
         item.actualState || "未知状态"
       }`;
     },
     async openClassDialog() {
       const result = await listAdminTrainingEnvironments();
       this.classEnvironments = (result.data || []).filter(
-        (item) => item.userId != null
+        (item) => item.environmentType === "COURSE"
       );
       this.classForm = { target: "", editorTool: "VSCODE", attendance: false };
       this.classDialog = true;

@@ -188,6 +188,7 @@ export default {
     }
     this.renderDrawer()
     this.loadCompetitionHelp()
+    if (this.$route.query && this.$route.query.showHelp === '1') this.isShowTips = true
     if (this.previewOnly) this.loadSubjects()
     else Promise.all([this.loadSubjects(), this.loadSubmissionStatus()])
   },
@@ -314,30 +315,11 @@ export default {
     },
     async onAnswerEnvironment (item) {
       if (this.previewOnly) return
-      const environmentWindow = window.open('', '_blank')
+      const practicalUrl = `${window.location.origin}${window.location.pathname}#/competition-practical?tool=${encodeURIComponent(item.subject.point || '')}&title=${encodeURIComponent(item.subject.subjectName || '')}&answering=${encodeURIComponent((item.subject.answering || []).join ? item.subject.answering.join('；') : (item.subject.answering || ''))}&screenshot=${encodeURIComponent(item.subject.screenshotRequirement || '')}`
+      const environmentWindow = window.open(practicalUrl, '_blank')
       if (!environmentWindow) {
         this.$message.error('浏览器阻止了环境窗口，请允许本站打开新窗口')
-        return
       }
-      let environment
-      try {
-        environment = await this.$store.dispatch('Match/trainUrl')
-      } catch (error) {
-        environmentWindow.close()
-        this.$message.error((error && error.message) || '比赛实训环境启动失败')
-        return
-      }
-      const target = {
-        code: environment.editorUrl,
-        cvat: environment.annotationUrl,
-        t100: environment.t100Url
-      }[item.subject.point]
-      if (!target) {
-        environmentWindow.close()
-        this.$message.error('当前题目没有可用的答题环境')
-        return
-      }
-      environmentWindow.location.href = /^https?:\/\//.test(target) ? target : `http://${target}`
     },
     handleTips () {
       this.isShowTips = !this.isShowTips

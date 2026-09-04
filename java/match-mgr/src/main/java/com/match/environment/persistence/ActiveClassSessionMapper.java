@@ -5,8 +5,11 @@ import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 import org.apache.ibatis.annotations.Param;
 import java.time.LocalDateTime;
+import org.apache.ibatis.annotations.Insert;
 
 public interface ActiveClassSessionMapper extends BaseMapper<ActiveClassSessionRecord> {
+    @Insert("INSERT IGNORE INTO active_class_session(session_key, active, updated_at) VALUES ('CURRENT', 0, UTC_TIMESTAMP(3))")
+    int ensureCurrent();
     @Select("SELECT * FROM active_class_session WHERE session_key = 'CURRENT' FOR UPDATE")
     ActiveClassSessionRecord selectCurrentForUpdate();
     @Select("SELECT * FROM active_class_session WHERE session_key = 'CURRENT'")

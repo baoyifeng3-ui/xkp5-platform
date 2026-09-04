@@ -119,7 +119,7 @@ const actions = {
             commit("SET_TOKEN", r.data.tokenValue)
             sessionStorage.setItem('userId', r.data.loginId)
             commit("SET_USER_INFO", r.data)
-            if (r.data.role === 'USER') {
+            if (r.data.role === 'USER' && r.data.platformMode !== 'COMPETITION') {
                 try { const policy = await getUserClassPolicy(); setClassPolicy(policy.data || {}) } catch (error) { setClassPolicy({}) }
             }
             try {
@@ -171,6 +171,9 @@ const actions = {
             commit("SET_URL", r.data)
             return r.data
         }
+        const code = r && r.data && r.data.readinessCode
+        if (!r || !r.data || r.data.readiness === 'UNBOUND') throw new Error('当前账号未绑定比赛环境')
+        if (code === 'COMPETITION_ENVIRONMENT_NOT_CREATED') throw new Error('比赛环境尚未创建，请联系超级管理员')
         throw new Error('比赛实训环境启动失败，请稍后重试')
     },
     async getTeamUser ({ commit }) {

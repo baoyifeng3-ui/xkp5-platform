@@ -33,7 +33,7 @@ require_command docker
 require_command curl
 
 running_count=$(compose_at "$install_dir" ps --status running -q | wc -l | tr -d ' ')
-[[ "$running_count" == 5 ]] || die "Expected 5 running containers; found $running_count"
+[[ "$running_count" == 7 ]] || die "Expected 7 running containers; found $running_count"
 
 mysql_id=$(compose_at "$install_dir" ps -q mysql)
 mysql_health=$(docker inspect --format '{{.State.Health.Status}}' "$mysql_id")
@@ -70,10 +70,13 @@ table_count=$(compose_at "$install_dir" exec -T mysql sh -c \
 if (( snapshot_check )); then
   dataset_count=$(find "$install_dir/runtime/dataset" -type f | wc -l | tr -d ' ')
   scoring_count=$(find "$install_dir/runtime/scoring" -type f | wc -l | tr -d ' ')
-  fastdfs_count=$(find "$install_dir/runtime/fastdfs/storage_data/data" -type f 2>/dev/null | wc -l | tr -d ' ')
+  fastdfs_count=$(find "$install_dir/runtime/fastdfs/storage_data" -type f 2>/dev/null | wc -l | tr -d ' ')
+  registry_count=$(docker run --rm -v "${XKP_REGISTRY_VOLUME_NAME:-match-v2_registry_data}:/source:ro" \
+    "${MATCH_REGISTRY_IMAGE:-registry:2}" sh -c 'find /source -type f | wc -l' | tr -d ' ')
   [[ "$dataset_count" == "$MATCH_DATASET_FILE_COUNT" ]] || die "Dataset file count mismatch"
   [[ "$scoring_count" == "$MATCH_SCORING_FILE_COUNT" ]] || die "Scoring file count mismatch"
   [[ "$fastdfs_count" == "$MATCH_FASTDFS_FILE_COUNT" ]] || die "FastDFS file count mismatch"
+  [[ "$registry_count" == "$MATCH_REGISTRY_FILE_COUNT" ]] || die "Registry file count mismatch"
   if [[ -n "${MATCH_FASTDFS_SAMPLE_PATH:-}" ]]; then
     curl -fsS "http://127.0.0.1:$frontend_port$MATCH_FASTDFS_SAMPLE_PATH" >/dev/null \
       || die "FastDFS sample is unavailable: $MATCH_FASTDFS_SAMPLE_PATH"

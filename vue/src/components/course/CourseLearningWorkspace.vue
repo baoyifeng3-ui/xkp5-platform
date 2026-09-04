@@ -83,11 +83,16 @@
         class="workspace-divider"
         role="separator"
         aria-label="调整课程资料和实训环境宽度"
-        @mousedown="beginResize"
+        @pointerdown="beginResize"
       />
       <div v-if="trainingVisible" class="training-pane">
         <div v-if="busy" class="workspace-status">
-          <i class="el-icon-loading" /><span>实训环境正在启动...</span>
+          <div class="workspace-progress-panel">
+            <i class="el-icon-loading" />
+            <strong>{{ startStage }}</strong>
+            <el-progress :percentage="startProgress" :stroke-width="10" class="workspace-progress" />
+            <span>启动进度 {{ startProgress }}%</span>
+          </div>
         </div>
         <iframe
           v-else-if="embeddedUrl"
@@ -114,6 +119,7 @@ export default {
     embeddedTitle: { type: String, default: "" },
     embeddedKey: { type: Number, default: 0 },
     busy: Boolean,
+    startProgress: { type: Number, default: 0 },
   },
   data: () => ({ splitRatio: 34, resizing: false, fullscreen: false }),
   computed: {
@@ -139,6 +145,12 @@ export default {
         : state === "ERROR" || state === "DEGRADED"
         ? "danger"
         : "info";
+    },
+    startStage() {
+      if (this.startProgress < 15) return "正在提交启动任务"
+      if (this.startProgress < 60) return "正在创建实训容器"
+      if (this.startProgress < 95) return "正在等待环境依赖就绪"
+      return "正在完成环境启动"
     },
   },
   mounted() {
@@ -169,8 +181,11 @@ export default {
     beginResize(event) {
       event.preventDefault();
       this.resizing = true;
-      document.addEventListener("mousemove", this.resize);
-      document.addEventListener("mouseup", this.endResize);
+      if (event.currentTarget.setPointerCapture) {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }
+      document.addEventListener("pointermove", this.resize);
+      document.addEventListener("pointerup", this.endResize);
     },
     resize(event) {
       if (!this.resizing || !this.$refs.body) return;
@@ -185,8 +200,8 @@ export default {
     },
     endResize() {
       this.resizing = false;
-      document.removeEventListener("mousemove", this.resize);
-      document.removeEventListener("mouseup", this.endResize);
+      document.removeEventListener("pointermove", this.resize);
+      document.removeEventListener("pointerup", this.endResize);
     },
     async toggleFullscreen() {
       if (document.fullscreenElement) await document.exitFullscreen();
@@ -250,6 +265,7 @@ export default {
 .workspace-divider {
   background: var(--ui-border);
   cursor: col-resize;
+  touch-action: none;
 }
 .workspace-divider:hover {
   background: var(--ui-primary);
@@ -270,6 +286,10 @@ export default {
   min-height: 360px;
   color: var(--ui-muted);
 }
+.workspace-progress { width: min(420px, 80%); }
+.workspace-progress-panel { display: grid; width: min(460px, 82%); gap: 12px; justify-items: center; }
+.workspace-progress-panel strong { color: var(--ui-text); font-size: 16px; }
+.workspace-progress-panel .workspace-progress { width: 100%; }
 .course-learning-workspace:fullscreen,
 .course-learning-workspace.is-fullscreen {
   width: 100vw;

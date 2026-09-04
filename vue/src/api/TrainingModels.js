@@ -8,3 +8,5 @@ export const deployTrainingModel = (environmentId, data) =>
     })
 export const trainingModelCommand = commandId =>
     request.get(`/training-models/commands/${commandId}`)
+export const downloadCodeServerRootCa = () =>
+    request.get('/user/code-server/root-ca.pem', { responseType: 'blob' })

@@ -117,9 +117,18 @@ export function createDefaultCompetitionHelpItems (paperType, host) {
   const paper = /^[A-Z]$/.test(normalized) ? normalized : 'A'
   const root = `http://${host}/dataset/${paper}`
   return [
-    { left: `${root}/u1.tar.gz`, right: '数据集地址' },
-    { left: `${root}/01.jpg`, right: '数据增强亮度' },
-    { left: `${root}/02.jpg`, right: '数据增强灰度' },
+    { left: `${root}/requirements.txt`, right: '环境依赖清单' },
+    { left: `${root}/zy_od_1.0.tar.gz`, right: '目标检测库zy_od' },
+    { left: `${root}/zy_slim_1.0.tar.gz`, right: '目标检测库zy_slim' },
+    { left: `${root}/env_test.py`, right: '平台环境验证脚本' },
+    { left: `${root}/u1.tar.gz`, right: '原始数据集' },
+    { left: `${root}/denoise.py`, right: '中值滤波代码' },
+    { left: `${root}/noise.jpg`, right: '噪声原图' },
+    { left: `${root}/bright.py`, right: '数据增强亮度' },
+    { left: `${root}/dark.jpg`, right: '低亮度原图' },
+    { left: `${root}/pretrain_model.tar.gz`, right: '预训练模型压缩包' },
+    { left: `${root}/01.jpg`, right: '数据增强亮度示例' },
+    { left: `${root}/02.jpg`, right: '数据增强灰度示例' },
     { left: `${root}/Augmentation.py`, right: '数据增强程序' }
   ]
 }

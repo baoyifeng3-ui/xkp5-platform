@@ -140,6 +140,7 @@
         :embedded-title="workspaceEmbeddedTitle"
         :embedded-key="workspaceEmbeddedKey"
         :busy="workspaceBusy"
+        :start-progress="workspaceStartProgress"
         @tool="openWorkspaceTool"
         @refresh="workspaceEmbeddedKey += 1"
         @report="reportVisible = true"
@@ -416,6 +417,7 @@ export default {
     workspaceEmbeddedTitle: "",
     workspaceEmbeddedKey: 0,
     workspaceBusy: false,
+    workspaceStartProgress: 0,
     defaultCourseCover,
     loadError: "",
   }),
@@ -632,6 +634,7 @@ export default {
     },
     async waitForWorkspaceEnvironment(environmentId) {
       for (let attempt = 0; attempt < 30; attempt += 1) {
+        this.workspaceStartProgress = Math.min(95, 10 + attempt * 3);
         await this.reloadEnvironments();
         const environment = this.courseEnvironments.find((item) => item.environmentId === environmentId);
         if (environment && ["RUNNING", "ERROR"].includes(environment.actualState)) return environment;
@@ -645,11 +648,12 @@ export default {
       );
       if (!environment) return this.$message.warning("请选择实训环境");
       this.workspaceBusy = true;
+      this.workspaceStartProgress = 5;
       try {
         if (environment.actualState !== 'RUNNING') {
           this.workspaceEmbeddedUrl = "";
           this.workspaceEmbeddedTitle = "";
-          if (environment.actualState !== 'STARTING' && environment.actualState !== 'WAITING_DEPENDENCY') {
+          if (!['STARTING', 'CREATING', 'WAITING_DEPENDENCY'].includes(environment.actualState)) {
           await (this.adminDemo
             ? startAdminTrainingEnvironment(environment.environmentId)
             : startUserTrainingEnvironment(environment.environmentId));
@@ -665,7 +669,9 @@ export default {
             ? environment.jupyterUrl
             : environment.editorUrl;
         if (!url) return this.$message.warning("实训工具尚未就绪");
-        this.workspaceEmbeddedUrl = url;
+        this.workspaceEmbeddedUrl = tool === "VSCODE" && url.startsWith("http://")
+          ? `https://${url.slice(7)}`
+          : url;
         this.workspaceEmbeddedTitle =
           tool === "ANNOTATION"
             ? "图像标注"
@@ -673,8 +679,10 @@ export default {
             ? "Jupyter Notebook"
             : "VS Code";
         this.workspaceEmbeddedKey += 1;
+        this.workspaceStartProgress = 100;
       } finally {
         this.workspaceBusy = false;
+        this.workspaceStartProgress = 0;
       }
     },
     progressFor(resource) {

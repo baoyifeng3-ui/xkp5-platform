@@ -25,12 +25,13 @@
       :can-upload="adminDemo || space !== 'public'"
       :can-create-directory="adminDemo || space !== 'public'"
       :can-delete="canDelete"
-      :allow-deliver="!adminDemo && space === 'public'"
+      :allow-deliver="!adminDemo"
       @navigate="navigate"
       @open-directory="openDirectory"
       @create-directory="createDirectory"
       @upload="uploadVisible = true"
       @download="download"
+      @preview="preview"
       @deliver="deliver"
       @remove="remove"
     />
@@ -53,6 +54,7 @@ import {
   deleteResourceFile,
   deleteResourceDirectory,
   deliverPublicResource,
+  deliverResource,
 } from "@/api/ResourceSpaces";
 import { listUserTrainingEnvironments } from "@/api/TrainingEnvironments";
 export default {
@@ -126,6 +128,10 @@ export default {
         this.space,
         file.fileId
       );
+      const link = document.createElement("a"); link.href = result.data.downloadUrl; link.download = file.fileName || file.name; link.click();
+    },
+    async preview(file) {
+      const result = await getResourceDownload(this.adminDemo, this.space, file.fileId);
       window.open(result.data.downloadUrl, "_blank", "noopener");
     },
     async deliver(file) {
@@ -133,26 +139,8 @@ export default {
       const environments = result.data || [];
       if (!environments.length)
         return this.$message.warning("当前没有可用的实训环境");
-      const selection = await this.$prompt(
-        "输入需要接收文件的实训环境 ID：\n" +
-          environments
-            .map(
-              (item) =>
-                `${item.environmentId}（课程 ${
-                  item.courseLabel || item.courseId
-                }）`
-            )
-            .join("\n"),
-        "发送到实训环境",
-        {
-          inputValue: environments[0].environmentId,
-          inputValidator: (value) =>
-            environments.some((item) => item.environmentId === value) ||
-            "实训环境 ID 无效",
-        }
-      );
-      await deliverPublicResource(file.fileId, selection.value);
-      this.$message.success("资源下发任务已提交");
+      await deliverResource(this.space, file.fileId, environments[0].environmentId);
+      this.$message.success("文件已下载到实训环境：共享目录/resource-downloads/");
     },
     async remove(item) {
       await this.$confirm(

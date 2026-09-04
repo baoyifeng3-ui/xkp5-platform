@@ -42,6 +42,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 @Service
 public class AgentCommandService {
+    public void cancelEnvironmentCommands(String agentId, String environmentId) {
+        if (agentId == null || environmentId == null) return;
+        mapper.cancelEnvironmentCommands(agentId, environmentId, LocalDateTime.now(Clock.systemUTC()));
+    }
     static final String SHUTDOWN_SERVER = "SHUTDOWN_SERVER";
     static final String OPEN_ROOT_TERMINAL = "OPEN_ROOT_TERMINAL";
     static final String UPGRADE_AGENT = "UPGRADE_AGENT";

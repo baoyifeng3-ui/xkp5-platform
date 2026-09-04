@@ -23,6 +23,11 @@ for (const token of requiredViewText) {
   if (!view.includes(token)) throw new Error(`TrainingManagement.vue missing ${token}`)
 }
 
+const trainingEnvironment = fs.readFileSync(path.join(root, 'src/views/user/TrainingEnvironment.vue'), 'utf8')
+for (const token of ['item.environmentType !== "COMPETITION"', 'getUserInfo().userId', 'item.userName || item.name']) {
+  if (!trainingEnvironment.includes(token)) throw new Error(`TrainingEnvironment.vue missing ${token}`)
+}
+
 for (const token of ['listAdminEnvironmentTemplates', 'listAvailableEnvironmentPorts']) {
   if (!api.includes(token)) throw new Error(`TrainingEnvironments.js missing ${token}`)
 }

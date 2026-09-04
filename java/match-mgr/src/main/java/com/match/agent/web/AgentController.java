@@ -61,6 +61,16 @@ public class AgentController {
                 .body(new org.springframework.core.io.FileSystemResource(binary));
     }
 
+    @GetMapping("/files/**")
+    public ResponseEntity<byte[]> downloadFile(@RequestHeader("Authorization") String authorization,
+                                               javax.servlet.http.HttpServletRequest request) {
+        credentialService.authenticate(authorization);
+        String key = request.getRequestURI().substring("/agent/v1/files/".length());
+        if (!key.matches("[A-Za-z0-9._/-]+") || key.contains("..")) throw new IllegalArgumentException("文件地址无效");
+        return ResponseEntity.ok().contentType(org.springframework.http.MediaType.APPLICATION_OCTET_STREAM)
+                .body(com.match.util.dfs.FastDFSClient.downloadBytes(key));
+    }
+
     @PostMapping("/register")
     public AgentRegistrationResponse register(@RequestBody AgentRegistrationRequest request) {
         return registrationService.register(request);

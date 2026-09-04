@@ -5,10 +5,24 @@
         <h1>比赛实操</h1>
         <p>当前账号的图像标注与代码编辑环境</p>
       </div>
-      <el-tooltip content="刷新环境状态" placement="bottom">
-        <el-button icon="el-icon-refresh" circle :loading="loading" aria-label="刷新环境状态" @click="load" />
-      </el-tooltip>
+      <div class="practical-actions">
+        <el-button icon="el-icon-back" @click="backToAnswers">返回答题界面</el-button>
+        <el-button icon="el-icon-full-screen" @click="toggleFullscreen">全屏</el-button>
+        <el-button icon="el-icon-question" @click="openHelp">比赛帮助</el-button>
+        <el-button icon="el-icon-document" @click="viewPaper">查看赛题</el-button>
+      </div>
     </header>
+    <el-drawer title="比赛帮助" :visible.sync="helpVisible" size="420px">
+      <div class="practical-drawer-copy">{{ helpContent || "暂无比赛帮助信息" }}</div>
+    </el-drawer>
+    <el-drawer title="当前赛题" :visible.sync="paperVisible" size="520px">
+      <div class="practical-drawer-copy">
+        <h3>{{ paperTitle || "当前赛题" }}</h3>
+        <p v-if="paperAnswering">{{ paperAnswering }}</p>
+        <p v-if="paperScreenshot">截图要求：{{ paperScreenshot }}</p>
+        <p v-if="!paperAnswering && !paperScreenshot">当前题目未提供补充说明。</p>
+      </div>
+    </el-drawer>
     <ParticipantPreviewNotice v-if="previewOnly" class="practical-preview-notice" />
 
     <div v-if="loading && !environment" class="practical-state">
@@ -30,12 +44,8 @@
       <i class="el-icon-warning-outline" /><strong>比赛环境暂不可用</strong>
       <span>环境状态异常，请联系管理员</span>
     </div>
-    <div v-else-if="environment.readiness === 'RUNNING'" class="practical-ready">
-      <div class="ready-copy"><span class="ready-dot" /><div><strong>比赛环境已就绪</strong><small v-if="!previewOnly">槽位 {{ environment.slotNumber || '-' }}</small></div></div>
-      <div class="ready-actions">
-        <el-button type="primary" icon="el-icon-picture-outline" :disabled="previewOnly || !safeUrl(environment.annotationUrl)" @click="open(environment.annotationUrl)">打开图像标注</el-button>
-        <el-button icon="el-icon-edit-outline" :disabled="previewOnly || !safeUrl(environment.editorUrl)" @click="open(environment.editorUrl)">打开代码编辑器</el-button>
-      </div>
+    <div v-else-if="environment.readiness === 'RUNNING' && embeddedUrl" class="practical-ready">
+      <iframe :src="embeddedUrl" class="practical-frame" :title="embeddedTitle" allow="clipboard-read; clipboard-write" />
     </div>
     <div v-else class="practical-state is-error">
       <i class="el-icon-warning-outline" /><strong>无法确认比赛环境状态</strong>
@@ -45,31 +55,58 @@
 
 <script>
 import request from '@/utils/request'
-import { adminParticipantPreviewCompetitionEnvironmentApi } from '@/api/Match'
+import { adminParticipantPreviewCompetitionEnvironmentApi, competitionApi } from '@/api/Match'
 import ParticipantPreviewNotice from '@/components/ParticipantPreviewNotice.vue'
 import { getRole } from '@/utils/auth'
 const { isPreviewRoute } = require('@/services/participantPreview')
 
 export default {
   components: { ParticipantPreviewNotice },
-  data: () => ({ loading: false, environment: null }),
+  data: () => ({ loading: false, environment: null, openedRequestedTool: false, helpVisible: false, helpContent: '', paperVisible: false }),
   computed: {
     previewOnly () { return isPreviewRoute(this.$route, getRole()) }
   },
   mounted () { this.load() },
   methods: {
+    backToAnswers () { this.$router.push({ path: '/Question', query: { fromPractical: '1' } }) },
+    viewPaper () { this.paperVisible = true },
+    async openHelp () {
+      this.helpVisible = true
+      if (this.helpContent) return
+      try {
+        const result = await competitionApi()
+        this.helpContent = result.code === 200 && result.data ? String(result.data.competitionHelpContent || '') : ''
+      } catch (error) {
+        this.helpContent = ''
+      }
+    },
+    async toggleFullscreen () {
+      if (document.fullscreenElement) return document.exitFullscreen()
+      if (this.$el && this.$el.requestFullscreen) return this.$el.requestFullscreen()
+      return this.$message.warning('当前浏览器不支持全屏')
+    },
     async load () {
       if (this.loading) return
       this.loading = true
       try {
-        const result = this.previewOnly
-          ? await adminParticipantPreviewCompetitionEnvironmentApi()
-          : await request({ url: 'user/competition-environment', method: 'get' })
-        if (result.code === 200) this.environment = result.data || { readiness: 'UNBOUND' }
+        if (this.previewOnly) {
+          const result = await adminParticipantPreviewCompetitionEnvironmentApi()
+          if (result.code === 200) this.environment = result.data || { readiness: 'UNBOUND' }
+        } else {
+          this.environment = await this.$store.dispatch('Match/trainUrl')
+          this.openRequestedTool()
+        }
       } catch (error) {
-        this.environment = this.previewOnly
-          ? { readiness: 'DEGRADED' }
-          : { readiness: 'DEGRADED', readinessCode: 'COMPETITION_ENVIRONMENT_UNAVAILABLE' }
+        if (!this.previewOnly) {
+          try {
+            const result = await request({ url: 'user/competition-environment', method: 'get' })
+            if (result.code === 200 && result.data && result.data.readiness === 'RUNNING') {
+              this.environment = result.data
+              return
+            }
+          } catch (ignored) {}
+        }
+        this.environment = this.previewOnly ? { readiness: 'DEGRADED' } : { readiness: 'DEGRADED', readinessCode: 'COMPETITION_ENVIRONMENT_UNAVAILABLE' }
       } finally {
         this.loading = false
       }
@@ -83,6 +120,9 @@ export default {
         return ''
       }
     },
+    openRequestedTool () {
+      this.openedRequestedTool = true
+    },
     open (value) {
       if (this.previewOnly) return
       const target = this.safeUrl(value)
@@ -91,11 +131,26 @@ export default {
       }
     }
   }
+  ,computed: {
+    previewOnly () { return isPreviewRoute(this.$route, getRole()) },
+    embeddedUrl () {
+      if (!this.environment || this.environment.readiness !== 'RUNNING') return ''
+      return this.safeUrl({ cvat: this.environment.annotationUrl, code: this.environment.editorUrl, t100: this.environment.t100Url }[this.$route.query.tool])
+    },
+    embeddedTitle () { return this.$route.query.tool === 'cvat' ? '图像标注环境' : '代码编辑环境' }
+    ,paperTitle () { return this.$route.query.title || '' }
+    ,paperAnswering () { return this.$route.query.answering || '' }
+    ,paperScreenshot () { return this.$route.query.screenshot || '' }
+  }
 }
 </script>
 
 <style scoped>
 .competition-practical { min-height: calc(100vh - 116px); padding: 28px; color: var(--ui-text); background: var(--ui-page); box-sizing: border-box; }
+.competition-practical:fullscreen { display: flex; width: 100vw; height: 100vh; min-height: 0; padding: 20px 28px; flex-direction: column; overflow: hidden; }
+.competition-practical:fullscreen .practical-heading { width: 100%; max-width: none; flex: 0 0 auto; }
+.competition-practical:fullscreen .practical-ready { width: 100%; max-width: none; min-height: 0; flex: 1 1 auto; }
+.competition-practical:fullscreen .practical-frame { height: 100%; min-height: 0; }
 .practical-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; max-width: 980px; margin: 0 auto 20px; }
 .practical-preview-notice { max-width: 980px; margin-right: auto; margin-left: auto; box-sizing: border-box; }
 .practical-heading h1 { margin: 0; font-size: 24px; letter-spacing: 0; }
@@ -106,12 +161,16 @@ export default {
 .practical-state strong { font-size: 18px; }
 .practical-state span { max-width: 580px; color: var(--ui-muted); font-size: 13px; line-height: 1.7; }
 .practical-state.is-error i { color: #c45656; }
-.practical-ready { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.practical-ready { max-width: 1200px; min-height: calc(100vh - 190px); padding: 0; overflow: hidden; }
+.practical-frame { display: block; width: 100%; height: calc(100vh - 190px); min-height: 620px; border: 0; background: #fff; }
 .ready-copy { display: flex; align-items: center; gap: 13px; }
 .ready-copy strong, .ready-copy small { display: block; }
 .ready-copy strong { font-size: 18px; }
 .ready-copy small { margin-top: 6px; color: var(--ui-muted); }
 .ready-dot { width: 10px; height: 10px; background: #2f9d68; border-radius: 50%; box-shadow: 0 0 0 5px #dcf1e7; }
 .ready-actions { display: flex; gap: 10px; }
+.practical-drawer-copy { padding: 4px 24px 24px; color: var(--ui-text); line-height: 1.8; white-space: pre-wrap; word-break: break-word; }
+.practical-drawer-copy h3 { margin: 0 0 12px; font-size: 18px; }
+.practical-drawer-copy p { margin: 8px 0; }
 @media (max-width: 720px) { .competition-practical { padding: 18px 14px; } .practical-ready { align-items: stretch; flex-direction: column; } .ready-actions { flex-direction: column; } .ready-actions .el-button { width: 100%; margin-left: 0; } }
 </style>

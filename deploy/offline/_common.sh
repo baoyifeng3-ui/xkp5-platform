@@ -56,10 +56,10 @@ require_package() {
   local package_dir=$1
   local required
   for required in \
-    SHA256SUMS MANIFEST.txt release.env compose.offline.yml host-identity.sh \
+    SHA256SUMS MANIFEST.txt release.env compose.offline.yml host-identity.sh sanitize-portable-seed.sql \
     images/match-v2-images.tar.gz data/mysql.sql.gz \
     data/fastdfs-tracker.tar.gz data/fastdfs-storage.tar.gz \
-    data/dataset.tar.gz data/scoring.tar.gz; do
+    data/dataset.tar.gz data/scoring.tar.gz data/registry-data.tar.gz data/registry-staging.tar.gz; do
     [[ -f "$package_dir/$required" ]] || die "Release package is missing $required"
   done
 }
@@ -154,12 +154,24 @@ restore_file_archives() {
     "$runtime_dir/fastdfs/tracker_data" \
     "$runtime_dir/fastdfs/storage_data" \
     "$runtime_dir/dataset" \
-    "$runtime_dir/scoring"
+    "$runtime_dir/scoring" \
+    "$runtime_dir/registry/staging"
 
   tar --numeric-owner -xzf "$package_dir/data/fastdfs-tracker.tar.gz" -C "$runtime_dir/fastdfs/tracker_data"
   tar --numeric-owner -xzf "$package_dir/data/fastdfs-storage.tar.gz" -C "$runtime_dir/fastdfs/storage_data"
   tar --numeric-owner -xzf "$package_dir/data/dataset.tar.gz" -C "$runtime_dir/dataset"
   tar --numeric-owner -xzf "$package_dir/data/scoring.tar.gz" -C "$runtime_dir/scoring"
+  tar --numeric-owner -xzf "$package_dir/data/registry-staging.tar.gz" -C "$runtime_dir/registry/staging"
+}
+
+restore_registry_archive() {
+  local package_dir=$1
+  local volume=${XKP_REGISTRY_VOLUME_NAME:-match-v2_registry_data}
+  local registry_image=${MATCH_REGISTRY_IMAGE:-registry:2}
+  docker volume inspect "$volume" >/dev/null 2>&1 && die "Registry volume already exists: $volume"
+  docker volume create "$volume" >/dev/null
+  gzip -dc "$package_dir/data/registry-data.tar.gz" \
+    | docker run --rm -i -v "$volume:/target" "$registry_image" sh -c 'tar -xf - -C /target'
 }
 
 load_images() {

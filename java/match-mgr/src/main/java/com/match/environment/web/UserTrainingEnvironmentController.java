@@ -73,7 +73,7 @@ public class UserTrainingEnvironmentController {
                 String host = agent == null ? null : agent.getPrimaryIp();
                 for (EnvironmentPortAllocationRecord port : portMapper.selectByEnvironment(row.getEnvironmentId())) {
                     if (host == null) continue;
-                    String url = "http://" + host + ":" + port.getHostPort();
+                    String url = Integer.valueOf(9090).equals(port.getContainerPort()) ? "https://" + host + ":" + port.getHostPort() : "http://" + host + ":" + port.getHostPort();
                     if ("ANNOTATION".equals(port.getComponentType())) view.put("annotationUrl", url);
                     else if (Integer.valueOf(9090).equals(port.getContainerPort())) view.put("editorUrl", url);
                     else if (Integer.valueOf(8888).equals(port.getContainerPort())) view.put("jupyterUrl", url);

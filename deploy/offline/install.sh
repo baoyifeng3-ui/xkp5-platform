@@ -52,6 +52,7 @@ check_loaded_images "$MATCH_RELEASE_VERSION"
 install_control_files "$PACKAGE_DIR" "$install_dir" "$env_file"
 validate_install_config "$install_dir"
 restore_file_archives "$PACKAGE_DIR" "$install_dir"
+restore_registry_archive "$PACKAGE_DIR"
 
 log "Starting MySQL and FastDFS"
 compose_at "$install_dir" up -d mysql fastdfs-tracker fastdfs-storage
@@ -59,7 +60,7 @@ wait_for_mysql "$install_dir"
 restore_database "$PACKAGE_DIR" "$install_dir"
 
 log "Starting application services"
-compose_at "$install_dir" up -d java vue
+compose_at "$install_dir" up -d
 "$install_dir/verify.sh" --install-dir "$install_dir" --snapshot
 printf '%s\n' "$MATCH_RELEASE_VERSION" > "$install_dir/.installed-version"
 log "Installation completed: $MATCH_RELEASE_VERSION"

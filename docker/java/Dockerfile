@@ -7,7 +7,7 @@ RUN --mount=type=cache,id=match-maven-repository,target=/root/.m2 \
 FROM python:3.11-slim-bookworm
 ENV LANG=C.UTF-8 TZ=Asia/Shanghai
 RUN apt-get update \
-  && (apt-get install -y --no-install-recommends openjdk-17-jre-headless \
+  && (apt-get install -y --no-install-recommends openjdk-17-jre-headless openssl \
       || apt-get install -y --no-install-recommends openjdk-21-jre-headless) \
   && pip install --no-cache-dir numpy \
   && rm -rf /var/lib/apt/lists/*

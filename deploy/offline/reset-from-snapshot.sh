@@ -51,12 +51,15 @@ backup_dir="$install_dir/backups/reset-$timestamp"
 mkdir -p "$backup_dir"
 backup_database "$install_dir" "$backup_dir/mysql.sql.gz"
 tar --numeric-owner -czf "$backup_dir/runtime.tar.gz" -C "$install_dir/runtime" .
+docker run --rm -v "${XKP_REGISTRY_VOLUME_NAME:-match-v2_registry_data}:/source:ro" \
+  "${MATCH_REGISTRY_IMAGE:-registry:2}" sh -c 'tar -czf - -C /source .' > "$backup_dir/registry-data.tar.gz"
 install -m 0600 "$install_dir/.env" "$backup_dir/env"
 install -m 0644 "$install_dir/release.env" "$backup_dir/release.env"
 
 log "Stopping the existing installation"
 compose_at "$install_dir" down
 docker volume rm "$MYSQL_VOLUME"
+docker volume rm "${XKP_REGISTRY_VOLUME_NAME:-match-v2_registry_data}"
 
 runtime_dir="$install_dir/runtime"
 assert_safe_install_dir "$runtime_dir"
@@ -71,6 +74,7 @@ install -m 0755 "$PACKAGE_DIR/verify.sh" "$install_dir/verify.sh"
 install -m 0755 "$PACKAGE_DIR/uninstall.sh" "$install_dir/uninstall.sh"
 validate_install_config "$install_dir"
 restore_file_archives "$PACKAGE_DIR" "$install_dir"
+restore_registry_archive "$PACKAGE_DIR"
 
 compose_at "$install_dir" up -d mysql fastdfs-tracker fastdfs-storage
 wait_for_mysql "$install_dir"

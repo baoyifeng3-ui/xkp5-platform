@@ -76,7 +76,7 @@ public class ImageDeploymentService {
             // A failed delivery is historical data, not an active deployment. Older
             // records may still carry the slot key, so release that stale lock before
             // accepting a retry while keeping the record for audit/history views.
-            if ("FAILED".equals(active.getState())) {
+            if ("FAILED".equals(active.getState()) || "SUCCEEDED".equals(active.getState()) || "ROLLED_BACK".equals(active.getState())) {
                 deployments.clearActiveKeys(active.getDeploymentId());
                 active = null;
             }

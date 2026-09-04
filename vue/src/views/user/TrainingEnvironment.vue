@@ -64,6 +64,12 @@
         >
       </div>
     </div>
+    <section v-if="environmentStarting" class="standalone-start-progress">
+      <i class="el-icon-loading" />
+      <strong>实训环境正在启动</strong>
+      <el-progress :percentage="startProgress" :stroke-width="10" />
+      <span>启动进度 {{ startProgress }}%</span>
+    </section>
     <ParticipantPreviewNotice v-if="previewOnly" />
     <el-empty
       v-if="!loading && !currentEnvironment"
@@ -113,6 +119,7 @@
             @click="$refs.modelDeployment.open(currentEnvironment)"
             >模型部署</el-button
           >
+          <el-button size="mini" icon="el-icon-download" @click="downloadCodeServerRootCa">下载平台根证书</el-button>
         </div>
       </header>
       <div class="workspace-split">
@@ -158,11 +165,11 @@ import {
   deliverCourseResourceForUser,
 } from "@/api/Courses";
 import ParticipantPreviewNotice from "@/components/ParticipantPreviewNotice.vue";
-import { getRole } from "@/utils/auth";
-import { getUserName } from "@/utils/auth";
+import { getRole, getUserInfo, getUserName } from "@/utils/auth";
 import CourseReportEditor from "@/components/course/CourseReportEditor.vue";
 import DatasetUploadDialog from "@/components/training/DatasetUploadDialog.vue";
 import ModelDeploymentDialog from "@/components/training/ModelDeploymentDialog.vue";
+import { downloadCodeServerRootCa as downloadCodeServerRootCaFile } from "@/api/TrainingModels";
 const { isPreviewRoute } = require("@/services/participantPreview");
 export default {
   props: { adminDemo: { type: Boolean, default: false } },
@@ -179,6 +186,7 @@ export default {
     embeddedKey: 0,
     reportVisible: false,
     fullscreen: false,
+    startProgress: 0,
   }),
   computed: {
     previewOnly() {
@@ -198,6 +206,14 @@ export default {
         ) ||
         this.environments[0] ||
         null
+      );
+    },
+    environmentStarting() {
+      return Boolean(
+        this.currentEnvironment &&
+          ["STARTING", "CREATING", "WAITING_DEPENDENCY"].includes(
+            this.currentEnvironment.actualState
+          )
       );
     },
     currentCourse() {
@@ -227,6 +243,13 @@ export default {
     document.removeEventListener("fullscreenchange", this.fullscreenChanged);
   },
   methods: {
+    async downloadCodeServerRootCa() {
+      const response = await downloadCodeServerRootCaFile();
+      const url = URL.createObjectURL(new Blob([response.data], { type: "application/x-pem-file" }));
+      const link = document.createElement("a");
+      link.href = url; link.download = "rootCA.pem"; link.click();
+      URL.revokeObjectURL(url);
+    },
     async loadCourses() {
       if (this.previewOnly) return;
       const r = await (this.adminDemo ? listAdminCourses() : listUserCourses());
@@ -270,15 +293,23 @@ export default {
           ? call(!courseId)
           : call());
         const all = result.data || [];
-        this.environments = courseId
-          ? all.filter((item) => String(item.courseId) === String(courseId))
+        const currentUserId = getUserInfo().userId;
+        const scoped = this.adminDemo
+          ? all.filter(
+              (item) =>
+                String(item.userId) === String(currentUserId) &&
+                item.environmentType !== "COMPETITION"
+            )
           : all;
+        this.environments = courseId
+          ? scoped.filter((item) => String(item.courseId) === String(courseId))
+          : scoped;
         if (!this.adminDemoEnvironmentId && this.environments.length) {
           this.adminDemoEnvironmentId = this.environments[0].environmentId;
         }
         if (!this.previewOnly && courseId && !this.started) {
           const target = this.environments.find(
-            (item) => !["RUNNING", "STARTING"].includes(item.actualState)
+            (item) => !["RUNNING", "STARTING", "CREATING", "WAITING_DEPENDENCY"].includes(item.actualState)
           );
           if (target) {
             this.started = true;
@@ -289,10 +320,20 @@ export default {
             const refreshed = await (call === listUserTrainingEnvironments
               ? call(false)
               : call());
-            this.environments = (refreshed.data || []).filter(
-              (item) => String(item.courseId) === String(courseId)
+            const refreshedRows = refreshed.data || [];
+            this.environments = refreshedRows
+              .filter(
+                (item) =>
+                  (!this.adminDemo ||
+                    (String(item.userId) === String(currentUserId) &&
+                      item.environmentType !== "COMPETITION")) &&
+                  String(item.courseId) === String(courseId)
             );
           }
+        }
+        if (this.environmentStarting) {
+          this.startProgress = Math.max(this.startProgress, 5);
+          await this.waitForEnvironment(this.currentEnvironment.environmentId);
         }
       } finally {
         this.loading = false;
@@ -300,6 +341,7 @@ export default {
     },
     async waitForEnvironment(environmentId) {
       for (let attempt = 0; attempt < 30; attempt += 1) {
+        this.startProgress = Math.min(95, 10 + attempt * 3);
         const result = await (this.adminDemo
           ? listAdminTrainingEnvironments()
           : listUserTrainingEnvironments(false));
@@ -308,7 +350,10 @@ export default {
         if (environment) {
           const index = this.environments.findIndex((item) => item.environmentId === environmentId);
           if (index >= 0) this.$set(this.environments, index, environment);
-          if (environment.actualState === "RUNNING" || environment.actualState === "ERROR") return environment;
+          if (environment.actualState === "RUNNING" || environment.actualState === "ERROR") {
+            this.startProgress = environment.actualState === "RUNNING" ? 100 : 0;
+            return environment;
+          }
         }
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
@@ -318,7 +363,8 @@ export default {
       let environment = this.currentEnvironment;
       if (!environment) return;
       if (environment.actualState !== "RUNNING") {
-        if (environment.actualState !== "STARTING") {
+        this.startProgress = 5;
+        if (!["STARTING", "CREATING", "WAITING_DEPENDENCY"].includes(environment.actualState)) {
         await (this.adminDemo
           ? startAdminTrainingEnvironment(environment.environmentId)
           : startUserTrainingEnvironment(environment.environmentId));
@@ -338,6 +384,7 @@ export default {
     },
     openUrl(url, tool) {
       if (!url) return this.$message.warning("实训工具尚未就绪");
+      if (tool === "VSCODE" && url.startsWith("http://")) url = `https://${url.slice(7)}`;
       this.embeddedUrl = url;
       this.embeddedTitle =
         tool === "JUPYTER"
@@ -358,7 +405,8 @@ export default {
       this.fullscreen = document.fullscreenElement === this.$refs.workspace;
     },
     environmentLabel(item) {
-      return `用户 ${item.userName || item.userId} · ${
+      const owner = item.userName || item.name || (this.adminDemo ? getUserName() : "") || item.userId;
+      return `${owner} · ${
         item.environmentName || "实训环境"
       } · 槽位 ${item.slotNumber || "--"}`;
     },
@@ -415,6 +463,10 @@ export default {
   justify-content: flex-end;
   gap: 6px;
 }
+.standalone-start-progress { display: grid; width: min(520px, calc(100% - 32px)); margin: 80px auto 0; gap: 12px; justify-items: center; color: var(--ui-muted); }
+.standalone-start-progress i { color: var(--ui-primary); font-size: 24px; }
+.standalone-start-progress strong { color: var(--ui-text); font-size: 16px; }
+.standalone-start-progress .el-progress { width: 100%; }
 .tool-switch .el-button + .el-button {
   margin-left: 0;
 }

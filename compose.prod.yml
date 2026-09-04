@@ -107,6 +107,7 @@ services:
       MATCH_DB_NAME: ${MATCH_DB_NAME:-match}
       MATCH_DB_USER: ${MATCH_DB_USER:-root}
       MATCH_DB_PASSWORD: ${MATCH_DB_PASSWORD:?Set MATCH_DB_PASSWORD}
+      MATCH_COMPETITION_PASSWORD_KEY: ${MATCH_COMPETITION_PASSWORD_KEY:?Set MATCH_COMPETITION_PASSWORD_KEY}
       MATCH_PARTICIPANT_LOGIN_GATE_ENABLED: ${MATCH_PARTICIPANT_LOGIN_GATE_ENABLED:-true}
       MATCH_FASTDFS_TRACKER: fastdfs-tracker:22122
       MATCH_FASTDFS_HTTP: http://fastdfs-storage:8888/
@@ -123,6 +124,10 @@ services:
       XKP_AGENT_PACKAGE_ROOT: /opt/xkp-agent-package
       XKP_AGENT_CA_FILE: /etc/xkp/agent-tls/ca.crt
       XKP_AGENT_MANAGEMENT_URL: ${XKP_AGENT_MANAGEMENT_URL:?Set XKP_AGENT_MANAGEMENT_URL}
+      MATCH_SSH_BRIDGE_URL: ${MATCH_SSH_BRIDGE_URL:-http://127.0.0.1:19245}
+      MATCH_SSH_BRIDGE_TOKEN: ${MATCH_SSH_BRIDGE_TOKEN:-xkp5-development-ssh-bridge}
+      XKP_CODE_SERVER_ROOT_CA_FILE: ${XKP_CODE_SERVER_ROOT_CA_FILE:-/etc/xkp/code-server-tls/rootCA.pem}
+      XKP_CODE_SERVER_CA_KEY_FILE: ${XKP_CODE_SERVER_CA_KEY_FILE:-/etc/xkp/code-server-tls/ca.key}
     volumes:
       - ./download/dataset:/data/dataset
       - ./python:/data/scoring
@@ -131,6 +136,7 @@ services:
       - ${XKP_REGISTRY_STAGING_DIR:-./runtime/registry/staging}:/data/registry-staging
       - ${XKP_AGENT_PACKAGE_DIR:-../xkp-agent}:/opt/xkp-agent-package:ro
       - ${XKP_AGENT_TLS_DIR:-/etc/xkp/agent-tls}:/etc/xkp/agent-tls:ro
+      - ${XKP_CODE_SERVER_TLS_DIR:-/etc/xkp/code-server-tls}:/etc/xkp/code-server-tls:ro
     ports:
       - "${MATCH_BACKEND_PORT:-19141}:19141"
     depends_on:

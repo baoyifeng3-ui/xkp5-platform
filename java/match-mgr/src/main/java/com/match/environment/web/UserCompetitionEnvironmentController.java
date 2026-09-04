@@ -46,18 +46,18 @@ public class UserCompetitionEnvironmentController {
     @GetMapping
     public ResponseResult<Object> current() {
         User participant = roleGuard.requireUser();
-        if (operations != null) {
-            return Response.makeOKRsp(currentTrainingEnvironment(participant));
-        }
-        return Response.makeOKRsp(service.currentForUser(participant));
+        TrainingEnvironmentRecord environment = competitionEnvironmentOrNull(participant.getUserId());
+        return Response.makeOKRsp(environment == null
+                ? service.currentForUser(participant) : currentTrainingEnvironment(participant));
     }
 
     @PostMapping("/start")
     public ResponseResult<Object> start() {
         User participant = roleGuard.requireUser();
-        TrainingEnvironmentRecord environment = competitionEnvironment(participant.getUserId());
-        return Response.makeOKRsp(operations.start(environment.getEnvironmentId(),
-                participant.getUserId(), "USER"));
+        TrainingEnvironmentRecord environment = competitionEnvironmentOrNull(participant.getUserId());
+        if (environment == null) return Response.makeOKRsp(service.currentForUser(participant));
+        operations.start(environment.getEnvironmentId(), participant.getUserId(), "USER");
+        return Response.makeOKRsp(currentTrainingEnvironment(participant));
     }
 
     private java.util.Map<String, Object> currentTrainingEnvironment(User participant) {
@@ -71,7 +71,7 @@ public class UserCompetitionEnvironmentController {
         ProcessingAgentRecord agent = agents.selectForManagement(environment.getAgentId());
         if (agent == null || agent.getPrimaryIp() == null) return view;
         for (EnvironmentPortAllocationRecord port : ports.selectByEnvironment(environment.getEnvironmentId())) {
-            String address = "http://" + agent.getPrimaryIp() + ":" + port.getHostPort();
+            String address = (Integer.valueOf(9090).equals(port.getContainerPort()) ? "https://" : "http://") + agent.getPrimaryIp() + ":" + port.getHostPort();
             if ("ANNOTATION".equals(port.getComponentType())) view.put("annotationUrl", address);
             else if (Integer.valueOf(9090).equals(port.getContainerPort())) view.put("editorUrl", address);
             else if (Integer.valueOf(8888).equals(port.getContainerPort())) view.put("jupyterUrl", address);
@@ -82,9 +82,16 @@ public class UserCompetitionEnvironmentController {
     }
 
     private TrainingEnvironmentRecord competitionEnvironment(int userId) {
+        TrainingEnvironmentRecord environment = competitionEnvironmentOrNull(userId);
+        if (environment == null) throw new IllegalArgumentException("当前账号未创建比赛实训环境");
+        return environment;
+    }
+
+    private TrainingEnvironmentRecord competitionEnvironmentOrNull(int userId) {
+        if (operations == null) return null;
         return operations.listForUser(userId).stream()
                 .filter(row -> "COMPETITION".equals(row.getEnvironmentType()))
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("当前账号未创建比赛实训环境"));
+                .orElse(null);
     }
 }

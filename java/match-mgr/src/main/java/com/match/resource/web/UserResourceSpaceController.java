@@ -77,6 +77,13 @@ public class UserResourceSpaceController {
         return Response.makeOKRsp(deliveries.deliverPublicFile(fileId, environmentId,
                 actor.getUserId()));
     }
+    @PostMapping("/{space}/files/{fileId}/deliver")
+    public ResponseResult<Object> deliverAny(@PathVariable String space, @PathVariable String fileId,
+                                             @RequestParam String environmentId) {
+        User actor = roles.requireUser();
+        ResourceSpaceType type = participantSpace(space);
+        return Response.makeOKRsp(deliveries.deliverFile(fileId, environmentId, actor.getUserId(), type.name()));
+    }
     private ResourceSpaceType participantSpace(String value) {
         ResourceSpaceType type = ResourceSpaceType.parse(value);
         if (type == ResourceSpaceType.COURSE) throw new AdminAccessException("普通用户不显示课程资源库");

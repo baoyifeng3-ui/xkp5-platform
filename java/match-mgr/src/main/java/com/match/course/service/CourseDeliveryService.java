@@ -81,10 +81,10 @@ public class CourseDeliveryService {
         if (existing == null) deliveryMapper.insert(delivery); else deliveryMapper.updateById(delivery);
         try {
             java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
-            payload.put("environmentId", environmentId); payload.put("resourceId", resourceId);
-            payload.put("resourceType", resource.getResourceType()); payload.put("storageKey", resource.getStorageKey());
-            payload.put("targetPath", environment.getWorkspaceRelativePath() + "/course-resources/" + resource.getResourceId());
-            AgentCommandView command = commandService.requestEnvironmentCommand(agent, "DELIVER_COURSE_RESOURCE",
+            payload.put("downloadPath", "/agent/v1/files/" + resource.getStorageKey());
+            payload.put("targetRelativePath", environment.getWorkspaceRelativePath() + "/course-resources/" + resource.getResourceId());
+            payload.put("sha256", resource.getSha256());
+            AgentCommandView command = commandService.requestEnvironmentCommand(agent, "TRANSFER_FILE",
                     objectMapper.writeValueAsString(payload), actorUserId, actorRole,
                     environmentId + ":RESOURCE:" + resourceId + ":" + resource.getSha256());
             delivery.setCommandId(command.getCommandId()); delivery.setState("DISPATCHED"); delivery.setUpdatedAt(LocalDateTime.now());
@@ -128,7 +128,7 @@ public class CourseDeliveryService {
     @EventListener
     @Transactional
     public void onCommandFinished(AgentCommandFinishedEvent event) {
-        if (!"DELIVER_COURSE_RESOURCE".equals(event.getCommandType())) return;
+        if (!"TRANSFER_FILE".equals(event.getCommandType())) return;
         CourseDeliveryRecord delivery = deliveryMapper.selectByCommandId(event.getCommandId());
         if (delivery == null || "SUCCEEDED".equals(delivery.getState()) || "FAILED".equals(delivery.getState())) return;
         delivery.setState(event.isSuccess() ? "SUCCEEDED" : "FAILED");

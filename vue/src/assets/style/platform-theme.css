@@ -54,11 +54,41 @@
   border-color: var(--ui-primary);
 }
 
+.platform-app .el-button--primary:not(.is-plain),
+.platform-app .el-button--primary:not(.is-plain):hover,
+.platform-app .el-button--primary:not(.is-plain):focus,
+.platform-app .el-button--primary.is-disabled:not(.is-plain),
+.platform-app .el-button--primary.is-disabled:not(.is-plain):hover,
+.platform-app .el-button--primary.is-disabled:not(.is-plain):focus,
+.platform-app .el-button--primary:not(.is-plain) .el-icon-loading { color: #fff; }
+
+.one-click-class-button { position: relative; overflow: hidden; }
+.one-click-class-button.is-loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, .22);
+  pointer-events: none;
+}
+
 .platform-app .el-button--primary:hover,
 .platform-app .el-button--primary:focus {
   background: var(--ui-primary-strong);
   border-color: var(--ui-primary-strong);
 }
+
+.platform-app .el-button--primary,
+.platform-app .el-button--primary.is-plain,
+.platform-app .el-button--primary.is-disabled,
+.platform-app .el-button--primary.is-disabled:hover,
+.platform-app .el-button--primary.is-disabled:focus {
+  color: #fff !important;
+  background: var(--ui-primary);
+  border-color: var(--ui-primary);
+}
+.platform-app .el-button--primary i,
+.platform-app .el-button--primary span { color: inherit !important; }
+.platform-app .el-button--primary.is-disabled { opacity: .55; }
 
 .platform-app .el-input__inner,
 .platform-app .el-textarea__inner {

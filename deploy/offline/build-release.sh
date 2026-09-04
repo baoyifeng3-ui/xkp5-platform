@@ -61,6 +61,7 @@ env_value() {
 
 registry_image=$(env_value XKP_REGISTRY_IMAGE registry:2)
 registry_importer_image=$(env_value XKP_REGISTRY_IMPORTER_IMAGE xkp5/registry-importer:latest)
+registry_volume_name=$(env_value XKP_REGISTRY_VOLUME_NAME match-v2_registry_data)
 
 release_name="match-v2-$version"
 stage_dir="$output_dir/$release_name"
@@ -113,14 +114,22 @@ docker tag "$vue_image_id" "match-v2_vue:$version"
 
 check_loaded_images "$version" "$registry_image" "$registry_importer_image"
 
-log "Stopping application writes"
+log "Stopping application and Registry writes"
 source_stopped=1
-compose_source stop vue java
+compose_source stop vue java registry-importer registry
+
+platform_mode=$(compose_source exec -T mysql sh -c \
+  'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -Nse "SELECT mode FROM platform_mode WHERE singleton_id=1" "$MYSQL_DATABASE"')
+[[ "$platform_mode" == TRAINING ]] || die "Source platform must be in TRAINING mode before creating a portable release"
 
 log "Exporting MySQL"
 compose_source exec -T mysql sh -c \
   'exec mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction --routines --triggers --events "$MYSQL_DATABASE"' \
   | gzip -c > "$stage_dir/data/mysql.sql.gz"
+gzip -dc "$stage_dir/data/mysql.sql.gz" > "$stage_dir/data/mysql.sql"
+cat "$SCRIPT_DIR/sanitize-portable-seed.sql" >> "$stage_dir/data/mysql.sql"
+gzip -c "$stage_dir/data/mysql.sql" > "$stage_dir/data/mysql.sql.gz"
+rm -f "$stage_dir/data/mysql.sql"
 
 log "Stopping stateful services for the file snapshot"
 compose_source stop fastdfs-storage fastdfs-tracker mysql
@@ -129,6 +138,12 @@ tar --numeric-owner -czf "$stage_dir/data/fastdfs-tracker.tar.gz" -C "$REPO_ROOT
 tar --numeric-owner -czf "$stage_dir/data/fastdfs-storage.tar.gz" -C "$REPO_ROOT/fastdfs/storage_data" .
 tar --numeric-owner -czf "$stage_dir/data/dataset.tar.gz" -C "$REPO_ROOT/download/dataset" .
 tar --numeric-owner -czf "$stage_dir/data/scoring.tar.gz" -C "$REPO_ROOT/python" .
+registry_staging_dir=$(env_value XKP_REGISTRY_STAGING_DIR "$REPO_ROOT/runtime/registry/staging")
+mkdir -p "$registry_staging_dir"
+tar --numeric-owner -czf "$stage_dir/data/registry-staging.tar.gz" -C "$registry_staging_dir" .
+docker volume inspect "$registry_volume_name" >/dev/null 2>&1 || die "Registry volume not found: $registry_volume_name"
+docker run --rm -v "$registry_volume_name:/source:ro" "$registry_image" \
+  sh -c 'tar -czf - -C /source .' > "$stage_dir/data/registry-data.tar.gz"
 
 log "Exporting runtime images"
 docker save \
@@ -142,7 +157,9 @@ docker save \
 
 dataset_file_count=$(find "$REPO_ROOT/download/dataset" -type f | wc -l | tr -d ' ')
 scoring_file_count=$(find "$REPO_ROOT/python" -type f | wc -l | tr -d ' ')
-fastdfs_file_count=$(find "$REPO_ROOT/fastdfs/storage_data/data" -type f 2>/dev/null | wc -l | tr -d ' ')
+fastdfs_file_count=$(find "$REPO_ROOT/fastdfs/storage_data" -type f 2>/dev/null | wc -l | tr -d ' ')
+registry_file_count=$(docker run --rm -v "$registry_volume_name:/source:ro" "$registry_image" \
+  sh -c 'find /source -type f | wc -l' | tr -d ' ')
 git_commit=$(git -C "$REPO_ROOT" rev-parse HEAD)
 created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
@@ -157,9 +174,12 @@ fi
   printf 'MATCH_RELEASE_VERSION=%q\n' "$version"
   printf 'MATCH_RELEASE_GIT_COMMIT=%q\n' "$git_commit"
   printf 'MATCH_RELEASE_CREATED_AT=%q\n' "$created_at"
+  printf 'MATCH_RELEASE_DATA_MODE=FULL\n'
+  printf 'MATCH_RELEASE_DATABASE_PROFILE=PORTABLE_SEED\n'
   printf 'MATCH_DATASET_FILE_COUNT=%q\n' "$dataset_file_count"
   printf 'MATCH_SCORING_FILE_COUNT=%q\n' "$scoring_file_count"
   printf 'MATCH_FASTDFS_FILE_COUNT=%q\n' "$fastdfs_file_count"
+  printf 'MATCH_REGISTRY_FILE_COUNT=%q\n' "$registry_file_count"
   printf 'MATCH_FASTDFS_SAMPLE_PATH=%q\n' "$fastdfs_sample"
   printf 'MATCH_REGISTRY_IMAGE=%q\n' "$registry_image"
   printf 'MATCH_REGISTRY_IMPORTER_IMAGE=%q\n' "$registry_importer_image"
@@ -180,6 +200,8 @@ fi
   printf 'Dataset files: %s\n' "$dataset_file_count"
   printf 'Scoring files: %s\n' "$scoring_file_count"
   printf 'FastDFS storage files: %s\n' "$fastdfs_file_count"
+  printf 'Registry files: %s\n' "$registry_file_count"
+  printf 'Database profile: PORTABLE_SEED (runtime and host-bound records removed)\n'
 } > "$stage_dir/MANIFEST.txt"
 
 install -m 0644 "$REPO_ROOT/compose.offline.yml" "$stage_dir/compose.offline.yml"
@@ -187,6 +209,8 @@ install -m 0644 "$SCRIPT_DIR/.env.example" "$stage_dir/.env.example"
 install -m 0644 "$SCRIPT_DIR/README.md" "$stage_dir/README.md"
 install -m 0755 "$REPO_ROOT/deploy/host-identity.sh" "$stage_dir/host-identity.sh"
 install -m 0755 "$REPO_ROOT/deploy/agent-ca.sh" "$stage_dir/agent-ca.sh"
+install -m 0755 "$REPO_ROOT/deploy/code-server-ca.sh" "$stage_dir/code-server-ca.sh"
+install -m 0644 "$SCRIPT_DIR/sanitize-portable-seed.sql" "$stage_dir/sanitize-portable-seed.sql"
 for script_name in _common.sh install.sh upgrade.sh reset-from-snapshot.sh verify.sh uninstall.sh; do
   install -m 0755 "$SCRIPT_DIR/$script_name" "$stage_dir/$script_name"
 done
@@ -214,7 +238,7 @@ for _ in $(seq 1 60); do
 done
 [[ ${source_healthy:-0} == 1 ]] || die "Source services restarted but the backend health check failed"
 source_running_count=$(compose_source ps --status running -q | wc -l | tr -d ' ')
-[[ "$source_running_count" == 5 ]] || die "Source restart expected 5 running containers; found $source_running_count"
+[[ "$source_running_count" == 7 ]] || die "Source restart expected 7 running containers; found $source_running_count"
 
 log "Creating release archive"
 tar -czf "$archive_file" -C "$output_dir" "$release_name"

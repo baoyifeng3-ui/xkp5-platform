@@ -166,7 +166,7 @@ public class ResourceSpaceService {
         require(access.canList(space, role, actorId, ownerId), "无权下载该文件");
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("fileId", fileId); result.put("fileName", file.getFileName());
-        result.put("downloadUrl", storage.accessUrl(file.getStorageKey())); return result;
+        result.put("downloadUrl", "/api/files/" + file.getStorageKey()); return result;
     }
 
     public Map<String, Object> summary(ResourceSpaceType space) {

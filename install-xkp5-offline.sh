@@ -3,6 +3,8 @@ set -Eeuo pipefail
 umask 077
 
 die() { printf '[xkp5-offline] ERROR: %s\n' "$*" >&2; exit 1; }
+printf '[xkp5-offline] Installer v7\n'
+expected_archive_sha256=6382ca696bf6f25f1ac3e8af394c13895d7314ed1e70168b9c61987c9a827091
 usage() {
   cat <<'EOF'
 Usage: install-xkp5-offline.sh ARCHIVE [options]
@@ -39,8 +41,12 @@ done
 
 [[ $(id -u) -eq 0 ]] || die 'Run as root'
 [[ -f $archive ]] || die 'Offline archive is required'
+actual_archive_sha256=$(sha256sum "$archive" | awk '{print $1}')
+[[ $actual_archive_sha256 == "$expected_archive_sha256" ]] \
+  || die "Archive SHA256 mismatch: $actual_archive_sha256"
+printf '[xkp5-offline] Archive SHA256 verified\n'
 . /etc/os-release
-[[ ${ID:-} == ubuntu && ${VERSION_ID:-} == 22.04 ]] || die 'Ubuntu 22.04 is required'
+[[ ${ID:-} == ubuntu ]] || die 'Ubuntu is required'
 [[ $(dpkg --print-architecture) == amd64 ]] || die 'amd64 is required'
 if ((non_interactive)); then
   [[ -n $server_ip && -n $license_public_keys ]] || die 'Server IP and license public keys are required in non-interactive mode'
@@ -49,21 +55,45 @@ else
   [[ -n $license_public_keys ]] || read -r -p 'License public keys (keyId=base64): ' license_public_keys
 fi
 
-if tar -tzf "$archive" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then die 'Archive contains an unsafe path'; fi
+if tar -tf "$archive" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then die 'Archive contains an unsafe path'; fi
 extract_dir=$(mktemp -d /tmp/xkp5-offline.XXXXXX)
 trap 'rm -rf "$extract_dir"' EXIT
-tar -xzf "$archive" -C "$extract_dir"
+tar -xf "$archive" -C "$extract_dir"
 package_dir=$(find "$extract_dir" -mindepth 1 -maxdepth 1 -type d -print -quit)
 [[ -n $package_dir && -f $package_dir/SHA256SUMS ]] || die 'Invalid offline package'
-(cd "$package_dir" && sha256sum -c SHA256SUMS)
+package_name=$(basename "$package_dir")
+tar -xOf "$archive" "$package_name/release.env" > "$package_dir/release.env"
+for required in release.env compose.offline.yml sanitize-portable-seed.sql images/match-v2-images.tar.gz data/mysql.sql.gz data/registry-data.tar.gz data/registry-staging.tar.gz; do
+  [[ -f $package_dir/$required ]] || die "Package is missing $required"
+done
+find "$package_dir" -type f -name '*.sh' -exec sed -i 's/\r$//' {} +
+find "$package_dir" -type f -name '*.sh' -exec chmod 0755 {} +
+sed -i 's/\r$//' "$package_dir/release.env"
+package_ubuntu_version=$(sed -n 's/^MATCH_RELEASE_UBUNTU_VERSION=//p' "$package_dir/release.env")
+[[ $package_ubuntu_version == 20.04 || $package_ubuntu_version == 22.04 ]] || die 'Package Ubuntu version is missing or unsupported'
+[[ ${VERSION_ID:-} == "$package_ubuntu_version" ]] || die "Ubuntu $package_ubuntu_version is required by this package"
+package_data_mode=$(sed -n 's/^MATCH_RELEASE_DATA_MODE=//p' "$package_dir/release.env")
+[[ $package_data_mode == FULL ]] && restore_snapshot=1
 
 if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
   debs=("$package_dir"/docker-debs/*.deb)
   [[ -e ${debs[0]} ]] || die 'Bundled Docker packages are missing'
-  apt-get --no-download install -y "${debs[@]}"
+  dpkg -i "${debs[@]}" || true
+  apt-get --fix-broken --no-download install -y
 fi
 systemctl enable --now docker
 gzip -dc "$package_dir/images/match-v2-images.tar.gz" | docker load
+
+if [[ -d $install_dir ]] && find "$install_dir" -mindepth 1 -print -quit | grep -q .; then
+  if [[ -e /etc/xkp5/installed ]] \
+      || docker ps -a -q --filter 'label=com.docker.compose.project=match-v2' | grep -q . \
+      || [[ ! -f $install_dir/compose.offline.yml && ! -f $install_dir/release.env ]]; then
+    die "Install directory is not empty: $install_dir"
+  fi
+  incomplete_dir="$install_dir.incomplete-$(date +%Y%m%d-%H%M%S)"
+  mv "$install_dir" "$incomplete_dir"
+  printf '[xkp5-offline] Archived incomplete installation: %s\n' "$incomplete_dir"
+fi
 
 source_dir="$extract_dir/install-source"
 mkdir -p "$source_dir/deploy"
@@ -74,11 +104,15 @@ for file in host-identity.sh agent-ca.sh _common.sh verify.sh uninstall.sh upgra
   [[ -f $package_dir/$file ]] && install -m 0755 "$package_dir/$file" "$source_dir/$file"
 done
 cp -a "$package_dir/xkp-agent" "$source_dir/xkp-agent"
+sed -i '/^  java:/,/^  vue:/{/MATCH_DB_PASSWORD:/a\      MATCH_COMPETITION_PASSWORD_KEY: ${MATCH_COMPETITION_PASSWORD_KEY:?Set MATCH_COMPETITION_PASSWORD_KEY}
+}' "$source_dir/compose.offline.yml"
+sed -i 's#runtime/fastdfs/storage_data/data#runtime/fastdfs/storage_data#' "$source_dir/verify.sh"
 
 core_args=(
   --source-dir "$source_dir"
   --install-dir "$install_dir"
   --compose-file compose.offline.yml
+  --ubuntu-version "$package_ubuntu_version"
   --server-ip "$server_ip"
   --license-public-keys "$license_public_keys"
   --non-interactive
@@ -86,16 +120,18 @@ core_args=(
 ((configure_ufw)) && core_args+=(--configure-ufw)
 
 if ((!restore_snapshot)); then
-  "$package_dir/deploy/quick-install.sh" "${core_args[@]}"
+  bash "$package_dir/deploy/quick-install.sh" "${core_args[@]}"
   exit 0
 fi
 
-"$package_dir/deploy/quick-install.sh" "${core_args[@]}" --prepare-only
+bash "$package_dir/deploy/quick-install.sh" "${core_args[@]}" --prepare-only
+competition_key=$(openssl rand -base64 32 | tr -d '\n')
+sed -i "s|^MATCH_COMPETITION_PASSWORD_KEY=.*|MATCH_COMPETITION_PASSWORD_KEY=$competition_key|" "$install_dir/.env"
 # shellcheck source=/dev/null
 source "$package_dir/_common.sh"
-verify_package "$package_dir"
 load_release_env "$package_dir/release.env"
 restore_file_archives "$package_dir" "$install_dir"
+restore_registry_archive "$package_dir"
 log 'Starting MySQL and FastDFS for snapshot restore'
 compose_at "$install_dir" up -d mysql fastdfs-tracker fastdfs-storage
 wait_for_mysql "$install_dir"

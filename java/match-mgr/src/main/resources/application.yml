@@ -42,6 +42,12 @@ xkp:
     package-root: ${XKP_AGENT_PACKAGE_ROOT:/opt/xkp-agent-package}
     ca-file: ${XKP_AGENT_CA_FILE:/etc/xkp/agent-tls/ca.crt}
     management-url: ${XKP_AGENT_MANAGEMENT_URL:https://172.16.33.182:19443}
+  ssh-bridge:
+    url: ${MATCH_SSH_BRIDGE_URL:http://127.0.0.1:19245}
+    token: ${MATCH_SSH_BRIDGE_TOKEN:xkp5-development-ssh-bridge}
+  code-server:
+    root-ca-file: ${XKP_CODE_SERVER_ROOT_CA_FILE:/etc/xkp/code-server-tls/rootCA.pem}
+    ca-key-file: ${XKP_CODE_SERVER_CA_KEY_FILE:/etc/xkp/code-server-tls/ca.key}
   license:
     public-keys: ${XKP_LICENSE_PUBLIC_KEYS:}
     test-public-key: ${XKP_LICENSE_TEST_PUBLIC_KEY:}

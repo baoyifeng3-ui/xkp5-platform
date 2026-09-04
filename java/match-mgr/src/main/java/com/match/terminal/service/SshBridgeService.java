@@ -11,7 +11,7 @@ import java.util.*;
 @Service
 public class SshBridgeService {
     private final ProcessingAgentMapper agents; private final RestTemplate http=new RestTemplate(); private final String base; private final String token; private final String sshUser;
-    public SshBridgeService(ProcessingAgentMapper agents,@Value("${match.ssh-bridge.url:http://192.168.65.254:19245}")String base,
+    public SshBridgeService(ProcessingAgentMapper agents,@Value("${match.ssh-bridge.url:${MATCH_SSH_BRIDGE_URL:http://127.0.0.1:19245}}")String base,
                             @Value("${match.ssh-bridge.token:xkp5-development-ssh-bridge}")String token,
                             @Value("${match.ssh-bridge.user:root}")String sshUser){this.agents=agents;this.base=base;this.token=token;this.sshUser=sshUser;}
     public Map<String,Object> create(String agentId){ProcessingAgentRecord a=agents.selectForManagement(agentId);if(a==null||!Boolean.TRUE.equals(a.getEnabled())||a.getRemovedAt()!=null)throw new IllegalArgumentException("处理服务器不可用");Map<String,String>b=new HashMap<>();b.put("host",a.getPrimaryIp());b.put("user",sshUser);return exchange(HttpMethod.POST,"/sessions",b,Map.class);}

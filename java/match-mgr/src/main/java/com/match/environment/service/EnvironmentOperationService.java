@@ -165,8 +165,12 @@ public class EnvironmentOperationService {
         if (!"ADMIN".equals(actorRole) && !"SUPER_ADMIN".equals(actorRole)) {
             throw new IllegalArgumentException("仅管理员可以删除实训环境");
         }
-        if (operationMapper.selectActive(environmentId) != null) {
-            throw new IllegalArgumentException("实训环境仍有进行中的操作");
+        commandService.cancelEnvironmentCommands(environment.getAgentId(), environmentId);
+        EnvironmentOperationRecord active = operationMapper.selectActive(environmentId);
+        if (active != null) {
+            LocalDateTime now = now();
+            operationMapper.markTerminal(active.getOperationId(), "FAILED", now,
+                    "CANCELLED_BY_ENVIRONMENT_DELETE", "环境删除已取消原操作", null);
         }
         return createDispatchedOperation(environment, "DELETE", "STOPPED", "DELETING",
                 actorUserId, actorRole);
@@ -243,6 +247,7 @@ public class EnvironmentOperationService {
             return null;
         }
         if (!requestedType.equals(active.getOperationType())) {
+            if ("START".equals(requestedType) && "CREATE".equals(active.getOperationType())) return view(active, null);
             throw new IllegalArgumentException("环境正在执行其他操作");
         }
         return view(active, null);

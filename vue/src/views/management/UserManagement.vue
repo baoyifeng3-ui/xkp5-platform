@@ -224,6 +224,13 @@
       :slots="slots"
       @done="load"
     />
+    <el-dialog title="管理员实训环境" :visible.sync="demoPlacementDialog" width="520px">
+      <el-form label-width="110px">
+        <el-form-item label="当前绑定">{{ demoPlacementCurrent ? slotLabel(demoPlacementCurrent) : "未绑定" }}</el-form-item>
+        <el-form-item label="选择槽位"><el-select v-model="demoPlacementSlotId" filterable style="width:100%" placeholder="选择用于管理员预览的槽位"><el-option v-for="slot in demoPlacementSlots" :key="slot.slotId" :value="slot.slotId" :label="slotLabel(slot)" /></el-select></el-form-item>
+      </el-form>
+      <span slot="footer"><el-button @click="demoPlacementDialog=false">取消</el-button><el-button type="primary" :loading="saving" :disabled="!demoPlacementSlotId" @click="saveDemoPlacement">保存绑定</el-button></span>
+    </el-dialog>
   </section>
 </template>
 <script>

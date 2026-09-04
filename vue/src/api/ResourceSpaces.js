@@ -17,3 +17,4 @@ export const listCourseLibraryFiles = () => request.get(`${adminBase}/course/fil
 export const linkCourseResource = (fileId, courseId, resourceType) => request.post(`${adminBase}/course/files/${fileId}/courses/${courseId}`, { resourceType }, json)
 export const unlinkCourseResource = (fileId, courseId) => request.delete(`${adminBase}/course/files/${fileId}/courses/${courseId}`)
 export const deliverPublicResource = (fileId, environmentId) => request.post(`${userBase}/public/files/${fileId}/deliver`, null, { params: { environmentId } })
+export const deliverResource = (space, fileId, environmentId) => request.post(`${userBase}/${space}/files/${fileId}/deliver`, null, { params: { environmentId } })

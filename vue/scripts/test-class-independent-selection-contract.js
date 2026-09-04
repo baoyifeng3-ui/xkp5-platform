@@ -1,0 +1,5 @@
+const fs = require('fs')
+const source = fs.readFileSync(require('path').join(__dirname, '../src/views/management/ManagementHome.vue'), 'utf8')
+if (source.includes('(item) => item.userId != null')) throw new Error('independent environments are filtered out')
+if (!source.includes('environmentType === "COURSE" && !item.courseId')) throw new Error('independent environment grouping missing')
+console.log('independent class selection contract passed')
