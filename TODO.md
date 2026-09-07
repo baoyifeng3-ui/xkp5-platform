@@ -9,6 +9,7 @@
 - 本机 `http://localhost:19140` 当前运行 2026-09-05 早上的 `match-v2_vue:5.0.1`，并代理到 `match-v2_java:5.0.1`；前端、代理和后端健康检查已通过。
 - 升级本机后端前的数据库备份保存在 `backups/xkp5test-before-5.0.1-20260907-115956.sql`。
 - 已清理被替代的离线构建备份、失败/测试容器和旧 Java/Vue 镜像标签；当前运行镜像、最新离线包、数据库备份和 9 月 2 日完整快照保留。
+- 稳定候选与版本化发布实施计划已写入 `docs/superpowers/plans/2026-09-07-stable-candidate-and-versioned-release.md`。
 
 ## 待确认
 
