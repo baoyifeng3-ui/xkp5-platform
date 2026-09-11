@@ -10,6 +10,8 @@ import com.match.registry.persistence.ImageDeploymentRecord;
 import com.match.registry.persistence.ImageArtifactMapper;
 import com.match.registry.persistence.ImageReleaseMapper;
 import com.match.registry.persistence.ImageReleaseRecord;
+import com.match.registry.persistence.ImageFileMapper;
+import com.match.registry.persistence.ImageFileRecord;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -32,14 +34,34 @@ public class ImageDeploymentService {
     private final ImageDeploymentMapper deployments;
     private final ProcessingAgentMapper agents;
     private final AgentCommandService commands;
+    private final AgentImageArchiveService archives;
+    private final ImageFileMapper files;
     private final Clock clock;
 
     @Autowired
     public ImageDeploymentService(ImageReleaseMapper releases, ImageArtifactMapper ignoredArtifacts,
                                   ImageDeploymentMapper deployments, ProcessingAgentMapper agents,
-                                  AgentCommandService commands, Clock clock) {
+                                  AgentCommandService commands, AgentImageArchiveService archives, ImageFileMapper files, Clock clock) {
         this.releases = releases; this.deployments = deployments; this.agents = agents;
-        this.commands = commands; this.clock = clock;
+        this.commands = commands; this.archives = archives; this.files = files; this.clock = clock;
+    }
+
+    public ImageDeploymentService(ImageReleaseMapper releases, ImageArtifactMapper ignoredArtifacts,
+                                  ImageDeploymentMapper deployments, ProcessingAgentMapper agents,
+                                  AgentCommandService commands, Clock clock) {
+        this(releases, ignoredArtifacts, deployments, agents, commands, null, null, clock);
+    }
+
+    public ImageDeploymentService(ImageReleaseMapper releases, ImageArtifactMapper ignoredArtifacts,
+                                  ImageDeploymentMapper deployments, ProcessingAgentMapper agents,
+                                  AgentCommandService commands, ImageFileMapper files, Clock clock) {
+        this(releases, ignoredArtifacts, deployments, agents, commands, null, files, clock);
+    }
+
+    public ImageDeploymentService(ImageReleaseMapper releases, ImageArtifactMapper ignoredArtifacts,
+                                  ImageDeploymentMapper deployments, ProcessingAgentMapper agents,
+                                  AgentCommandService commands, AgentImageArchiveService archives, Clock clock) {
+        this(releases, ignoredArtifacts, deployments, agents, commands, archives, null, clock);
     }
 
     public ImageDeploymentService(ImageReleaseMapper releases, ImageArtifactMapper ignoredArtifacts,
@@ -161,9 +183,15 @@ public class ImageDeploymentService {
         else if (event.isSuccess() && ("SUCCEEDED".equals(code) || "IMAGE_ALREADY_PRESENT".equals(code))) { state = "SUCCEEDED"; terminal = true; }
         else { state = "FAILED"; terminal = true; }
         deployment.setState(state); deployment.setFailureCode(terminal && !event.isSuccess() ? code : null);
+        if (terminal && event.isSuccess() && deployment.getFileId() != null && event.getResultJson() != null) {
+            try {
+                String imageId = new com.fasterxml.jackson.databind.ObjectMapper().readTree(event.getResultJson()).path("imageId").asText();
+                if (DIGEST.matcher(imageId).matches()) deployment.setTargetDigest(imageId);
+            } catch (java.io.IOException ignored) { /* Older Agents may omit the inspected image identity. */ }
+        }
         deployment.setFailureMessage(terminal && !event.isSuccess() ? event.getResultMessage() : null);
         deployment.setUpdatedAt(LocalDateTime.now(clock));
-        if (terminal) { deployment.setCompletedAt(deployment.getUpdatedAt()); }
+        if (terminal) { deployment.setCompletedAt(deployment.getUpdatedAt()); deployment.setActiveDeploymentKey(null); deployment.setActiveAgentComponentKey(null); }
         deployments.updateById(deployment);
         if (terminal) deployments.clearActiveKeys(deployment.getDeploymentId());
     }
@@ -175,8 +203,44 @@ public class ImageDeploymentService {
         if (deployment == null || "SUCCEEDED".equals(deployment.getState()) || "FAILED".equals(deployment.getState())) return;
         deployment.setState(terminalState); deployment.setFailureCode(failureCode);
         deployment.setFailureMessage(failureMessage); deployment.setCompletedAt(LocalDateTime.now(clock));
-        deployment.setUpdatedAt(deployment.getCompletedAt()); deployments.updateById(deployment);
+        deployment.setUpdatedAt(deployment.getCompletedAt()); deployment.setActiveDeploymentKey(null); deployment.setActiveAgentComponentKey(null); deployments.updateById(deployment);
         deployments.clearActiveKeys(deployment.getDeploymentId());
+    }
+
+    @Transactional
+    public ImageDeploymentRecord deployFile(String role, String fileId, String agentId, boolean overwrite,
+                                            String idempotencyKey, int actorId) {
+        requireSuperAdmin(role);
+        if (files == null) throw new IllegalStateException("IMAGE_FILE_SERVICE_UNAVAILABLE");
+        ImageFileRecord file = files.selectById(fileId);
+        if (file == null || !Boolean.TRUE.equals(file.getEnabled())) throw new IllegalArgumentException("IMAGE_FILE_NOT_ENABLED");
+        if (idempotencyKey == null || idempotencyKey.trim().isEmpty() || idempotencyKey.length() > 128)
+            throw new IllegalArgumentException("IDEMPOTENCY_KEY_REQUIRED");
+        ProcessingAgentRecord agent = agents.selectForManagement(agentId);
+        if (agent == null || !Boolean.TRUE.equals(agent.getEnabled()) || agent.getRemovedAt() != null)
+            throw new IllegalArgumentException("AGENT_NOT_AVAILABLE");
+        String imageName = file.getImageRepository() + ":" + file.getImageTag();
+        String slotKey = agentId + ":DIRECT";
+        ImageDeploymentRecord active = deployments.selectActiveSlotForUpdate(slotKey);
+        if (active != null) {
+            String activeImage = active.getTargetImage();
+            String server = agent.getDisplayName() == null || agent.getDisplayName().trim().isEmpty()
+                    ? agentId : agent.getDisplayName();
+            String detail = activeImage == null || activeImage.trim().isEmpty()
+                    ? "已有镜像下发任务正在执行"
+                    : "正在下发 " + activeImage;
+            throw new IllegalArgumentException(server + " " + detail + "，请等待当前任务完成后再下发其他镜像");
+        }
+        LocalDateTime now = LocalDateTime.now(clock);
+        ImageDeploymentRecord deployment = new ImageDeploymentRecord();
+        deployment.setDeploymentId(UUID.randomUUID().toString()); deployment.setFileId(fileId); deployment.setAgentId(agentId);
+        deployment.setComponentType("DIRECT"); deployment.setTargetImage(imageName); deployment.setUpdatePolicy("IMAGE_ONLY");
+        deployment.setState("PENDING"); deployment.setActiveDeploymentKey(agentId + ":DIRECT:" + idempotencyKey);
+        deployment.setActiveAgentComponentKey(slotKey); deployment.setIdempotencyKey(idempotencyKey);
+        deployment.setRequestedBy(actorId); deployment.setRequestedAt(now); deployment.setUpdatedAt(now); deployments.insert(deployment);
+        AgentCommandView command = commands.requestImageFileDeploymentCommand(agent, imageName, overwrite,
+                deployment.getDeploymentId(), idempotencyKey, actorId, role);
+        deployment.setCommandId(command.getCommandId()); deployments.updateById(deployment); return deployment;
     }
 
     @Transactional
@@ -192,12 +256,14 @@ public class ImageDeploymentService {
             fixedDelayString = "${xkp.registry.deployment-timeout-scan-ms:60000}")
     @Transactional
     public void failStaleDeployments() {
-        LocalDateTime cutoff = LocalDateTime.now(clock).minusHours(2);
+        // Use request time so repeated progress cannot keep a stuck transfer alive.
+        // Agent cannot keep the platform queue occupied by repeatedly reporting progress.
+        LocalDateTime cutoff = LocalDateTime.now(clock).minusMinutes(195);
         for (ImageDeploymentRecord deployment : deployments.selectStaleRunning(cutoff, 50)) {
             if (deployment.getCommandId() != null
                     && commands.failStaleImageDeployment(deployment.getCommandId(), cutoff)) {
                 recoverTerminalCommand(deployment.getCommandId(), "FAILED",
-                        "IMAGE_DEPLOYMENT_TIMEOUT", "镜像推送超过两小时且没有进度更新");
+                        "IMAGE_DEPLOYMENT_TIMEOUT", "镜像推送超过 3 小时 15 分钟未完成，已释放服务器命令队列");
             }
         }
     }

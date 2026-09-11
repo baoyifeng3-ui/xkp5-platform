@@ -1,6 +1,7 @@
 package com.match.licensing.web;
 
 import com.match.licensing.persistence.LicenseAuditMapper;
+import com.match.licensing.persistence.PlatformLicenseMapper;
 import com.match.licensing.service.InstallationService;
 import com.match.licensing.service.LicenseStatusService;
 import com.match.licensing.config.LicenseProperties;
@@ -22,8 +23,9 @@ public class SuperAdminLicenseControllerTest {
         HostIdentityProvider identity = mock(HostIdentityProvider.class);
         org.mockito.Mockito.when(identity.load()).thenReturn(new HostIdentity("sha256:test", "DEVELOPMENT"));
         LicenseProperties properties = new LicenseProperties();
+        PlatformLicenseMapper licenses = mock(PlatformLicenseMapper.class);
         SuperAdminLicenseController controller = new SuperAdminLicenseController(
-                roleGuard, status, installation, audits, identity, properties);
+                roleGuard, status, installation, audits, identity, properties, licenses);
 
         controller.diagnostics();
         controller.audits(1, 50);

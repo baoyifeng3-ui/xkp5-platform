@@ -19,6 +19,7 @@ const state = {
     platformName: DEFAULT_PLATFORM_NAME,
     themeColor: DEFAULT_THEME_COLOR,
     loginBackgroundUrl: '',
+    loginBackgroundOverlayOpacity: 35,
     platformLogoUrl: '',
     loginEnglishSubtitle: 'XKP5.0 MANAGEMENT PLATFORM',
     loginBrandName: 'XKP5.0平台',
@@ -72,6 +73,7 @@ const mutations = {
         state.platformName = String(value.platformName || '').trim() || DEFAULT_PLATFORM_NAME
         state.themeColor = normalizeThemeColor(value.themeColor)
         state.loginBackgroundUrl = String(value.loginBackgroundUrl || '').trim()
+        state.loginBackgroundOverlayOpacity = Math.max(0, Math.min(100, Number(value.loginBackgroundOverlayOpacity == null ? 35 : value.loginBackgroundOverlayOpacity)))
         state.platformLogoUrl = String(value.platformLogoUrl || '').trim()
         state.loginEnglishSubtitle = String(value.loginEnglishSubtitle || '').trim() || 'XKP5.0 MANAGEMENT PLATFORM'
         state.loginBrandName = String(value.loginBrandName || '').trim() || 'XKP5.0平台'
@@ -100,6 +102,7 @@ const mutations = {
         state.themeColor = DEFAULT_THEME_COLOR
         applyPlatformTheme(DEFAULT_THEME_COLOR)
         state.loginBackgroundUrl = ''
+        state.loginBackgroundOverlayOpacity = 35
         state.platformLogoUrl = ''
         state.loginEnglishSubtitle = 'XKP5.0 MANAGEMENT PLATFORM'
         state.loginBrandName = 'XKP5.0平台'

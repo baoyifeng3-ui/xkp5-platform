@@ -37,6 +37,12 @@ dist/
 jar-overlay*/
 app-*.jar
 tools/ssh-bridge/*.exe*
+docker/java/app.jar
+docker/java/Dockerfile.*
+docker/vue/Dockerfile.*
+docker/vue/dist-deploy*/
+docs/qa-*/
+scripts/install-current-code-ca.ps1
 __pycache__/
 *.pyc
 

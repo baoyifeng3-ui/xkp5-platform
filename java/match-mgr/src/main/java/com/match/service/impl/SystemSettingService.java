@@ -17,6 +17,7 @@ public class SystemSettingService {
     public static final String PLATFORM_NAME = "platform_name";
     public static final String THEME_COLOR = "theme_color";
     public static final String LOGIN_BACKGROUND_URL = "login_background_url";
+    public static final String LOGIN_BACKGROUND_OVERLAY_OPACITY = "login_background_overlay_opacity";
     public static final String PLATFORM_LOGO_URL = "platform_logo_url";
     public static final String LOGIN_ENGLISH_SUBTITLE = "login_english_subtitle";
     public static final String LOGIN_BRAND_NAME = "login_brand_name";
@@ -71,11 +72,22 @@ public class SystemSettingService {
         return getValue(LOGIN_BACKGROUND_URL, DEFAULT_LOGIN_BACKGROUND_URL);
     }
 
+    public int getLoginBackgroundOverlayOpacity() {
+        String value = getValue(LOGIN_BACKGROUND_OVERLAY_OPACITY, "35");
+        try {
+            int opacity = Integer.parseInt(value);
+            return opacity >= 0 && opacity <= 100 ? opacity : 35;
+        } catch (NumberFormatException ignored) {
+            return 35;
+        }
+    }
+
     public Map<String, String> getPlatformSettings() {
         Map<String, String> settings = new LinkedHashMap<>();
         settings.put("platformName", getPlatformName());
         settings.put("themeColor", getThemeColor());
         settings.put("loginBackgroundUrl", getLoginBackgroundUrl());
+        settings.put("loginBackgroundOverlayOpacity", String.valueOf(getLoginBackgroundOverlayOpacity()));
         settings.put("platformLogoUrl", getValue(PLATFORM_LOGO_URL, DEFAULT_PLATFORM_LOGO_URL));
         settings.put("loginEnglishSubtitle", getValue(LOGIN_ENGLISH_SUBTITLE, DEFAULT_LOGIN_ENGLISH_SUBTITLE));
         settings.put("loginBrandName", getValue(LOGIN_BRAND_NAME, DEFAULT_LOGIN_BRAND_NAME));
@@ -184,6 +196,18 @@ public class SystemSettingService {
                                                    String loginEnglishSubtitle, String loginBrandName,
                                                    String loginTitle, String loginDescription,
                                                    String loginCopyright, Integer adminId) {
+        return setPlatformSettings(platformName, themeColor, loginBackgroundUrl, platformLogoUrl,
+                loginEnglishSubtitle, loginBrandName, loginTitle, loginDescription, loginCopyright,
+                getLoginBackgroundOverlayOpacity(), adminId);
+    }
+
+    @Transactional
+    public Map<String, String> setPlatformSettings(String platformName, String themeColor,
+                                                   String loginBackgroundUrl, String platformLogoUrl,
+                                                   String loginEnglishSubtitle, String loginBrandName,
+                                                   String loginTitle, String loginDescription,
+                                                   String loginCopyright, Integer loginBackgroundOverlayOpacity,
+                                                   Integer adminId) {
         String name = platformName == null ? "" : platformName.trim();
         if (name.isEmpty()) throw new IllegalArgumentException("平台名称不能为空");
         if (name.length() > MAX_PLATFORM_NAME_LENGTH) throw new IllegalArgumentException("平台名称不能超过 30 个字符");
@@ -201,6 +225,8 @@ public class SystemSettingService {
         saveSetting(PLATFORM_NAME, name, adminId);
         saveSetting(THEME_COLOR, color.toLowerCase(), adminId);
         saveSetting(LOGIN_BACKGROUND_URL, background, adminId);
+        setLoginBackgroundOverlayOpacity(loginBackgroundOverlayOpacity == null
+                ? getLoginBackgroundOverlayOpacity() : loginBackgroundOverlayOpacity, adminId);
         saveSetting(PLATFORM_LOGO_URL, logo, adminId);
         saveSetting(LOGIN_ENGLISH_SUBTITLE, englishSubtitle, adminId);
         saveSetting(LOGIN_BRAND_NAME, brandName, adminId);
@@ -208,6 +234,15 @@ public class SystemSettingService {
         saveSetting(LOGIN_DESCRIPTION, description, adminId);
         saveSetting(LOGIN_COPYRIGHT, copyright, adminId);
         return getPlatformSettings();
+    }
+
+    @Transactional
+    public int setLoginBackgroundOverlayOpacity(Integer opacity, Integer adminId) {
+        if (opacity == null || opacity < 0 || opacity > 100) {
+            throw new IllegalArgumentException("背景蒙版透明度必须在 0 到 100 之间");
+        }
+        saveSetting(LOGIN_BACKGROUND_OVERLAY_OPACITY, String.valueOf(opacity), adminId);
+        return opacity;
     }
 
     private String normalizeLoginCopy(String value, String label, int maxLength) {

@@ -10,6 +10,10 @@ import com.match.environment.persistence.EnvironmentOperationRecord;
 import com.match.environment.persistence.TrainingEnvironmentMapper;
 import com.match.environment.persistence.TrainingEnvironmentRecord;
 import com.match.licensing.guard.LicenseGuard;
+import com.match.mode.persistence.PlatformModeMapper;
+import com.match.mode.persistence.PlatformModeRecord;
+import com.match.mode.service.ModeConflictException;
+import com.match.mode.service.ProcessingAgentModeGuard;
 import org.springframework.stereotype.Service;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,16 +33,21 @@ public class EnvironmentOperationService {
     private final EnvironmentCommandFactory commandFactory;
     private final LicenseGuard licenseGuard;
     private final Clock clock;
+    private final PlatformModeMapper platformModes;
+    private final ProcessingAgentModeGuard agentModeGuard;
     private EnvironmentPortPoolService portPoolService;
+    @org.springframework.beans.factory.annotation.Autowired private com.match.environment.persistence.ActiveClassSessionMapper classSessions;
     @org.springframework.beans.factory.annotation.Autowired public void setPortPoolService(EnvironmentPortPoolService value){this.portPoolService=value;}
 
+    @org.springframework.beans.factory.annotation.Autowired
     public EnvironmentOperationService(TrainingEnvironmentMapper environmentMapper,
                                        EnvironmentOperationMapper operationMapper,
                                        ProcessingAgentMapper agentMapper,
                                        AgentCommandService commandService,
                                        EnvironmentCommandFactory commandFactory,
                                        LicenseGuard licenseGuard,
-                                       Clock clock) {
+                                       Clock clock, PlatformModeMapper platformModes,
+                                       ProcessingAgentModeGuard agentModeGuard) {
         this.environmentMapper = environmentMapper;
         this.operationMapper = operationMapper;
         this.agentMapper = agentMapper;
@@ -46,14 +55,38 @@ public class EnvironmentOperationService {
         this.commandFactory = commandFactory;
         this.licenseGuard = licenseGuard;
         this.clock = clock;
+        this.platformModes = platformModes;
+        this.agentModeGuard = agentModeGuard;
+    }
+
+    public EnvironmentOperationService(TrainingEnvironmentMapper environmentMapper,
+                                       EnvironmentOperationMapper operationMapper,
+                                       ProcessingAgentMapper agentMapper,
+                                       AgentCommandService commandService,
+                                       EnvironmentCommandFactory commandFactory,
+                                       LicenseGuard licenseGuard, Clock clock) {
+        this(environmentMapper, operationMapper, agentMapper, commandService, commandFactory,
+                licenseGuard, clock, null, null);
     }
 
     @Transactional
     public TrainingEnvironmentOperationView start(String environmentId, int actorUserId, String actorRole) {
         licenseGuard.requireActive();
+        requireTrainingMode();
+        com.match.environment.persistence.ActiveClassSessionRecord classroom = classSessions == null ? null : classSessions.selectCurrentForUpdate();
         List<TrainingEnvironmentRecord> environments = lockUserEnvironments(environmentId);
         TrainingEnvironmentRecord target = requireTarget(environments, environmentId);
         requireAccess(target, actorUserId, actorRole, "START");
+        if ("USER".equals(actorRole) && classroom != null && Boolean.TRUE.equals(classroom.getActive())) {
+            boolean allowed = java.util.Objects.equals(environmentId, classroom.getEnvironmentId())
+                    || classroom.getCourseId() != null && java.util.Objects.equals(classroom.getCourseId(), target.getCourseId())
+                    || classroom.getCourseId() == null && classroom.getEnvironmentId() == null && target.getCourseId() == null
+                    && java.util.Objects.equals(classroom.getEnvironmentName(), target.getEnvironmentName());
+            if (!allowed) throw new IllegalArgumentException("老师已指定课堂环境，请等待切换完成");
+        }
+        if ("COMPETITION".equals(target.getEnvironmentType()))
+            throw new IllegalArgumentException("比赛环境只能通过比赛模式启动");
+        if (agentModeGuard != null) agentModeGuard.requireIdleForBinding(target.getAgentId());
         TrainingEnvironmentOperationView active = activeOperation(target, "START");
         if (active != null) {
             return active;
@@ -67,9 +100,18 @@ public class EnvironmentOperationService {
             if (environmentId.equals(environment.getEnvironmentId()) || isStopped(environment)) {
                 continue;
             }
-            if (operationMapper.selectActive(environment.getEnvironmentId()) != null) {
-                throw new IllegalArgumentException("其他课程环境正在执行操作");
+            EnvironmentOperationRecord siblingOperation = operationMapper.selectActive(environment.getEnvironmentId());
+            if (siblingOperation != null && !"STOP".equals(siblingOperation.getOperationType())) {
+                if (!("ADMIN".equals(actorRole) || "SUPER_ADMIN".equals(actorRole))
+                        || !java.util.Arrays.asList("START", "CREATE", "RESTORE").contains(siblingOperation.getOperationType()))
+                    throw new IllegalArgumentException("其他课程环境正在执行操作");
+                operationMapper.markTerminal(siblingOperation.getOperationId(), "FAILED", now(),
+                        "SUPERSEDED_BY_STOP", "教师已指定新环境，原操作完成后停止", null);
+                createDispatchedOperation(environment, "STOP", "STOPPED", "STOPPING", actorUserId, actorRole);
+                waiting = true;
+                continue;
             }
+            if (siblingOperation != null) { waiting = true; continue; }
             createDispatchedOperation(environment, "STOP", "STOPPED", "STOPPING",
                     actorUserId, actorRole);
             waiting = true;
@@ -103,9 +145,11 @@ public class EnvironmentOperationService {
     @Transactional
     public TrainingEnvironmentOperationView restore(String environmentId, int actorUserId, String actorRole) {
         licenseGuard.requireActive();
+        requireTrainingMode();
         List<TrainingEnvironmentRecord> environments = lockUserEnvironments(environmentId);
         TrainingEnvironmentRecord target = requireTarget(environments, environmentId);
         requireAccess(target, actorUserId, actorRole, "RESTORE");
+        if (agentModeGuard != null) agentModeGuard.requireIdleForBinding(target.getAgentId());
         TrainingEnvironmentOperationView active = activeOperation(target, "RESTORE");
         if (active != null) {
             return active;
@@ -130,21 +174,36 @@ public class EnvironmentOperationService {
         List<TrainingEnvironmentRecord> candidates = environmentMapper.selectWaitingDependencies();
         if (candidates == null || candidates.isEmpty()) return;
         licenseGuard.requireActive();
+        requireTrainingMode();
         for (TrainingEnvironmentRecord candidate : candidates) {
             List<TrainingEnvironmentRecord> environments = environmentMapper.selectUserEnvironmentsForUpdate(candidate.getUserId());
             TrainingEnvironmentRecord target = requireTarget(environments, candidate.getEnvironmentId());
             if (!"WAITING_DEPENDENCY".equals(target.getActualState())) continue;
-            boolean ready = true;
-            for (TrainingEnvironmentRecord environment : environments) {
-                if (!target.getEnvironmentId().equals(environment.getEnvironmentId()) && !isStopped(environment)) {
-                    ready = false;
-                    break;
-                }
-            }
-            if (!ready) continue;
             EnvironmentOperationRecord operation = operationMapper.selectActive(target.getEnvironmentId());
             if (operation == null || !"START".equals(operation.getOperationType())
                     || !"WAITING_DEPENDENCY".equals(operation.getState())) continue;
+            boolean ready = true;
+            String failure = null;
+            for (TrainingEnvironmentRecord environment : environments) {
+                if (!target.getEnvironmentId().equals(environment.getEnvironmentId()) && !isStopped(environment)) {
+                    ready = false;
+                    if ("ERROR".equals(environment.getActualState()) || "DEGRADED".equals(environment.getActualState())) {
+                        failure = "DEPENDENCY_FAILED";
+                    }
+                }
+            }
+            if (failure == null && operation.getRequestedAt() != null
+                    && !operation.getRequestedAt().plusMinutes(5).isAfter(now())) {
+                failure = "DEPENDENCY_TIMEOUT";
+            }
+            if (failure != null) {
+                operationMapper.markTerminal(operation.getOperationId(), "FAILED", now(), failure,
+                        "旧环境停止失败或等待超过五分钟，请检查旧环境后重试", null);
+                updateState(target, "STOPPED", "ERROR", null, operation.getActorUserId());
+                continue;
+            }
+            if (!ready) continue;
+            if (agentModeGuard != null) agentModeGuard.requireIdleForBinding(target.getAgentId());
             ProcessingAgentRecord agent = requireAgent(target.getAgentId());
             AgentCommandView command = commandService.requestEnvironmentCommand(agent,
                     "START_TRAINING_ENVIRONMENT", commandFactory.createControlPayloadJson(target, operation.getOperationId()),
@@ -165,8 +224,9 @@ public class EnvironmentOperationService {
         if (!"ADMIN".equals(actorRole) && !"SUPER_ADMIN".equals(actorRole)) {
             throw new IllegalArgumentException("仅管理员可以删除实训环境");
         }
-        commandService.cancelEnvironmentCommands(environment.getAgentId(), environmentId);
         EnvironmentOperationRecord active = operationMapper.selectActive(environmentId);
+        if (active != null && "DELETE".equals(active.getOperationType())) return view(active, null);
+        commandService.cancelEnvironmentCommands(environment.getAgentId(), environmentId);
         if (active != null) {
             LocalDateTime now = now();
             operationMapper.markTerminal(active.getOperationId(), "FAILED", now,
@@ -247,6 +307,13 @@ public class EnvironmentOperationService {
             return null;
         }
         if (!requestedType.equals(active.getOperationType())) {
+            if ("STOP".equals(requestedType) && "START".equals(active.getOperationType())) {
+                // Keep an already-dispatched command in the Agent's serial queue;
+                // the new STOP follows it and late START results cannot overwrite STOP.
+                operationMapper.markTerminal(active.getOperationId(), "FAILED", now(),
+                        "SUPERSEDED_BY_STOP", "启动任务已被停止请求替代", null);
+                return null;
+            }
             if ("START".equals(requestedType) && "CREATE".equals(active.getOperationType())) return view(active, null);
             throw new IllegalArgumentException("环境正在执行其他操作");
         }
@@ -313,6 +380,13 @@ public class EnvironmentOperationService {
                 && ("STOPPED".equals(environment.getActualState())
                 || safeStoppedComponent(environment.getAnnotationContainerState())
                 && safeStoppedComponent(environment.getEditorContainerState()));
+    }
+
+    public void requireTrainingMode() {
+        PlatformModeRecord mode = platformModes.selectForUpdate();
+        if (mode == null || !"TRAINING".equals(mode.getMode())) {
+            throw new ModeConflictException("TRAINING_MODE_REQUIRED", "当前模式不允许启动实训环境");
+        }
     }
 
     private boolean safeStoppedComponent(String state) {

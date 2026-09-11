@@ -56,7 +56,8 @@ public class UserCompetitionEnvironmentController {
         User participant = roleGuard.requireUser();
         TrainingEnvironmentRecord environment = competitionEnvironmentOrNull(participant.getUserId());
         if (environment == null) return Response.makeOKRsp(service.currentForUser(participant));
-        operations.start(environment.getEnvironmentId(), participant.getUserId(), "USER");
+        // Competition containers are started by the mode transition's phase barrier.
+        // Participant retries only poll readiness; they must not bypass that barrier.
         return Response.makeOKRsp(currentTrainingEnvironment(participant));
     }
 

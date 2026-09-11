@@ -12,7 +12,8 @@
     @logout="logout"
   >
     <template v-if="previewOnly" #account-actions><span /></template>
-    <router-view />
+    <el-alert v-if="policy.active || policy.modeSwitching || policy.stopping" :title="policy.modeSwitching ? '平台正在切换环境，请等待准备完成' : policy.stopping ? '正在结束课堂并停止环境，完成后恢复自由实训' : policy.switching ? '教师已指定课堂环境，正在停止原环境并准备新环境' : '当前使用教师指定的课堂环境'" type="info" :closable="false" show-icon />
+    <router-view :key="classRevision" />
     <el-dialog title="课堂签到" :visible.sync="attendanceDialog" :show-close="false" :close-on-press-escape="false" width="420px"><p>管理员已开启本轮签到，完成签到后可继续使用平台。</p><span slot="footer"><el-button type="primary" :loading="checkingIn" @click="checkIn">立即签到</el-button></span></el-dialog>
   </PlatformShell>
 </template>
@@ -29,14 +30,14 @@ const { isPreviewRoute } = require('@/services/participantPreview')
 
 export default {
   components: { PlatformShell },
-  data: () => ({ items: userItems, attendanceDialog: false, checkingIn: false, policyTimer: null }),
+  data: () => ({ items: userItems, attendanceDialog: false, checkingIn: false, policyTimer: null, policy: {}, classRevision: '', syncingPolicy: false }),
   computed: {
     previewOnly () { return isPreviewRoute(this.$route, getRole()) },
     userName () { return this.previewOnly ? '参赛端预览' : (getUserName() || '用户') },
     platformName () { return this.$store.state.Match.platformName },
     platformLogoUrl () { return this.$store.state.Match.platformLogoUrl }
   },
-  mounted () { if (!this.previewOnly) { startUserActivity(); this.loadAttendance(); this.policyTimer = setInterval(this.refreshClassPolicy, 5000) } },
+  mounted () { if (!this.previewOnly) { startUserActivity(); this.loadAttendance(); this.refreshClassPolicy(); this.policyTimer = setInterval(() => this.refreshClassPolicy().catch(() => {}), 2000) } },
   beforeDestroy () { if (!this.previewOnly) stopUserActivity(); clearInterval(this.policyTimer) },
   methods: {
     participantLocation (path) {
@@ -63,11 +64,19 @@ export default {
         (classPolicy.courseId && this.$route.path === '/course-platform' && String(this.$route.query.courseId || '') === String(classPolicy.courseId))
     },
     async refreshClassPolicy () {
+      if (this.syncingPolicy) return this.policy
+      this.syncingPolicy = true
+      try {
       const result = await getUserClassPolicy()
       const classPolicy = result.data || {}
       setClassPolicy(classPolicy)
-      if (classPolicy.active === true && !this.classRouteAllowed(classPolicy)) this.$router.replace(this.classDestination(classPolicy)).catch(() => {})
+      const revision = String(classPolicy.revision || '')
+      const changed = revision !== this.classRevision
+      this.policy = classPolicy
+      this.classRevision = revision
+      if (classPolicy.active === true && (changed || !this.classRouteAllowed(classPolicy))) this.$router.replace(this.classDestination(classPolicy)).catch(() => {})
       return classPolicy
+      } finally { this.syncingPolicy = false }
     },
     async loadAttendance () { const [attendance, policy] = await Promise.all([getAttendanceStatus(), getUserClassPolicy()]);this.attendanceDialog=Boolean(attendance.data&&attendance.data.active&&!attendance.data.checkedIn);setClassPolicy(policy.data||{}) },
     async checkIn () { this.checkingIn=true;try{await checkInAttendance();this.attendanceDialog=false;this.$message.success('签到成功')}finally{this.checkingIn=false} },

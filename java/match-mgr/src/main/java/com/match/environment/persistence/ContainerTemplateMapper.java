@@ -7,6 +7,8 @@ import org.apache.ibatis.annotations.Select;
 import java.util.List;
 
 public interface ContainerTemplateMapper extends BaseMapper<ContainerTemplateRecord> {
+    @Select("SELECT COUNT(*) FROM container_template WHERE BINARY image_reference=BINARY #{reference} OR BINARY image_id=BINARY #{imageId}")
+    int countImageReferences(@Param("reference") String reference, @Param("imageId") String imageId);
     @Select("SELECT registry_digest FROM image_release WHERE release_id = #{releaseId} AND component_type = #{componentType} AND state = 'PUBLISHED'")
     String selectPublishedDigest(@Param("releaseId") String releaseId, @Param("componentType") String componentType);
     @Select("SELECT CONCAT(a.image_repository, ':', a.image_tag) FROM image_release r "

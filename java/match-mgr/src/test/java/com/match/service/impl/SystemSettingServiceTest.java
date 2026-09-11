@@ -131,6 +131,29 @@ public class SystemSettingServiceTest {
     }
 
     @Test
+    public void savesAndReturnsLoginBackgroundOpacity() {
+        when(settingMapper.selectById(SystemSettingService.LOGIN_BACKGROUND_OVERLAY_OPACITY)).thenReturn(null);
+        Map<String, String> settings = service.getPlatformSettings();
+        assertEquals("35", settings.get("loginBackgroundOverlayOpacity"));
+
+        SystemSetting opacity = setting(SystemSettingService.LOGIN_BACKGROUND_OVERLAY_OPACITY, "35");
+        when(settingMapper.selectById(SystemSettingService.LOGIN_BACKGROUND_OVERLAY_OPACITY)).thenReturn(opacity);
+        service.setLoginBackgroundOverlayOpacity(42, 5);
+        assertEquals("42", opacity.getSettingValue());
+        verify(settingMapper).updateById(opacity);
+    }
+
+    @Test
+    public void rejectsLoginBackgroundOpacityOutsidePercentageRange() {
+        try {
+            service.setLoginBackgroundOverlayOpacity(101, 5);
+            fail("应拒绝超过 100 的背景透明度");
+        } catch (IllegalArgumentException exception) {
+            assertTrue(exception.getMessage().contains("0 到 100"));
+        }
+    }
+
+    @Test
     public void rejectsInvalidThemeColorWithoutSavingPlatformSettings() {
         try {
             service.setPlatformSettings("数据杯", "yellow", "", 5);

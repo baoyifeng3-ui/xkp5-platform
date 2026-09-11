@@ -48,6 +48,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 public class ModeTransitionEntryTest {
+    @Test public void entryRejectsHeartbeatOlderThanThirtySeconds() {
+        agent.setLastSeenAt(LocalDateTime.ofInstant(NOW.minusSeconds(31), ZoneOffset.UTC));
+        ModeTransitionView result=service.planEntry(AGENT_ID,admin);
+        assertEquals("DEGRADED",result.getState());
+        assertEquals("AGENT_OFFLINE",result.getFailureSummary());
+    }
     private static final Instant NOW = Instant.parse("2026-08-21T06:07:08Z");
     private static final String AGENT_ID = "11111111-1111-4111-8111-111111111111";
     private static final String TRAINING_A = "22222222-2222-4222-8222-222222222222";
@@ -113,6 +119,10 @@ public class ModeTransitionEntryTest {
                 .thenReturn("{\"training\":true}");
         when(commandFactory.createPayloadJson(any(CompetitionEnvironmentRecord.class), anyString()))
                 .thenReturn("{\"competition\":true}");
+        when(commandFactory.createControlPayloadJson(any(TrainingEnvironmentRecord.class), anyString()))
+                .thenReturn("{\"training-control\":true}");
+        when(commandFactory.createControlPayloadJson(any(CompetitionEnvironmentRecord.class), anyString()))
+                .thenReturn("{\"competition-control\":true}");
         AgentCommandView command = new AgentCommandView();
         command.setCommandId("66666666-6666-4666-8666-666666666666");
         when(commands.requestEnvironmentCommand(any(ProcessingAgentRecord.class), anyString(),
@@ -122,7 +132,7 @@ public class ModeTransitionEntryTest {
     }
 
     @Test
-    public void entrySnapshotsRunningTrainingAndStartsOnlyBoundCompetitionAfterStopPhase() {
+    public void entryStopsTrainingWithoutSnapshotAndStartsBoundCompetitionAfterStopPhase() {
         ModeTransitionView result = service.planEntry(AGENT_ID, admin);
 
         assertNotNull(result);
@@ -130,7 +140,7 @@ public class ModeTransitionEntryTest {
         assertEquals(3, result.getSteps().size());
         assertEquals("STOP_TRAINING_ENVIRONMENT", result.getSteps().get(0).getActionType());
         assertEquals("START_COMPETITION_ENVIRONMENT", result.getSteps().get(2).getActionType());
-        verify(snapshots, org.mockito.Mockito.times(2)).insert(any());
+        verify(snapshots, never()).insert(any());
         verify(commands, org.mockito.Mockito.times(2)).requestEnvironmentCommand(
                 any(ProcessingAgentRecord.class), anyString(), anyString(), eq(9), eq("ADMIN"), anyString());
         assertFalse(result.getSteps().get(2).getPhaseNumber() == 1);
@@ -232,7 +242,7 @@ public class ModeTransitionEntryTest {
 
         assertEquals("RUNNING", retried.getState());
         assertEquals(3, retried.getSteps().size());
-        verify(snapshots, times(2)).insert(any());
+        verify(snapshots, never()).insert(any());
     }
 
     @Test
@@ -259,6 +269,44 @@ public class ModeTransitionEntryTest {
             fail("expected mode conflict");
         } catch (ModeConflictException expected) {
             assertEquals("AGENT_MODE_TRANSITION_CONFLICT", expected.getCode());
+        }
+    }
+
+    @Test
+    public void missingBoundCompetitionFailsInsteadOfSilentlySkipping() {
+        when(competition.selectByAgent(AGENT_ID)).thenReturn(Collections.emptyList());
+        ModeTransitionView result = service.planEntry(AGENT_ID, admin);
+        assertEquals("DEGRADED", result.getState());
+        org.junit.Assert.assertTrue(result.getFailureSummary().contains("42"));
+        verify(commands, never()).requestEnvironmentCommand(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    public void accountCreatedCompetitionEnvironmentIsStartedAfterCourseStop() {
+        TrainingEnvironmentRecord course = environment(TRAINING_A, "RUNNING");
+        TrainingEnvironmentRecord match = environment(COMPETITION, "STOPPED");
+        match.setEnvironmentType("COMPETITION"); match.setSlotId(SLOT_ID); match.setUserId(21);
+        match.setAnnotationTemplateId("annotation"); match.setAnnotationContainerName("xkp-comp-test-annotation");
+        match.setAnnotationContainerState("STOPPED");
+        when(training.selectByAgentForUpdate(AGENT_ID)).thenReturn(Arrays.asList(course, match));
+        when(competition.selectByAgent(AGENT_ID)).thenReturn(Collections.emptyList());
+        ModeTransitionView result = service.planEntry(AGENT_ID, admin);
+        assertEquals("RUNNING", result.getState());
+        assertEquals(2, result.getSteps().size());
+        assertEquals("STOP_TRAINING_ENVIRONMENT", result.getSteps().get(0).getActionType());
+        assertEquals("START_TRAINING_ENVIRONMENT", result.getSteps().get(1).getActionType());
+        assertEquals(COMPETITION, result.getSteps().get(1).getEnvironmentId());
+    }
+
+    @Test
+    public void globalSwitchRejectsOppositeActiveTransition() {
+        when(agents.selectVisibleAgents()).thenReturn(Collections.singletonList(agent));
+        when(transitions.selectActiveForUpdate(AGENT_ID)).thenReturn(transition("TRAINING", "RUNNING"));
+        try {
+            service.convergeAll("COMPETITION", 9, "ADMIN");
+            fail("must reject active transition before committing platform mode");
+        } catch (ModeConflictException expected) {
+            verify(commands, never()).requestEnvironmentCommand(any(), any(), any(), any(), any(), any());
         }
     }
 

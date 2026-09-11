@@ -343,9 +343,10 @@
                   <el-upload action="#" accept="image/jpeg,image/png,image/webp" :auto-upload="false" :show-file-list="false" :on-change="selectLoginBackground" :disabled="backgroundUploading">
                     <el-button icon="el-icon-picture-outline" :loading="backgroundUploading">选择本地图片</el-button>
                   </el-upload>
-                  <div v-if="platformForm.loginBackgroundUrl" class="background-preview"><img :src="platformForm.loginBackgroundUrl" alt="登录背景预览" /></div>
+                  <div v-if="platformForm.loginBackgroundUrl" class="background-preview"><img :src="platformForm.loginBackgroundUrl" alt="登录背景预览" /><i :style="{ background: `rgba(26,34,55,${platformForm.loginBackgroundOverlayOpacity / 100})` }" /></div>
                   <el-button v-if="platformForm.loginBackgroundUrl" type="text" icon="el-icon-delete" @click="removeLoginBackground">移除背景图片</el-button>
                 </el-form-item>
+                <el-form-item label="背景蒙版透明度"><el-slider v-model="platformForm.loginBackgroundOverlayOpacity" :min="0" :max="100" show-input @input="platformEditing = true" /></el-form-item>
                 <div class="settings-actions">
                   <el-button icon="el-icon-refresh-left" :disabled="platformSaving || platformForm.themeColor === defaultThemeColor" @click="restoreDefaultTheme">恢复默认主题色</el-button>
                   <el-button type="primary" icon="el-icon-check" :loading="platformSaving" @click="savePlatformSettings">保存设置</el-button>
@@ -636,7 +637,7 @@ export default {
     return {
       activeTab: 'timer',
       rulesTab: 'rules',
-      platformForm: { platformName: '', themeColor: DEFAULT_THEME_COLOR, loginBackgroundUrl: '', loginBrandName: '', loginTitle: '', loginDescription: '', loginCopyright: '' },
+      platformForm: { platformName: '', themeColor: DEFAULT_THEME_COLOR, loginBackgroundUrl: '', loginBackgroundOverlayOpacity: 35, loginBrandName: '', loginTitle: '', loginDescription: '', loginCopyright: '' },
       defaultThemeColor: DEFAULT_THEME_COLOR,
       platformSaving: false,
       platformEditing: false,
@@ -1585,6 +1586,7 @@ export default {
           platformName: String(this.platformForm.platformName || '').trim(),
           themeColor: String(this.platformForm.themeColor || DEFAULT_THEME_COLOR).trim(),
           loginBackgroundUrl: String(this.platformForm.loginBackgroundUrl || '').trim(),
+          loginBackgroundOverlayOpacity: Number(this.platformForm.loginBackgroundOverlayOpacity),
           loginBrandName: String(this.platformForm.loginBrandName || '').trim(),
           loginTitle: String(this.platformForm.loginTitle || '').trim(),
           loginDescription: String(this.platformForm.loginDescription || '').trim(),
@@ -1608,6 +1610,7 @@ export default {
         platformName: this.platformName,
         themeColor: state.themeColor,
         loginBackgroundUrl: state.loginBackgroundUrl,
+        loginBackgroundOverlayOpacity: state.loginBackgroundOverlayOpacity,
         loginBrandName: state.loginBrandName,
         loginTitle: state.loginTitle,
         loginDescription: state.loginDescription,
@@ -2658,8 +2661,9 @@ export default {
 .admin-empty strong { color: #617184; font-size: 13px; }
 .settings-card { max-width: 680px; padding: 24px; box-sizing: border-box; }
 .settings-form { max-width: 520px; }
-.background-preview { width: 100%; max-width: 360px; height: 120px; margin-top: 10px; overflow: hidden; border: 1px solid #e3e8eb; border-radius: 6px; background: #f3f5f6; }
+.background-preview { position: relative; width: 100%; max-width: 360px; height: 120px; margin-top: 10px; overflow: hidden; border: 1px solid #e3e8eb; border-radius: 6px; background: #f3f5f6; }
 .background-preview img { width: 100%; height: 100%; object-fit: cover; }
+.background-preview i { position: absolute; inset: 0; pointer-events: none; }
 .settings-form::v-deep .el-form-item { margin-bottom: 22px; }
 .settings-form::v-deep .el-form-item__label { color: #405267; font-size: 13px; font-weight: 600; }
 .settings-actions { display: flex; justify-content: flex-end; gap: 10px; }

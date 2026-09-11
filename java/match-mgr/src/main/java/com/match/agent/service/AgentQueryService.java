@@ -76,6 +76,9 @@ public class AgentQueryService {
         view.setPrimaryIp(record.getPrimaryIp());
         view.setMacAddress(record.getMacAddress());
         view.setAgentVersion(record.getAgentVersion());
+        view.setTargetAgentVersion(AgentPackageService.AGENT_VERSION);
+        view.setUpgradeAvailable(!"0.1.0".equals(record.getAgentVersion())
+                && AgentUpgradeService.isNewer(record.getAgentVersion(), AgentPackageService.AGENT_VERSION));
         view.setEnabled(Boolean.TRUE.equals(record.getEnabled()));
         view.setLastSeenAt(record.getLastSeenAt());
         if (record.getLastSeenAt() != null && view.isEnabled()) {

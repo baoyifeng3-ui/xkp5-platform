@@ -53,7 +53,7 @@ assert.match(adminSource, /<el-tab-pane\s+v-if="false"\s+name=["']settings["']/)
 assert.match(adminSource, /\['timer',\s*'rules',\s*'subjects',\s*'grading',\s*'users'\]/)
 
 const settingsSource = fs.readFileSync(path.join(__dirname, '../src/views/management/PlatformSettings.vue'), 'utf8')
-assert.match(settingsSource, /import\s+\{\s*competitionApi,\s*updatePlatformSettingsApi,\s*uploadLoginBackgroundApi\s*\}\s+from\s+'@\/api\/Match'/)
+for (const name of ['competitionApi', 'updatePlatformSettingsApi', 'uploadLoginBackgroundApi', 'uploadPlatformLogoApi']) assert.match(settingsSource, new RegExp(name))
 assert.match(settingsSource, /created\s*\(\)\s*\{\s*this\.loadPlatformSettings\(\)\s*\}/)
 assert.match(settingsSource, /async\s+loadPlatformSettings\s*\(\)[\s\S]*?await\s+competitionApi\(\)[\s\S]*?SET_PLATFORM_SETTINGS/)
 assert.match(settingsSource, /if\s*\(!this\.initialized\)\s*return[\s\S]*?updatePlatformSettingsApi/)

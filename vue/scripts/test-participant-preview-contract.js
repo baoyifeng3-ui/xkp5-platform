@@ -14,7 +14,7 @@ assert.strictEqual(preview.isPreviewRoute({ path: '/Question', query: {} }, 'ADM
 assert.strictEqual(preview.isPreviewRoute(null, 'ADMIN'), false)
 
 assert.deepStrictEqual(navigation.previewDestinations, [
-  '/course-platform', '/resource-center', '/training-environment',
+  '/course-platform', '/resource-center', '/training-environment', '/training-validation',
   '/Publicity', '/Home', '/Question', '/Detect', '/competition-practical'
 ])
 assert.strictEqual(navigation.previewDestinations, preview.previewDestinations)
@@ -33,7 +33,7 @@ assert.match(router, /getRole\(\)\s*===\s*['"]ADMIN['"]/)
 assert.match(router, /isPreviewRoute\(to, getRole\(\)\)/)
 assert.match(router, /roleNavigation\.previewDestinations\.includes\(to\.path\)/)
 assert.match(router, /if\s*\(!adminPreview\s*&&\s*requiredRoles/)
-assert.match(router, /if\s*\(!adminPreview\s*&&\s*getRole\(\)\s*===\s*['"]USER['"]\s*&&\s*requiredModes/)
+assert.match(router, /!adminPreview[\s\S]*getRole\(\)\s*===\s*["']USER["'][\s\S]*requiredModes/)
 
 const noticePath = 'src/components/ParticipantPreviewNotice.vue'
 assert.ok(fs.existsSync(noticePath), `${noticePath} must exist`)
@@ -55,13 +55,12 @@ mutationViews.forEach(file => {
 })
 
 const training = fs.readFileSync('src/views/user/TrainingEnvironment.vue', 'utf8')
-assert.match(training, /async start\s*\(row\)\s*\{\s*if\s*\(this\.previewOnly\)\s*return/)
-assert.match(training, /:disabled="previewOnly\|\|isPending\(s\.row\)"/)
+assert.match(training, /async openTool\(tool\)\s*{\s*if\s*\(this\.previewOnly/)
+assert.match(training, /ParticipantPreviewNotice v-if="previewOnly"/)
 
 const practical = fs.readFileSync('src/views/competition/CompetitionPractical.vue', 'utf8')
 assert.match(practical, /open \(value\)\s*{\s*if \(this\.previewOnly\) return/)
-assert.match(practical, /:disabled="previewOnly \|\| !safeUrl/)
-assert.match(practical, /<small v-if="!previewOnly">槽位/)
+assert.match(practical, /v-if="!previewOnly"[^>]*@click="downloadRootCa"/)
 assert.match(practical, /adminParticipantPreviewCompetitionEnvironmentApi/)
 assert.doesNotMatch(practical, /\{\{ environment\.readinessCode/)
 assert.match(practical, /this\.previewOnly\s*\?\s*\{ readiness: 'DEGRADED' }/)
@@ -106,7 +105,7 @@ assert.match(layout, /previewOnly/)
 assert.match(layout, /participantLocation \(path\)/)
 assert.match(layout, /query:\s*this\.previewOnly\s*\?\s*{ preview: '1' }\s*:\s*undefined/)
 assert.match(layout, /if \(!this\.previewOnly\) startUserActivity\(\)/)
-assert.match(layout, /if \(!this\.isAdmin \|\| this\.previewOnly\)/)
+assert.match(layout, /return this\.isAdmin && !this\.previewOnly/)
 assert.match(layout, /this\.participantLocation\('\/Question'\)/)
 ;['/Publicity', '/Home', '/Detect', '/competition-practical'].forEach(path => {
   assert.ok(layout.includes(`this.participantLocation('${path}')`), `Layout must preserve preview state for ${path}`)
@@ -118,13 +117,13 @@ assert.match(trainingShell, /previewOnly/)
 assert.match(trainingShell, /<PlatformShell/)
 assert.match(trainingShell, /@navigate="navigate"/)
 assert.match(trainingShell, /participantLocation \(path\)/)
-assert.match(trainingShell, /if \(!this\.previewOnly\) startUserActivity\(\)/)
+assert.match(trainingShell, /if \(!this\.previewOnly\)\s*\{\s*startUserActivity\(\)/)
 assert.match(trainingShell, /v-if="previewOnly" #account-actions/)
 assert.match(trainingShell, /@logout="logout"/)
 assert.match(trainingShell, /this\.previewOnly \? '参赛端预览'/)
 
 const trainingApiSource = fs.readFileSync('src/views/user/TrainingEnvironment.vue', 'utf8')
 assert.match(trainingApiSource, /adminParticipantPreviewTrainingEnvironmentsApi/)
-assert.match(trainingApiSource, /s\.row\.courseLabel \|\| s\.row\.courseId/)
+assert.match(trainingApiSource, /currentCourse \? currentCourse\.course\.name : "独立实训"/)
 
 console.log('participant preview contract passed')

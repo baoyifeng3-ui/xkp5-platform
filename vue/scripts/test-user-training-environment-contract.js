@@ -14,7 +14,7 @@ assert.match(course, /class="workspace-resource-actions"[\s\S]*?>进入实训<\/
 assert.match(course, /\.chapter-section\s*>\s*header\s*\{[^}]*font-size:\s*15px;/s)
 assert.match(course, /\.resource-row strong\s*\{[^}]*font-size:\s*14px;/s)
 assert.doesNotMatch(course, /return matched\.length \? matched : this\.environments/)
-assert.match(shell, /setInterval\(this\.refreshClassPolicy,\s*5000\)/)
+assert.match(shell, /setInterval\(\(\) => this\.refreshClassPolicy\(\)\.catch\(\(\) => \{\}\),\s*2000\)/)
 assert.match(shell, /classPolicy\.active/)
 assert.match(shell, /path:\s*["']\/course-platform["'],\s*query:\s*\{\s*courseId:\s*classPolicy\.courseId\s*\}/)
 assert.match(workspace, /item\.editorTool === "VSCODE"/)

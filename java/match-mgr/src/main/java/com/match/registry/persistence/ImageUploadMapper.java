@@ -5,7 +5,13 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
+import java.util.List;
+
 public interface ImageUploadMapper extends BaseMapper<ImageUploadRecord> {
+    @Select("SELECT * FROM image_upload WHERE expected_sha256 = #{sha256} OR final_sha256 = #{sha256} LIMIT 1")
+    ImageUploadRecord selectByArchiveSha256(@Param("sha256") String sha256);
+    @Select("SELECT * FROM image_upload WHERE final_sha256 = #{sha256} OR expected_sha256 = #{sha256} ORDER BY updated_at DESC")
+    List<ImageUploadRecord> selectByFinalSha256(@Param("sha256") String sha256);
     @Select("SELECT * FROM image_upload WHERE upload_id = #{uploadId} FOR UPDATE")
     ImageUploadRecord selectForUpdate(@Param("uploadId") String uploadId);
 

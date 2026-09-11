@@ -141,7 +141,7 @@ public class EnvironmentCommandFactory {
         component.setComponentType(template.getComponentType());
         component.setContainerName(containerName);
         component.setConfigFingerprint(template.getConfigFingerprint());
-        component.setImageReference(template.getImageReference());
+        component.setImageReference(template.getImageId() == null ? template.getImageReference() : template.getImageId());
         component.setRuntimeName(template.getRuntimeName());
         component.setRestartPolicy(template.getRestartPolicy());
         component.setMountTarget(template.getMountTarget());

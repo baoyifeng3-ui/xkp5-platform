@@ -106,10 +106,12 @@ public class ModeTransitionReconciler {
         String actual = success ? targetState(step.getActionType()) : "DEGRADED";
         if ("TRAINING".equals(step.getEnvironmentKind())) {
             trainingMapper.reconcileModeStep(step.getEnvironmentId(), actual,
-                    components.annotation, components.editor, now);
+                    components.annotation == null ? "UNKNOWN" : components.annotation,
+                    components.editor == null ? "UNKNOWN" : components.editor, now);
         } else if ("COMPETITION".equals(step.getEnvironmentKind())) {
             competitionMapper.reconcileModeStep(step.getEnvironmentId(), actual,
-                    components.annotation, components.editor, success ? now : null,
+                    components.annotation == null ? "UNKNOWN" : components.annotation,
+                    components.editor == null ? "UNKNOWN" : components.editor, success ? now : null,
                     success ? componentJson : null, now);
         }
     }
@@ -128,7 +130,7 @@ public class ModeTransitionReconciler {
     }
 
     private String targetState(String action) {
-        return action != null && action.startsWith("STOP_") ? "STOPPED" : "RUNNING";
+        return action != null && action.startsWith("START_") ? "RUNNING" : "STOPPED";
     }
 
     private String text(JsonNode node) {

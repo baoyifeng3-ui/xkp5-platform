@@ -1,0 +1,20 @@
+const assert = require('assert')
+const fs = require('fs')
+const read = path => fs.readFileSync(path, 'utf8')
+const settings = read('src/views/management/PlatformSettings.vue')
+const legacy = read('src/views/Admin.vue')
+const login = read('src/views/Login.vue')
+const store = read('src/store/modules/Match.js')
+const css = read('src/assets/style/login.css')
+
+for (const source of [settings, legacy]) {
+  assert.match(source, /背景蒙版透明度/)
+  assert.match(source, /<el-slider[^>]*:min="0"[^>]*:max="100"/)
+  assert.match(source, /loginBackgroundOverlayOpacity:\s*Number/)
+  assert.doesNotMatch(source, /img[^>]*opacity/)
+}
+assert.match(store, /loginBackgroundOverlayOpacity:\s*35/)
+assert.match(store, /Math\.max\(0,\s*Math\.min\(100/)
+assert.match(login, /--login-background-overlay-opacity/)
+assert.match(css, /rgba\(26,\s*34,\s*55,\s*var\(--login-background-overlay-opacity,\s*\.35\)\)/)
+console.log('login background overlay opacity contract passed')

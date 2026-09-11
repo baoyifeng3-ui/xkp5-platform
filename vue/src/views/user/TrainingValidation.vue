@@ -7,7 +7,7 @@
       </div>
       <el-button
         icon="el-icon-monitor"
-        @click="$router.push('/training-environment')"
+        @click="$router.push(adminDemo ? '/management/demo/training' : '/training-environment')"
         >返回实训环境</el-button
       >
     </header>

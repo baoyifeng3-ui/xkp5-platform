@@ -3,6 +3,8 @@ package com.match.environment.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.match.agent.model.AgentCommandView;
+import com.match.agent.model.AgentDockerImageView;
+import com.match.agent.model.AgentMetricSnapshot;
 import com.match.agent.persistence.ProcessingAgentMapper;
 import com.match.agent.persistence.ProcessingAgentRecord;
 import com.match.agent.service.AgentCommandService;
@@ -95,8 +97,8 @@ public class TrainingEnvironmentService {
         ContainerTemplateRecord editor = optionalTemplate(request.getEditorTemplateId(),
                 request.getEditorTemplateVersion(), "EDITOR");
         if (annotation == null && editor == null) throw new IllegalArgumentException("至少选择一个容器模板");
-        verifyServerImage(request.getAgentId(), annotation);
-        verifyServerImage(request.getAgentId(), editor);
+        verifyServerImage(agent, annotation);
+        verifyServerImage(agent, editor);
 
         ProcessingEnvironmentSlotRecord assignedToUser = slotMapper.selectByAgentAndUserForUpdate(
                 request.getAgentId(), request.getUserId());
@@ -120,9 +122,15 @@ public class TrainingEnvironmentService {
             throw new IllegalArgumentException("处理服务器槽位已分配给其他用户");
         }
 
-        TrainingEnvironmentRecord duplicate = environmentMapper.selectOne(
+        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<TrainingEnvironmentRecord> duplicateQuery =
                 new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<TrainingEnvironmentRecord>()
-                        .eq("user_id", request.getUserId()).eq("course_id", request.getCourseId()));
+                        .eq("user_id", request.getUserId());
+        if (request.getCourseId() != null) duplicateQuery.eq("course_id", request.getCourseId());
+        else {
+            duplicateQuery.isNull("course_id").eq("environment_type", request.getEnvironmentType().toUpperCase(java.util.Locale.ROOT));
+            if (!"COMPETITION".equalsIgnoreCase(request.getEnvironmentType())) duplicateQuery.eq("environment_name", request.getEnvironmentName());
+        }
+        TrainingEnvironmentRecord duplicate = environmentMapper.selectOne(duplicateQuery);
         if (duplicate != null) {
             throw new IllegalArgumentException("该用户课程环境已存在");
         }
@@ -131,7 +139,7 @@ public class TrainingEnvironmentService {
         String operationId = UUID.randomUUID().toString();
         boolean competition = "COMPETITION".equalsIgnoreCase(request.getEnvironmentType());
         String workspace = (competition ? "competition/" : "training/") + request.getUserId()
-                + "/" + (request.getCourseId() == null ? "unbound" : request.getCourseId());
+                + "/" + (request.getCourseId() == null ? environmentId : request.getCourseId());
         String shortId = environmentId.substring(0, 8);
         String prefix = competition ? "xkp-comp-" : "xkp-train-";
         String annotationName = annotation == null ? null : prefix + shortId + "-annotation";
@@ -220,7 +228,7 @@ public class TrainingEnvironmentService {
         component.setComponentType(template.getComponentType());
         component.setContainerName(name);
         component.setConfigFingerprint(template.getConfigFingerprint());
-        component.setImageReference(template.getImageReference());
+        component.setImageReference(template.getImageId() == null ? template.getImageReference() : template.getImageId());
         component.setRuntimeName(template.getRuntimeName());
         component.setRestartPolicy(template.getRestartPolicy());
         component.setMountTarget(template.getMountTarget());
@@ -334,14 +342,43 @@ public class TrainingEnvironmentService {
         return requireTemplate(id, version, type);
     }
 
-    private void verifyServerImage(String agentId, ContainerTemplateRecord template) {
-        if (template == null || imageDeploymentMapper == null) return;
-        ImageDeploymentRecord deployment = imageDeploymentMapper.selectLatestSucceeded(agentId,
-                template.getComponentType());
-        String expectedDigest=template.getImageDigest()==null?template.getImageReference():template.getImageDigest();
-        if (deployment == null || !Objects.equals(expectedDigest, deployment.getTargetDigest())) {
-            throw new IllegalArgumentException("处理服务器镜像版本与模板不一致，请先推送镜像版本");
+    private void verifyServerImage(ProcessingAgentRecord agent, ContainerTemplateRecord template) {
+        if (template == null) return;
+        List<AgentDockerImageView> images = agentImages(agent.getLatestMetrics());
+        if (template.getImageId() != null) {
+            if (images != null && images.stream().anyMatch(image -> template.getImageId().equals(image.getId()))) return;
+            throw new IllegalArgumentException("服务器缺少模板固定的镜像 " + template.getImageReference()
+                    + " (" + template.getImageId() + ")，请推送原镜像或重新创建模板");
         }
+        if (images != null && images.stream().anyMatch(image -> imageMatches(template.getImageReference(), image))) return;
+        if (images == null && imageDeploymentMapper == null) return;
+        String expected = template.getImageDigest() == null ? template.getImageReference() : template.getImageDigest();
+        ImageDeploymentRecord legacy = images == null && imageDeploymentMapper != null
+                ? imageDeploymentMapper.selectLatestSucceeded(agent.getAgentId(), template.getComponentType()) : null;
+        if (legacy != null && Objects.equals(expected, legacy.getTargetDigest())) return;
+        String server = agent.getDisplayName() == null || agent.getDisplayName().trim().isEmpty()
+                ? agent.getAgentId() : agent.getDisplayName();
+        throw new IllegalArgumentException(server + " 缺少镜像 " + template.getImageReference() + "，请先推送该镜像");
+    }
+
+    private List<AgentDockerImageView> agentImages(String metricsJson) {
+        if (metricsJson == null || metricsJson.trim().isEmpty()) return null;
+        try {
+            AgentMetricSnapshot metrics = objectMapper.readValue(metricsJson, AgentMetricSnapshot.class);
+            return Boolean.FALSE.equals(metrics.getDockerAvailable()) ? java.util.Collections.emptyList() : metrics.getImages();
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private boolean imageMatches(String reference, AgentDockerImageView image) {
+        if (reference == null || image == null || image.getRepository() == null) return false;
+        if (reference.contains("@")) return reference.equals(image.getDigest());
+        int slash = reference.lastIndexOf('/');
+        int colon = reference.lastIndexOf(':');
+        String repository = colon > slash ? reference.substring(0, colon) : reference;
+        String tag = colon > slash ? reference.substring(colon + 1) : "latest";
+        return repository.equals(image.getRepository()) && tag.equals(image.getTag());
     }
 
     private void validateRequest(CreateTrainingEnvironmentRequest request) {

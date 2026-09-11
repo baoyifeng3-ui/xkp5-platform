@@ -66,7 +66,7 @@ public class AdminUserControllerTest {
     public void reportsBatchUserNameConflicts() {
         AdminUserBatchRequest request = new AdminUserBatchRequest();
         request.setCount(20);
-        when(adminUserManagementService.createBatch(20))
+        when(adminUserManagementService.createBatch(request, 1))
                 .thenThrow(new DuplicateKeyException("duplicate user name"));
 
         ResponseResult<Object> result = controller.createBatch(request);

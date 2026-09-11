@@ -9,6 +9,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public interface ImageArtifactMapper extends BaseMapper<ImageArtifactRecord> {
+    @Select("SELECT * FROM image_artifact WHERE group_id = #{groupId} AND component_type = #{componentType} AND version = #{version} ORDER BY updated_at DESC LIMIT 1 FOR UPDATE")
+    ImageArtifactRecord selectByIdentityForUpdate(@Param("groupId") String groupId,
+                                                   @Param("componentType") String componentType,
+                                                   @Param("version") String version);
     @Select("SELECT * FROM image_artifact ORDER BY updated_at DESC, artifact_id DESC LIMIT #{limit}")
     List<ImageArtifactRecord> selectVisible(@Param("limit") int limit);
     @Select("SELECT * FROM image_artifact WHERE artifact_id = #{artifactId} "

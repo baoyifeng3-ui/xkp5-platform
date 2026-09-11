@@ -6,6 +6,10 @@ import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 public interface ProcessingAgentModeMapper extends BaseMapper<ProcessingAgentModeRecord> {
+    @org.apache.ibatis.annotations.Insert("INSERT IGNORE INTO processing_agent_mode "
+            + "(agent_id,desired_mode,actual_mode,lock_version,updated_at) VALUES "
+            + "(#{agentId},'TRAINING','NORMAL',0,UTC_TIMESTAMP(3))")
+    int ensureTraining(@Param("agentId") String agentId);
     @Select("SELECT * FROM processing_agent_mode WHERE agent_id = #{agentId} FOR UPDATE")
     ProcessingAgentModeRecord selectForUpdate(@Param("agentId") String agentId);
 

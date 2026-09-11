@@ -49,6 +49,7 @@ public class WebConfig implements WebMvcConfigurer {
             // 不再要求比赛模式或比赛阶段；仅保留登录校验。
             SaRouter.match("/admin/training-environments/**",
                             "/super-admin/training-environments/**")
+                    .notMatch("/admin/training-environments/class/status")
                     .check(participantModeGuard::requireAdministrativeTrainingMode);
         }))
                 .addPathPatterns("/**");

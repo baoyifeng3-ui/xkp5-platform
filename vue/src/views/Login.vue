@@ -62,7 +62,10 @@ export default {
         hasLoginBackground () { return Boolean(this.$store.state.Match.loginBackgroundUrl) },
         loginStyle () {
             const url = this.$store.state.Match.loginBackgroundUrl
-            return url ? { '--login-background-image': `url("${url.replace(/"/g, '\\"')}")` } : {}
+            return url ? {
+                '--login-background-image': `url("${url.replace(/"/g, '\\"')}")`,
+                '--login-background-overlay-opacity': String(this.$store.state.Match.loginBackgroundOverlayOpacity / 100)
+            } : {}
         }
     },
     methods: {

@@ -98,7 +98,7 @@ public class CompetitionController {
                 request.getPlatformName(), request.getThemeColor(), request.getLoginBackgroundUrl(),
                 request.getPlatformLogoUrl(), request.getLoginEnglishSubtitle(),
                 request.getLoginBrandName(), request.getLoginTitle(), request.getLoginDescription(),
-                request.getLoginCopyright(),
+                request.getLoginCopyright(), request.getLoginBackgroundOverlayOpacity(),
                 StpUtil.getLoginIdAsInt()));
     }
 

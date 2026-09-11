@@ -27,6 +27,7 @@ services:
     environment:
       REGISTRY_URL: https://registry:5000
       SPRING_PROFILES_ACTIVE: prod
+      XKP_PLATFORM_VERSION: ${MATCH_RELEASE_VERSION}
       XKP_REGISTRY_IMPORT_ENABLED: "true"
       MATCH_DB_HOST: mysql
       MATCH_DB_PORT: 3306

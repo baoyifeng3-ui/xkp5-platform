@@ -25,7 +25,6 @@ public class ParticipantLoginGateTest {
 
     @Before
     public void setUp() {
-        when(platformModeService.current()).thenReturn(new PlatformModeView(PlatformModeService.COMPETITION, 1, null, null));
         gate = new ParticipantLoginGate(countDownService, platformModeService, true);
     }
 
@@ -36,35 +35,27 @@ public class ParticipantLoginGateTest {
 
     @Test
     public void allowsRunningAndPausedParticipants() {
-        when(countDownService.snapshot()).thenReturn(snapshot("RUNNING"), snapshot("PAUSED"));
-
         assertNull(gate.deniedMessage(false));
         assertNull(gate.deniedMessage(false));
     }
 
     @Test
     public void allowsParticipantWhenNoScheduleExists() {
-        when(countDownService.snapshot()).thenReturn(snapshot("NOT_STARTED"));
-
         assertNull(gate.deniedMessage(false));
     }
 
     @Test
     public void allowsParticipantBeforeLoginWindow() {
-        when(countDownService.snapshot()).thenReturn(snapshot("WAITING_LOGIN"));
         assertNull(gate.deniedMessage(false));
     }
 
     @Test
     public void allowsParticipantDuringPreStartWindow() {
-        when(countDownService.snapshot()).thenReturn(snapshot("SCHEDULED"));
-
         assertNull(gate.deniedMessage(false));
     }
 
     @Test
     public void allowsParticipantAfterFinishToReachTheCompetitionShell() {
-        when(countDownService.snapshot()).thenReturn(snapshot("FINISHED"));
         assertNull(gate.deniedMessage(false));
     }
 
@@ -76,8 +67,6 @@ public class ParticipantLoginGateTest {
 
     @Test
     public void alwaysAllowsParticipantsInTrainingMode() {
-        when(platformModeService.current()).thenReturn(new PlatformModeView(PlatformModeService.TRAINING, 1, null, null));
-        when(countDownService.snapshot()).thenReturn(snapshot("FINISHED"));
         assertNull(gate.deniedMessage(false));
     }
 

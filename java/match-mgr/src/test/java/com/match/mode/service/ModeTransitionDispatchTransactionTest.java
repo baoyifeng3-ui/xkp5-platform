@@ -70,7 +70,7 @@ public class ModeTransitionDispatchTransactionTest {
         when(stepMapper.selectForUpdate("step-1")).thenReturn(step);
         when(agentMapper.selectForManagement("agent-1")).thenReturn(agent);
         when(competitionMapper.selectForUpdate("environment-1")).thenReturn(environment);
-        when(commandFactory.createPayloadJson(environment, "step-1")).thenReturn("{}");
+        when(commandFactory.createControlPayloadJson(environment, "step-1")).thenReturn("{}");
         when(stepMapper.markTerminal(eq("step-1"), eq("FAILED"),
                 eq("COMMAND_DISPATCH_FAILED"), anyString(), eq(null),
                 any(LocalDateTime.class))).thenReturn(1);

@@ -68,7 +68,7 @@ public class ImageDeploymentServiceTest {
         assertEquals("UPDATE_CONTAINERS", result.getUpdatePolicy());
         verify(deployments).insert(any(ImageDeploymentRecord.class));
         verify(commands).requestImageDeploymentCommand(eq(agent), eq("EDITOR"), eq(DIGEST),
-                eq("UPDATE_CONTAINERS"), any(String.class), eq("agent-1:EDITOR:request-1"), eq(7), eq("SUPER_ADMIN"));
+                eq("UPDATE_CONTAINERS"), any(String.class), eq("request-1"), eq(7), eq("SUPER_ADMIN"));
     }
 
     @Test
@@ -107,6 +107,21 @@ public class ImageDeploymentServiceTest {
         } catch (IllegalArgumentException expected) {
             assertEquals("EXPLICIT_CONFIRMATION_REQUIRED", expected.getMessage());
         }
+    }
+
+    @Test
+    public void legacyDeploymentDefersArchiveFailureToAgentDownload() {
+        AgentImageArchiveService archives = mock(AgentImageArchiveService.class);
+        service = new ImageDeploymentService(releases, artifacts, deployments, agents, commands, archives,
+                Clock.fixed(Instant.parse("2026-08-21T08:09:10Z"), ZoneOffset.UTC));
+        ImageReleaseRecord release = release("EDITOR"); release.setArtifactId("artifact-1");
+        ProcessingAgentRecord agent = new ProcessingAgentRecord(); agent.setAgentId("agent-1"); agent.setEnabled(true);
+        when(releases.selectById("release-1")).thenReturn(release);
+        when(archives.availableForArtifact("artifact-1")).thenReturn(false);
+        when(agents.selectForManagement("agent-1")).thenReturn(agent);
+        when(commands.requestImageDeploymentCommand(any(), anyString(), anyString(), anyString(), anyString(), anyString(), any(), anyString())).thenReturn(command());
+        service.deploy("SUPER_ADMIN", "release-1", "agent-1", "EDITOR", "IMAGE_ONLY", "request-1", false, 7);
+        verify(commands).requestImageDeploymentCommand(any(), anyString(), anyString(), anyString(), anyString(), anyString(), any(), anyString());
     }
 
 
@@ -184,6 +199,7 @@ public class ImageDeploymentServiceTest {
     private ImageReleaseRecord release(String component) {
         ImageReleaseRecord r = new ImageReleaseRecord(); r.setReleaseId("release-1");
         r.setComponentType(component); r.setRegistryDigest(DIGEST); r.setState("PUBLISHED");
+        r.setArtifactId("artifact-1");
         return r;
     }
     private ImageDeploymentRecord deployment(String id, String commandId) {

@@ -44,13 +44,13 @@ public class AdminLicenseController {
 
     @GetMapping("/status")
     public ResponseResult<Object> status() {
-        roleGuard.requireBusinessAdmin();
+        roleGuard.requireAnyAdmin();
         return Response.makeOKRsp(statusService.currentStatus());
     }
 
     @PostMapping("/requests")
     public ResponseResult<Object> createRequest(@RequestBody(required = false) LicenseRequestInput input) {
-        User actor = roleGuard.requireBusinessAdmin();
+        User actor = roleGuard.requireAnyAdmin();
         PlatformRequest request = requestService.create(input == null ? null : input.getOrganization(), actor.getUserId());
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("requestId", request.getRequestId());
@@ -60,7 +60,7 @@ public class AdminLicenseController {
 
     @GetMapping("/requests/{requestId}/download")
     public ResponseEntity<byte[]> download(@PathVariable String requestId) {
-        roleGuard.requireBusinessAdmin();
+        roleGuard.requireAnyAdmin();
         byte[] content = requestService.takeDownload(requestId);
         String disposition = "attachment; filename=\"" + requestService.filenameFor(requestId) + "\"";
         return ResponseEntity.ok()
@@ -71,7 +71,7 @@ public class AdminLicenseController {
 
     @PostMapping("/import")
     public ResponseResult<Object> importLicense(@RequestParam("file") MultipartFile file) {
-        User actor = roleGuard.requireBusinessAdmin();
+        User actor = roleGuard.requireAnyAdmin();
         try {
             PlatformLicenseRecord imported = importService.importLicense(file.getBytes(), actor.getUserId());
             // 显式 (Object) 绑定 makeOKRsp(T data) 泛型重载，避免 String 误绑 makeOKRsp(String message)

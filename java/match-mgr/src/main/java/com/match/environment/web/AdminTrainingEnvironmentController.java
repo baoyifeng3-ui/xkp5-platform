@@ -35,6 +35,7 @@ public class AdminTrainingEnvironmentController {
     private com.match.environment.service.ActiveClassSessionService classSessionService;
     private com.match.environment.service.AccountEnvironmentCreationService accountCreationService;
     private com.match.account.service.AccountSlotService accountSlotService;
+    @Autowired private com.match.environment.persistence.EnvironmentOperationMapper operationMapper;
 
     public AdminTrainingEnvironmentController(RoleGuard roleGuard,
                                               EnvironmentOperationService operationService) {
@@ -52,6 +53,7 @@ public class AdminTrainingEnvironmentController {
     public ResponseResult<Object> eligibleAccounts(){roleGuard.requireAnyAdmin();return Response.makeOKRsp(accountSlotService.eligible());}
 
     @PostMapping("/{environmentId}/class/start")
+    @org.springframework.transaction.annotation.Transactional
     public ResponseResult<Object> startClass(@PathVariable String environmentId) {
         User actor=roleGuard.requireAnyAdmin();classSessionService.start(environmentId,actor.getUserId());
         return Response.makeOKRsp(operationService.start(environmentId,actor.getUserId(),roleGuard.roleOf(actor).name()));
@@ -79,7 +81,7 @@ public class AdminTrainingEnvironmentController {
 
     @PostMapping("/class/stop")
     public ResponseResult<Object> stopClass() {
-        User actor=roleGuard.requireAnyAdmin();return Response.makeOKRsp(classSessionService.stop(actor.getUserId()));
+        User actor=roleGuard.requireAnyAdmin();return Response.makeOKRsp(classSessionService.stopAndShutdown(actor.getUserId(),roleGuard.roleOf(actor).name()));
     }
 
     @GetMapping("/templates")
@@ -113,7 +115,13 @@ public class AdminTrainingEnvironmentController {
     @GetMapping
     public ResponseResult<Object> list() {
         roleGuard.requireAnyAdmin();
-        java.util.List<java.util.Map<String,Object>> result=new java.util.ArrayList<>();for(com.match.environment.persistence.TrainingEnvironmentRecord row:operationService.listAll()){java.util.Map<String,Object> view=new java.util.LinkedHashMap<>();view.put("environmentId",row.getEnvironmentId());view.put("environmentName",row.getEnvironmentName());view.put("environmentType",row.getEnvironmentType());view.put("userId",row.getUserId());view.put("courseId",row.getCourseId());view.put("agentId",row.getAgentId());view.put("slotNumber",row.getSlotNumber());view.put("actualState",row.getActualState());view.put("desiredState",row.getDesiredState());com.match.agent.persistence.ProcessingAgentRecord agent=agentMapper.selectForManagement(row.getAgentId());String host=agent==null?null:agent.getPrimaryIp();for(com.match.environment.persistence.EnvironmentPortAllocationRecord port:portMapper.selectByEnvironment(row.getEnvironmentId())){if(host==null)continue;String url=Integer.valueOf(9090).equals(port.getContainerPort())?"https://":"http://"+host+":"+port.getHostPort();if("ANNOTATION".equals(port.getComponentType()))view.put("annotationUrl",url);else if(Integer.valueOf(9090).equals(port.getContainerPort()))view.put("editorUrl",url);else if(Integer.valueOf(8888).equals(port.getContainerPort()))view.put("jupyterUrl",url);else if(Integer.valueOf(5000).equals(port.getContainerPort()))view.put("t100Url",host+":"+port.getHostPort());}result.add(view);}return Response.makeOKRsp(result);
+        java.util.List<java.util.Map<String,Object>> result=new java.util.ArrayList<>();java.util.List<com.match.environment.persistence.TrainingEnvironmentRecord> rows=operationService.listAll();
+        java.util.Map<String,com.match.environment.persistence.EnvironmentOperationRecord> latest=new java.util.HashMap<>();
+        if(operationMapper!=null && !rows.isEmpty()) for(com.match.environment.persistence.EnvironmentOperationRecord op:operationMapper.selectLatestByEnvironments(rows.stream().map(com.match.environment.persistence.TrainingEnvironmentRecord::getEnvironmentId).collect(java.util.stream.Collectors.toList()))) latest.put(op.getEnvironmentId(),op);
+        for(com.match.environment.persistence.TrainingEnvironmentRecord row:rows){java.util.Map<String,Object> view=new java.util.LinkedHashMap<>();view.put("environmentId",row.getEnvironmentId());view.put("environmentName",row.getEnvironmentName());view.put("environmentType",row.getEnvironmentType());view.put("userId",row.getUserId());view.put("courseId",row.getCourseId());view.put("agentId",row.getAgentId());view.put("slotNumber",row.getSlotNumber());view.put("actualState",row.getActualState());
+            com.match.environment.persistence.EnvironmentOperationRecord op=latest.get(row.getEnvironmentId());
+            if(op!=null){view.put("operationId",op.getOperationId());view.put("operationState",op.getState());view.put("resultCode",op.getResultCode());view.put("resultMessage",op.getResultMessage());}
+            view.put("desiredState",row.getDesiredState());com.match.agent.persistence.ProcessingAgentRecord agent=agentMapper.selectForManagement(row.getAgentId());String host=agent==null?null:agent.getPrimaryIp();for(com.match.environment.persistence.EnvironmentPortAllocationRecord port:portMapper.selectByEnvironment(row.getEnvironmentId())){if(host==null)continue;String url=(Integer.valueOf(9090).equals(port.getContainerPort())?"https://":"http://")+host+":"+port.getHostPort();if("ANNOTATION".equals(port.getComponentType()))view.put("annotationUrl",url);else if(Integer.valueOf(9090).equals(port.getContainerPort()))view.put("editorUrl",url);else if(Integer.valueOf(8888).equals(port.getContainerPort()))view.put("jupyterUrl",url);else if(Integer.valueOf(5000).equals(port.getContainerPort()))view.put("t100Url",host+":"+port.getHostPort());}result.add(view);}return Response.makeOKRsp(result);
     }
 
     @GetMapping("/slots")

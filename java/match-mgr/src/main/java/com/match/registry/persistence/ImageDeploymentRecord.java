@@ -14,8 +14,10 @@ public class ImageDeploymentRecord {
     @TableId(value = "deployment_id", type = IdType.INPUT)
     private String deploymentId;
     private String releaseId;
+    private String fileId;
     private String agentId;
     private String componentType;
+    private String targetImage;
     private String targetDigest;
     private String previousDigest;
     private String updatePolicy;

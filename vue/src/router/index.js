@@ -99,7 +99,7 @@ const routes = [
         path: "image-registry",
         name: "ImageRegistry",
         component: ImageRegistryView,
-        meta: { roles: ["SUPER_ADMIN"] },
+        meta: { roles: ["ADMIN", "SUPER_ADMIN"] },
       },
       {
         path: "administrators",

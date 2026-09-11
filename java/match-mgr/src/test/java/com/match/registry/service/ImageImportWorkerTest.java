@@ -55,7 +55,7 @@ public class ImageImportWorkerTest {
     }
 
     @Test
-    public void importsApprovedArtifactAndDeletesStagingOnlyAfterDigestPersistence() throws Exception {
+    public void importsApprovedArtifactAndRetainsArchiveForAgentDeployment() throws Exception {
         when(artifacts.selectById(ARTIFACT_ID)).thenReturn(approved());
         successfulClaim();
         when(tool.importArchive(any(RegistryImportTool.ImportRequest.class), any(RegistryImportTool.ProgressListener.class)))
@@ -69,7 +69,7 @@ public class ImageImportWorkerTest {
 
         verify(artifacts).claimImport(eq(ARTIFACT_ID), anyString(), any(LocalDateTime.class), any(LocalDateTime.class));
         verify(artifacts).completeImport(eq(ARTIFACT_ID), anyString(), eq(DIGEST), any(LocalDateTime.class));
-        assertFalse(Files.exists(archive));
+        assertTrue(Files.exists(archive));
     }
 
     @Test
@@ -126,7 +126,7 @@ public class ImageImportWorkerTest {
     }
 
     @Test
-    public void readyArtifactReprocessingIsIdempotentAndCleansPersistedStaging() {
+    public void readyArtifactReprocessingIsIdempotentAndRetainsPersistedArchive() {
         ImageArtifactRecord ready = approved();
         ready.setImportState("READY");
         ready.setRegistryDigest(DIGEST);
@@ -136,7 +136,7 @@ public class ImageImportWorkerTest {
 
         verify(artifacts, never()).claimImport(eq(ARTIFACT_ID), anyString(), any(LocalDateTime.class), any(LocalDateTime.class));
         verify(tool, never()).importArchive(any(RegistryImportTool.ImportRequest.class), any(RegistryImportTool.ProgressListener.class));
-        assertFalse(Files.exists(archive));
+        assertTrue(Files.exists(archive));
     }
 
     @Test

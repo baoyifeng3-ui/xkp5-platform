@@ -78,7 +78,7 @@ public class AgentRegistrationServiceTest {
         when(tokenMapper.selectByDigestForUpdate(Digests.sha256("one-time-token"))).thenReturn(token);
         ProcessingAgentRecord existing = new ProcessingAgentRecord();
         existing.setAgentId("existing-agent");
-        when(agentMapper.selectByMachineDigest(validRequest().getMachineDigest())).thenReturn(existing);
+        when(agentMapper.selectByMachineDigestIncludingRemoved(validRequest().getMachineDigest())).thenReturn(existing);
         when(agentMapper.refreshRegistration(org.mockito.ArgumentMatchers.eq("existing-agent"),
                 org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),

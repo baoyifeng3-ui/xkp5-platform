@@ -9,6 +9,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public interface ProcessingAgentCommandMapper extends BaseMapper<ProcessingAgentCommandRecord> {
+    @Select("SELECT COUNT(*) FROM processing_agent_command WHERE agent_id=#{agentId} AND command_type='DOCKER_INVENTORY_ACTION' "
+            + "AND JSON_UNQUOTE(JSON_EXTRACT(payload_json,'$.action'))='DELETE_IMAGE' AND requested_at >= #{since}")
+    int countImageDeletesSince(@Param("agentId") String agentId, @Param("since") LocalDateTime since);
     @Update("UPDATE processing_agent_command SET state='FAILED', active_dedup_key=NULL, completed_at=#{now}, result_code='CANCELLED_BY_ENVIRONMENT_DELETE', result_message='Cancelled because environment was deleted', updated_at=#{now} WHERE agent_id=#{agentId} AND state IN ('PENDING','LEASED','RUNNING') AND JSON_UNQUOTE(JSON_EXTRACT(payload_json,'$.environmentId'))=#{environmentId}")
     int cancelEnvironmentCommands(@Param("agentId") String agentId, @Param("environmentId") String environmentId, @Param("now") LocalDateTime now);
     @Select("SELECT * FROM processing_agent_command "
@@ -162,7 +165,7 @@ public interface ProcessingAgentCommandMapper extends BaseMapper<ProcessingAgent
 
     @Update("UPDATE processing_agent_command SET state = 'FAILED', active_dedup_key = NULL, "
             + "completed_at = #{now}, result_code = 'IMAGE_DEPLOYMENT_TIMEOUT', "
-            + "result_message = '镜像推送超过两小时且没有进度更新', updated_at = #{now} "
+            + "result_message = '镜像推送超过时限，已释放服务器命令队列', updated_at = #{now} "
             + "WHERE command_id = #{commandId} AND command_type = 'DEPLOY_IMAGE' "
             + "AND state = 'RUNNING' AND updated_at < #{cutoff}")
     int failStaleImageDeployment(@Param("commandId") String commandId,

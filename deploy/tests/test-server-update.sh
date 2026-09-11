@@ -33,6 +33,6 @@ fi
 
 grep -q '^server-update:$' "$REPO_ROOT/Makefile" || fail "Makefile server-update target is missing"
 grep -q '^server-update-test:$' "$REPO_ROOT/Makefile" || fail "Makefile server-update-test target is missing"
-grep -q '^\t\./deploy/server-update.sh$' "$REPO_ROOT/Makefile" || fail "Makefile must delegate to the update script"
+grep -q $'^\t\./deploy/server-update.sh$' "$REPO_ROOT/Makefile" || fail "Makefile must delegate to the update script"
 
 printf 'Server update static tests passed.\n'

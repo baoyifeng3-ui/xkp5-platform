@@ -93,15 +93,14 @@ public class ModeTransitionExitTest {
     }
 
     @Test
-    public void exitStopsFrozenCompetitionBeforeRestoringSnapshot() {
+    public void exitStopsCompetitionWithoutRebuildingOrStartingTraining() {
         ModeTransitionView result = service.planExit(AGENT_ID, admin);
 
         assertEquals("TRAINING", result.getTargetMode());
         assertEquals("STOP_COMPETITION_ENVIRONMENT", result.getSteps().get(0).getActionType());
         assertEquals(COMPETITION_ID, result.getSteps().get(0).getEnvironmentId());
-        assertEquals("RESTORE_TRAINING_ENVIRONMENT", result.getSteps().get(1).getActionType());
-        assertEquals(TRAINING_ID, result.getSteps().get(1).getEnvironmentId());
-        assertFalse(result.getSteps().get(0).getPhaseNumber().equals(result.getSteps().get(1).getPhaseNumber()));
+        assertEquals(1, result.getSteps().size());
+        org.mockito.Mockito.verify(snapshots, org.mockito.Mockito.never()).selectByTransition(anyString());
     }
 
     private ModeTransitionRecord entryTransition() {

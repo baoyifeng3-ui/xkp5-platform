@@ -137,7 +137,8 @@ export default {
           this.$emit("uploaded", result.data || result);
         } catch (error) {
           item.status = "exception";
-          item.message = "上传失败";
+          const response = error && error.response && error.response.data;
+          item.message = (response && (response.msg || response.message)) || error.message || "上传失败";
         }
       }
       this.uploading = false;

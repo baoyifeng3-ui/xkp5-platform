@@ -25,6 +25,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import com.match.registry.persistence.ImageDeploymentMapper;
+import com.match.registry.persistence.ImageDeploymentRecord;
 
 @Service
 public class ContainerTemplateService {
@@ -37,6 +39,18 @@ public class ContainerTemplateService {
     private final LicenseGuard licenseGuard;
     private final Clock clock;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private ImageDeploymentMapper imageDeployments;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setImageDeploymentMapper(ImageDeploymentMapper imageDeployments) { this.imageDeployments = imageDeployments; }
+    private com.match.registry.service.DockerInventoryService inventory;
+    private com.match.registry.persistence.ImageFileMapper imageFiles;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setImageFileMapper(com.match.registry.persistence.ImageFileMapper imageFiles) { this.imageFiles = imageFiles; }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setDockerInventoryService(com.match.registry.service.DockerInventoryService inventory) { this.inventory = inventory; }
 
     public ContainerTemplateService(ContainerTemplateMapper mapper, LicenseGuard licenseGuard, Clock clock) {
         this.mapper = mapper;
@@ -47,15 +61,48 @@ public class ContainerTemplateService {
     @Transactional
     public ContainerTemplateRecord publish(ContainerTemplateRequest request, int actorUserId) {
         licenseGuard.requireActive();
-        if (request.getReleaseId() == null || request.getReleaseId().trim().isEmpty()) {
-            throw new IllegalArgumentException("必须选择已发布镜像版本");
-        }
+        if (request == null) throw new IllegalArgumentException("容器模板不能为空");
         NormalizedTemplate normalized = normalize(request);
-        String publishedDigest = mapper.selectPublishedDigest(request.getReleaseId().trim(), normalized.componentType);
-        if (publishedDigest == null || !publishedDigest.matches("^sha256:[0-9a-f]{64}$")) {
+        String publishedDigest;
+        String runtimeImageReference;
+        String imageId = null;
+        String imageFileId = null;
+        if (trimToNull(request.getAgentId()) == null && trimToNull(request.getImageReference()) != null && trimToNull(request.getReleaseId()) == null) {
+            if (imageDeployments == null || imageFiles == null) throw new IllegalStateException("镜像推送服务不可用");
+            com.match.registry.persistence.ImageFileRecord file = imageFiles.selectByImageReference(normalized.imageReference);
+            ImageDeploymentRecord deployment = file == null || !Boolean.TRUE.equals(file.getEnabled()) ? null : imageDeployments.selectLatestSucceededByFileId(file.getFileId());
+            if (deployment == null) {
+                throw new IllegalArgumentException("该镜像尚未成功推送到服务器");
+            }
+            inventory.requireCurrentImage(normalized.imageReference);
+            publishedDigest = null;
+            runtimeImageReference = normalized.imageReference;
+            imageId = null;
+            imageFileId = file.getFileId();
+        } else if (trimToNull(request.getAgentId()) != null) {
+            com.match.agent.model.AgentDockerImageView image = inventory.inspectedImage(request.getAgentId(),
+                    request.getInspectionCommandId(), normalized.imageReference, actorUserId);
+            imageId = image.getId();
+            if (imageFiles != null) {
+                List<String> names = new ArrayList<>(); names.add(normalized.imageReference);
+                if (image.getRepoTags() != null) names.addAll(image.getRepoTags());
+                for (String name : names) {
+                    com.match.registry.persistence.ImageFileRecord file = imageFiles.selectByImageReference(name);
+                    if (file != null) { imageFileId = file.getFileId(); break; }
+                }
+            }
+            publishedDigest = imageId;
+            runtimeImageReference = image.getRepository() == null || image.getRepository().isEmpty()
+                    ? imageId : image.getRepository() + ":" + image.getTag();
+        } else {
+            if (trimToNull(request.getReleaseId()) == null) throw new IllegalArgumentException("请选择已成功推送的镜像");
+            publishedDigest = mapper.selectPublishedDigest(request.getReleaseId().trim(), normalized.componentType);
+            runtimeImageReference = mapper.selectPublishedImageReference(request.getReleaseId().trim(), normalized.componentType);
+        }
+        if ((trimToNull(request.getReleaseId()) != null && publishedDigest == null)
+                || publishedDigest != null && !publishedDigest.matches("^sha256:[0-9a-f]{64}$")) {
             throw new IllegalArgumentException("镜像发布版本不可用或组件类型不匹配");
         }
-        String runtimeImageReference=mapper.selectPublishedImageReference(request.getReleaseId().trim(),normalized.componentType);
         if(runtimeImageReference==null||!IMAGE_REFERENCE.matcher(runtimeImageReference).matches())throw new IllegalArgumentException("镜像运行引用不可用");
         LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
 
@@ -80,6 +127,8 @@ public class ContainerTemplateService {
         record.setEnabled(true);
         record.setImageReference(runtimeImageReference);
         record.setImageDigest(publishedDigest);
+        record.setImageId(imageId);
+        record.setImageFileId(imageFileId);
         record.setRuntimeName(normalized.runtimeName);
         record.setRestartPolicy(normalized.restartPolicy);
         record.setPortsJson(writeJson(normalized.ports));
@@ -168,8 +217,8 @@ public class ContainerTemplateService {
         NormalizedTemplate result = new NormalizedTemplate();
         result.name = requireText(request.getTemplateName(), "模板名称", 80);
         result.componentType = normalizeComponentType(request.getComponentType());
-        result.imageReference = requireText(request.getImageReference(), "镜像", 255);
-        if (!IMAGE_REFERENCE.matcher(result.imageReference).matches()) {
+        result.imageReference = trimToNull(request.getImageReference());
+        if (result.imageReference != null && !IMAGE_REFERENCE.matcher(result.imageReference).matches()) {
             throw new IllegalArgumentException("镜像格式不正确");
         }
         result.runtimeName = requireText(request.getRuntimeName(), "运行时", 32);
@@ -277,6 +326,7 @@ public class ContainerTemplateService {
         Map<String, Object> content = new LinkedHashMap<>();
         content.put("componentType", record.getComponentType());
         content.put("image", record.getImageReference());
+        if (record.getImageId() != null) content.put("imageId", record.getImageId());
         content.put("runtime", record.getRuntimeName());
         content.put("restart", record.getRestartPolicy());
         content.put("ports", record.getPortsJson());

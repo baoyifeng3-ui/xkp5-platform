@@ -7,6 +7,8 @@ import java.util.List;
 @Data
 public class ContainerTemplateRequest {
     private String releaseId;
+    private String agentId;
+    private String inspectionCommandId;
     private String templateId;
     private String templateName;
     private String componentType;

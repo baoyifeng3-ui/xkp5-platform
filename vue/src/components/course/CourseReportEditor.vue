@@ -131,19 +131,23 @@ export default {
     },
     async load() {
       if (!this.courseId || this.loadedFor === this.courseId) return;
-      const r = await getCourseReport(this.courseId);
+      const courseId = this.courseId;
+      const r = await getCourseReport(courseId);
+      if (this.courseId !== courseId || !this.$refs.editor) return;
       this.$refs.editor.innerHTML = (r.data && r.data.content) || "";
-      this.loadedFor = this.courseId;
+      this.loadedFor = courseId;
     },
     scheduleSave() {
       clearTimeout(this.timer);
-      this.timer = setTimeout(this.save, 700);
+      const courseId = this.loadedFor || this.courseId;
+      const content = this.$refs.editor.innerHTML;
+      this.timer = setTimeout(() => this.save(courseId, content), 700);
     },
-    async save() {
-      if (!this.courseId || !this.$refs.editor) return;
+    async save(courseId = this.loadedFor || this.courseId, content = this.$refs.editor && this.$refs.editor.innerHTML) {
+      if (!courseId || content == null) return;
       this.saving = true;
       try {
-        await saveCourseReport(this.courseId, this.$refs.editor.innerHTML);
+        await saveCourseReport(courseId, content);
       } finally {
         this.saving = false;
       }

@@ -36,9 +36,9 @@
               prop="actualState"
               label="状态"
               width="100"
-            /><el-table-column label="操作" width="150"
+            /><el-table-column prop="resultMessage" label="最近操作结果" min-width="220" /><el-table-column label="操作" width="150"
               ><template slot-scope="i"
-                ><el-button type="text" @click="restore(i.row)">还原</el-button
+                ><el-button type="text" @click="restore(i.row)">重置</el-button
                 ><el-button
                   type="text"
                   class="danger"
@@ -177,8 +177,8 @@
         ><el-table-column prop="userId" label="账号 ID" /><el-table-column
           label="结果"
           ><template slot-scope="s"
-            ><el-tag :type="s.row.success ? 'success' : 'danger'">{{
-              s.row.success ? "已提交" : "失败"
+            ><el-tag :type="s.row.state === 'SUCCEEDED' ? 'success' : s.row.state === 'FAILED' ? 'danger' : 'info'">{{
+              s.row.state === 'SUCCEEDED' ? "创建完成" : s.row.state === 'FAILED' ? "创建失败" : "创建中"
             }}</el-tag></template
           ></el-table-column
         ><el-table-column prop="message" label="说明" /></el-table
@@ -205,10 +205,6 @@ const empty = () => ({
   annotationTemplateVersion: null,
   editorTemplateId: null,
   editorTemplateVersion: null,
-  annotationHostPort: null,
-  editorVscodeHostPort: null,
-  editorJupyterHostPort: null,
-  editorT100HostPort: null,
 });
 export default {
   data: () => ({
@@ -226,6 +222,7 @@ export default {
     editorKey: "",
     selectAll: false,
     results: [],
+    refreshTimer: null,
   }),
   computed: {
     environmentGroups() {
@@ -259,8 +256,23 @@ export default {
   },
   created() {
     this.load();
+    this.refreshTimer = window.setInterval(() => { if (!this.loading) this.refreshEnvironments().catch(() => {}); }, 3000);
   },
+  beforeDestroy() { window.clearInterval(this.refreshTimer); },
   methods: {
+    syncCreationResults() {
+      this.results = this.results.map(result => {
+        if (!result.success) return { ...result, state: 'FAILED' };
+        const environment = this.environments.find(row => result.operation && row.environmentId === result.operation.environmentId);
+        if (!environment || environment.operationId !== result.operation.operationId) return { ...result, state: result.state || 'PENDING' };
+        return { ...result, state: environment.operationState, message: environment.resultMessage || '' };
+      });
+    },
+    async refreshEnvironments() {
+      const response = await listAdminTrainingEnvironments();
+      this.environments = response.data || [];
+      this.syncCreationResults();
+    },
     course(v) {
       return v.course || v;
     },
@@ -280,6 +292,7 @@ export default {
           listAdminEnvironmentTemplates(),
         ]);
         this.environments = e.data || [];
+        this.syncCreationResults();
         this.eligibleAccounts = u.data || [];
         this.courses = c.data || [];
         this.templates = t.data || [];
@@ -338,6 +351,7 @@ export default {
       }
     },
     async restore(v) {
+      await this.$confirm("重置会删除并重建容器，容器内未保存在挂载目录的数据将丢失。完成后环境保持停止。", "重置环境", { type: "warning" });
       await restoreAdminTrainingEnvironment(v.environmentId);
       await this.load();
     },

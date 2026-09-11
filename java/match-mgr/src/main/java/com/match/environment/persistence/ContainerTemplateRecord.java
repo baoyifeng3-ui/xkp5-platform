@@ -19,6 +19,8 @@ public class ContainerTemplateRecord {
     private Boolean enabled;
     private String imageReference;
     private String imageDigest;
+    private String imageId;
+    private String imageFileId;
     private String runtimeName;
     private String restartPolicy;
     private String portsJson;

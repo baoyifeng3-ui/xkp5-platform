@@ -57,6 +57,21 @@ public class ModeTransitionReconcilerTest {
     }
 
     @Test
+    public void legacyRestoreReportsStoppedInsteadOfRunning() {
+        com.match.environment.persistence.TrainingEnvironmentMapper training = mock(com.match.environment.persistence.TrainingEnvironmentMapper.class);
+        com.match.environment.persistence.CompetitionEnvironmentMapper competition = mock(com.match.environment.persistence.CompetitionEnvironmentMapper.class);
+        reconciler = new ModeTransitionReconciler(steps, transitions, modes, training, competition,
+                mock(ModeTransitionService.class), new com.fasterxml.jackson.databind.ObjectMapper(),
+                Clock.fixed(Instant.parse("2026-08-21T06:07:08Z"), ZoneOffset.UTC));
+        step.setEnvironmentKind("TRAINING");
+        step.setEnvironmentId("env");
+        step.setActionType("RESTORE_TRAINING_ENVIRONMENT");
+        reconciler.reconcileIfPresent("command-1", true, "ENVIRONMENT_RESTORED", "ok", null);
+        verify(training).reconcileModeStep(org.mockito.ArgumentMatchers.eq("env"), org.mockito.ArgumentMatchers.eq("STOPPED"),
+                org.mockito.ArgumentMatchers.eq("UNKNOWN"), org.mockito.ArgumentMatchers.eq("UNKNOWN"), any());
+    }
+
+    @Test
     public void failedStepBecomesDegradedWithoutChangingSuccessfulSteps() {
         assertTrue(reconciler.reconcileIfPresent("command-1", false,
                 "DOCKER_TIMEOUT", "timeout", null));

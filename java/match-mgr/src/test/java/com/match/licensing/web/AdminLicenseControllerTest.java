@@ -26,7 +26,7 @@ public class AdminLicenseControllerTest {
         RoleGuard roleGuard = mock(RoleGuard.class);
         User admin = new User();
         admin.setUserId(7);
-        when(roleGuard.requireBusinessAdmin()).thenReturn(admin);
+        when(roleGuard.requireAnyAdmin()).thenReturn(admin);
         PlatformRequest request = new PlatformRequest(1, "request-1", "installation-1", "challenge",
                 "sha256:fingerprint", "DEVELOPMENT", "Fixture Lab", "5.0.0",
                 "2026-08-18T00:00:00Z");
@@ -39,7 +39,7 @@ public class AdminLicenseControllerTest {
         controller.importLicense(new MockMultipartFile("file", "license.xkplic",
                 "application/json", "{}".getBytes()));
 
-        verify(roleGuard, times(2)).requireBusinessAdmin();
+        verify(roleGuard, times(2)).requireAnyAdmin();
         verify(requests).create("Fixture Lab", 7);
         verify(imports).importLicense(any(byte[].class), eq(7));
     }
@@ -52,14 +52,14 @@ public class AdminLicenseControllerTest {
         RoleGuard roleGuard = mock(RoleGuard.class);
         User admin = new User();
         admin.setUserId(7);
-        when(roleGuard.requireBusinessAdmin()).thenReturn(admin);
+        when(roleGuard.requireAnyAdmin()).thenReturn(admin);
         when(requests.takeDownload("request-1")).thenReturn("{}".getBytes());
         when(requests.filenameFor("request-1")).thenReturn("xkp-platform-request-1.xkpreq");
         AdminLicenseController controller = new AdminLicenseController(requests, imports, status, roleGuard);
 
         controller.download("request-1");
 
-        verify(roleGuard).requireBusinessAdmin();
+        verify(roleGuard).requireAnyAdmin();
         verify(requests).takeDownload("request-1");
     }
 }

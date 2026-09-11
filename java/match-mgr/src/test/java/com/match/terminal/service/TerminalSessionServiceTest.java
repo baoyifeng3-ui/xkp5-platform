@@ -86,17 +86,16 @@ public class TerminalSessionServiceTest {
                 .thenReturn(command);
         when(sessions.setCommand(any(String.class), eq(command.getCommandId()),
                 eq(LocalDateTime.ofInstant(NOW, ZoneOffset.UTC)))).thenReturn(1);
+        when(sessions.markPollingActive(any(String.class), eq(LocalDateTime.ofInstant(NOW, ZoneOffset.UTC)))).thenReturn(1);
     }
 
     @Test
     public void createsWaitingSessionAndQueuesCommandAtInclusiveOnlineBoundary() {
         TerminalSessionView created = service.create(AGENT_ID, actor, "OPEN_ROOT_TERMINAL");
 
-        assertEquals("WAITING_AGENT", created.getState());
+        assertEquals("ACTIVE", created.getState());
         assertEquals(NOW, created.getRequestedAt());
-        assertEquals(NOW.plusSeconds(90), created.getAgentConnectionDeadline());
         assertEquals(NOW.plusSeconds(7200), created.getAbsoluteExpiresAt());
-        assertEquals("22222222-2222-4222-8222-222222222222", created.getCommandId());
         assertNotNull(created.getSessionId());
         ArgumentCaptor<TerminalSessionRecord> saved = ArgumentCaptor.forClass(TerminalSessionRecord.class);
         verify(sessions).insert(saved.capture());
@@ -105,11 +104,7 @@ public class TerminalSessionServiceTest {
         assertEquals(AGENT_ID, record.getActiveAgentId());
         assertEquals(Integer.valueOf(7), record.getRequesterUserId());
         assertEquals("SUPER_ADMIN", record.getRequesterRole());
-        verify(commands).requestTerminalCommand(eq(agent), eq(created.getSessionId()),
-                eq(created.getAgentConnectionDeadline()), eq(created.getAbsoluteExpiresAt()),
-                eq(actor.getUserId()), eq("SUPER_ADMIN"));
-        verify(sessions).setCommand(created.getSessionId(), created.getCommandId(),
-                LocalDateTime.ofInstant(NOW, ZoneOffset.UTC));
+        verify(sessions).markPollingActive(created.getSessionId(), LocalDateTime.ofInstant(NOW, ZoneOffset.UTC));
     }
 
     @Test
@@ -160,32 +155,15 @@ public class TerminalSessionServiceTest {
     }
 
     @Test
-    public void commandAndAttachmentFailuresEscapeTransactionalMethod() throws Exception {
+    public void pollingActivationFailureEscapesTransactionalMethod() throws Exception {
         Method create = TerminalSessionService.class.getMethod("create", String.class, User.class, String.class);
         Transactional transactional = create.getAnnotation(Transactional.class);
         assertNotNull(transactional);
         assertEquals(Propagation.REQUIRED, transactional.propagation());
         assertTrue(transactional.rollbackFor().length == 0);
 
-        RuntimeException commandFailure = new RuntimeException("command insert failed");
-        when(commands.requestTerminalCommand(eq(agent), any(String.class), any(Instant.class),
-                any(Instant.class), eq(7), eq("SUPER_ADMIN"))).thenThrow(commandFailure);
-        boolean commandFailed = false;
-        try {
-            create();
-        } catch (RuntimeException actual) {
-            assertEquals(commandFailure, actual);
-            commandFailed = true;
-        }
-        assertTrue(commandFailed);
-
-        AgentCommandView command = new AgentCommandView();
-        command.setCommandId("22222222-2222-4222-8222-222222222222");
-        when(commands.requestTerminalCommand(eq(agent), any(String.class), any(Instant.class),
-                any(Instant.class), eq(7), eq("SUPER_ADMIN"))).thenReturn(command);
-        when(sessions.setCommand(any(String.class), eq(command.getCommandId()), any(LocalDateTime.class)))
-                .thenReturn(0);
-        expectCode("TERMINAL_COMMAND_ATTACH_FAILED", () -> create());
+        when(sessions.markPollingActive(any(String.class), any(LocalDateTime.class))).thenReturn(0);
+        expectCode("TERMINAL_SESSION_START_FAILED", () -> create());
     }
 
     private static void assertRequiredTransaction(String methodName, Class<?>... parameterTypes)
@@ -197,28 +175,11 @@ public class TerminalSessionServiceTest {
     }
 
     @Test
-    public void translatesOnlyTerminalCommandSessionConflictsToTerminalDomain() {
-        AgentProtocolException conflict = new AgentProtocolException(
-                "TERMINAL_COMMAND_SESSION_CONFLICT", "foreign terminal command", HttpStatus.CONFLICT);
-        when(commands.requestTerminalCommand(eq(agent), any(String.class), any(Instant.class),
-                any(Instant.class), eq(7), eq("SUPER_ADMIN"))).thenThrow(conflict);
-
-        TerminalSessionException translated = expectCode(
-                "TERMINAL_COMMAND_SESSION_CONFLICT", () -> create());
-
-        assertEquals(HttpStatus.CONFLICT, translated.getStatus());
-
-        AgentProtocolException unrelated = new AgentProtocolException(
-                "COMMAND_LEASE_CONFLICT", "unrelated", HttpStatus.CONFLICT);
-        when(commands.requestTerminalCommand(eq(agent), any(String.class), any(Instant.class),
-                any(Instant.class), eq(7), eq("SUPER_ADMIN"))).thenThrow(unrelated);
-        try {
-            create();
-        } catch (AgentProtocolException actual) {
-            assertEquals(unrelated, actual);
-            return;
-        }
-        throw new AssertionError("unrelated Agent protocol failure was translated");
+    public void pollingTerminalDoesNotQueueAgentCommand() {
+        TerminalSessionView created = create();
+        assertEquals("ACTIVE", created.getState());
+        verify(commands, never()).requestTerminalCommand(any(ProcessingAgentRecord.class), any(String.class),
+                any(Instant.class), any(Instant.class), any(Integer.class), any(String.class));
     }
 
     @Test

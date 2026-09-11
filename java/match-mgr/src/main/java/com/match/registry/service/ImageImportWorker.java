@@ -84,10 +84,6 @@ public class ImageImportWorker {
         }
         if ("READY".equals(artifact.getImportState())
                 && IMMUTABLE_DIGEST.matcher(value(artifact.getRegistryDigest())).matches()) {
-            ImageUploadRecord completedUpload = uploadMapper.selectByArtifactId(artifactId);
-            if (completedUpload != null) {
-                deleteImportedArchive(archive(completedUpload.getUploadId()));
-            }
             return true;
         }
 
@@ -141,7 +137,6 @@ public class ImageImportWorker {
                 return fail(artifactId, attemptToken, "DIGEST_PERSIST_FAILED",
                         "Registry digest could not be persisted");
             }
-            deleteImportedArchive(archive);
             return true;
         } catch (RegistryImportTool.ImportException e) {
             return fail(artifactId, attemptToken, e.getCode(), e.getMessage());
@@ -182,14 +177,6 @@ public class ImageImportWorker {
             throw new RegistryImportTool.ImportException("ARCHIVE_NOT_FOUND", "Invalid staging path");
         }
         return result;
-    }
-
-    private void deleteImportedArchive(Path archive) {
-        try {
-            Files.deleteIfExists(archive);
-        } catch (IOException ignored) {
-            // Digest is durable; periodic staging cleanup may retry this best-effort deletion.
-        }
     }
 
     private String bounded(String message) {

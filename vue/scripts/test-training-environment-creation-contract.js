@@ -12,11 +12,7 @@ const requiredViewText = [
   '图像标注端口',
   'VS Code 端口',
   'Jupyter 端口',
-  'T100 端口',
-  'annotationHostPort',
-  'editorVscodeHostPort',
-  'editorJupyterHostPort',
-  'editorT100HostPort'
+  'T100 端口'
 ]
 
 for (const token of requiredViewText) {

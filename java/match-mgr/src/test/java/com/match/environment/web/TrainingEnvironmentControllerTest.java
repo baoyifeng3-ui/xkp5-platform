@@ -22,6 +22,31 @@ import static org.mockito.Mockito.when;
 
 public class TrainingEnvironmentControllerTest {
     @Test
+    public void adminEditorUrlIncludesHostAndPort() {
+        RoleGuard guard = mock(RoleGuard.class);
+        EnvironmentOperationService service = mock(EnvironmentOperationService.class);
+        com.match.agent.persistence.ProcessingAgentMapper agents = mock(com.match.agent.persistence.ProcessingAgentMapper.class);
+        com.match.environment.persistence.EnvironmentPortAllocationMapper ports = mock(com.match.environment.persistence.EnvironmentPortAllocationMapper.class);
+        TrainingEnvironmentRecord environment = new TrainingEnvironmentRecord();
+        environment.setEnvironmentId("env");
+        environment.setAgentId("agent");
+        com.match.agent.persistence.ProcessingAgentRecord agent = new com.match.agent.persistence.ProcessingAgentRecord();
+        agent.setPrimaryIp("192.0.2.10");
+        com.match.environment.persistence.EnvironmentPortAllocationRecord port = new com.match.environment.persistence.EnvironmentPortAllocationRecord();
+        port.setComponentType("EDITOR");
+        port.setContainerPort(9090);
+        port.setHostPort(9091);
+        when(service.listAll()).thenReturn(Collections.singletonList(environment));
+        when(agents.selectForManagement("agent")).thenReturn(agent);
+        when(ports.selectByEnvironment("env")).thenReturn(Collections.singletonList(port));
+        AdminTrainingEnvironmentController controller = new AdminTrainingEnvironmentController(guard, service);
+        controller.setAgentMapper(agents);
+        controller.setPortMapper(ports);
+        Map<?, ?> row = (Map<?, ?>) ((List<?>) controller.list().getData()).get(0);
+        assertEquals("https://192.0.2.10:9091", row.get("editorUrl"));
+    }
+
+    @Test
     public void administratorLifecycleActionsUseTheAuthenticatedRole() {
         RoleGuard roleGuard = mock(RoleGuard.class);
         EnvironmentOperationService service = mock(EnvironmentOperationService.class);

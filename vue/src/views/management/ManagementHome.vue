@@ -9,6 +9,7 @@
           :type="platformMode === 'COMPETITION' ? 'warning' : 'primary'"
           icon="el-icon-trophy"
           :loading="switchingMode"
+          :disabled="transitionBusy || classStarting || classStopping"
           @click="togglePlatformMode"
           >{{
             platformMode === "COMPETITION" ? "退出比赛模式" : "进入比赛模式"
@@ -17,9 +18,9 @@
         <el-button
           :type="classInSession ? 'info' : 'primary'"
           icon="el-icon-video-play"
-          :disabled="classInSession"
+          :disabled="classInSession || platformMode !== 'TRAINING' || transitionBusy || classStarting || classStopping"
           @click="openClassDialog"
-          >{{ classInSession ? "上课中" : "一键上课" }}</el-button
+          >{{ classInSession ? (classStatus.allReady ? "上课中" : classStatus.failedCount ? "上课失败" : "环境启动中") : "一键上课" }}</el-button
         >
         <el-button
           :type="classInSession ? 'warning' : 'info'"
@@ -31,6 +32,9 @@
         >
       </div>
     </header>
+    <el-alert v-if="transitionBusy" type="info" :closable="false" show-icon title="后台正在停止或切换环境，请等待准备完成后再操作。" />
+    <el-alert v-if="classInSession && !classStatus.allReady && !classStatus.failedCount" type="info" :closable="false" show-icon :title="`课堂准备中：已就绪 ${classStatus.runningCount || 0}/${classStatus.totalCount || 0}，正在停止旧环境或检查工具服务，请勿重复提交。`" />
+    <el-alert v-if="classStatus && classStatus.active && classStatus.failedCount" type="error" :closable="false" show-icon :title="`${classStatus.failedCount} 个课堂环境启动失败，请在实训环境查看原因，修复后重新上课。`" />
 
     <section class="status-strip">
       <div
@@ -215,6 +219,7 @@
         ><el-button
           type="primary"
           :loading="classStarting"
+          :disabled="classStarting || transitionBusy || platformMode !== 'TRAINING'"
           @click.native="startSelectedClass"
           >确认上课</el-button
         ></span
@@ -255,7 +260,7 @@ const MetricBar = Vue.component("dashboard-metric-bar", {
     },
   },
   template:
-    '<div class="metric-cell"><span>{{ percent == null ? "--" : percent.toFixed(0) + "%" }}</span><i><b v-if="percent != null" :style="{ width: percent + "%" }" /></i></div>',
+    `<div class="metric-cell"><span>{{ percent == null ? "--" : percent.toFixed(0) + "%" }}</span><i><b v-if="percent != null" :style="{ width: percent + '%' }"></b></i></div>`,
 });
 
 export default {
@@ -404,6 +409,7 @@ export default {
       return Object.values(groups);
     },
     classInSession() { return Boolean(this.classStatus && this.classStatus.active); },
+    transitionBusy() { return Boolean(this.classStatus && (this.classStatus.modeSwitching || this.classStatus.stopping)); },
     attendanceHasName() { return Boolean(this.attendance && (this.attendance.rows || []).some(x => x.name)); },
   },
   mounted() {
@@ -454,9 +460,7 @@ export default {
         const [overview, courses, classStatus, attendance] = await Promise.all([
           getDashboardOverview(),
           listAdminCourses(),
-          this.platformMode === "TRAINING"
-            ? getClassTrainingStatus()
-            : Promise.resolve({ data: null }),
+          getClassTrainingStatus(),
           getAttendanceStatus(),
         ]);
         this.snapshot = overview.data || {};
@@ -483,7 +487,7 @@ export default {
       await this.$confirm(
         `确认${
           target === "COMPETITION" ? "进入" : "退出"
-        }比赛模式？普通用户现有登录会失效。`,
+        }比赛模式？普通用户现有登录会失效。${target === "TRAINING" ? "比赛环境将停止，实训环境按需启动。" : "实训环境停止后启动比赛环境。"}`,
         "切换平台模式",
         { type: "warning" }
       );
@@ -491,7 +495,7 @@ export default {
       try {
         const result = await changePlatformMode(target);
         this.syncPlatformMode(result.data || {});
-        this.$message.success("平台模式已切换");
+        this.$message.success("切换任务已提交，请等待环境就绪");
         await this.refreshAll();
       } finally {
         this.switchingMode = false;
@@ -528,6 +532,7 @@ export default {
       this.classDialog = true;
     },
     async startSelectedClass() {
+      if (this.classStarting || this.transitionBusy || this.platformMode !== 'TRAINING') return;
       if (!this.classForm.target)
         return this.$message.warning("请选择课程或独立实训环境");
       this.classStarting = true;
@@ -536,6 +541,7 @@ export default {
         const type = this.classForm.target.slice(0, separator);
         const value = this.classForm.target.slice(separator + 1);
         await this.submitClassStart(type, value, false);
+        await this.refreshAll();
         if (this.classForm.attendance) await startAttendance();
         this.classDialog = false;
         this.classReadyNotified = false;
@@ -547,7 +553,12 @@ export default {
           error.response &&
           error.response.data &&
           error.response.data.data;
-        if (!data || data.reasonCode !== "CLASS_SERVERS_OFFLINE") throw error;
+        if (!data || data.reasonCode !== "CLASS_SERVERS_OFFLINE") {
+          const body=error && error.response && error.response.data;
+          this.$message.error((body && (body.msg || body.message)) || error.message || "上课请求失败，请稍后重试");
+          await this.refreshAll();
+          return;
+        }
         const lines = (data.offlineServers || []).map(
           (item) =>
             `${item.displayName || item.agentId}${
@@ -630,20 +641,8 @@ export default {
       try {
         await stopClassTrainingEnvironment();
         await endAttendance();
-        const result = await listAdminTrainingEnvironments();
-        const environments = (result.data || []).filter(
-          (item) => item.actualState === "RUNNING"
-        );
-        if (!environments.length)
-          return this.$message.info("已结束课堂，当前没有运行中的实训环境");
-        await Promise.all(
-          environments.map((item) =>
-            stopAdminTrainingEnvironment(item.environmentId)
-          )
-        );
-        this.$message.success(
-          `课堂已结束，已提交 ${environments.length} 个环境的停止任务`
-        );
+        await this.refreshAll();
+        this.$message.success("课堂已结束，停止任务已提交，请等待环境停止");
       } finally {
         this.classStopping = false;
       }

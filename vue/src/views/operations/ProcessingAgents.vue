@@ -14,7 +14,7 @@
       <el-button v-else type="success" icon="el-icon-video-play" @click="enableAgent">启用</el-button>
       <el-button v-if="canOpenTerminal" icon="el-icon-monitor" :loading="terminalOpening" :disabled="!selected.online" @click="openRootTerminal">远程连接</el-button>
       <el-button icon="el-icon-s-grid" @click="portPoolVisible=true">端口池</el-button>
-      <el-button type="primary" plain icon="el-icon-upload2" :loading="busyAction === 'upgrade'" :disabled="!selected.online || selected.agentVersion === targetAgentVersion || !upgradeSupported" @click="upgradeAgent">{{ selected.agentVersion === targetAgentVersion ? '已是最新版' : (upgradeSupported ? '升级 Agent' : '请先手动升级') }}</el-button>
+      <el-button type="primary" plain icon="el-icon-upload2" :loading="busyAction === 'upgrade'" :disabled="!selected.online || !upgradeSupported" @click="upgradeAgent">{{ upgradeSupported ? '升级 Agent' : (selected.agentVersion === targetAgentVersion ? '已是最新版' : '无可用升级') }}</el-button>
       <el-button plain icon="el-icon-connection" @click="openReconnectDialog">重新接入管理服务器</el-button>
       <el-button type="danger" plain icon="el-icon-delete" @click="removeAgent">移除</el-button>
     </div>
@@ -71,12 +71,13 @@ export default {
   data: () => ({
     agents: [], selected: null, commands: [], loading: false, busyAction: '', tokenDialog: false,
     downloading: false, remoteDeploying: false, ipTouched: false, statusChecking: false, serverReachable: null, pendingServerIp: '', refreshTimer: null, ipCheckTimer: null,
-    form: { serverIp: '', label: '', workspace: '/srv/xkp', username: '', password: '', sshPort: 22 }, terminalVisible: false, terminalSession: null, terminalOpening: false, portPoolVisible: false, targetAgentVersion: '0.2.28'
+    form: { serverIp: '', label: '', workspace: '/srv/xkp', username: '', password: '', sshPort: 22 }, terminalVisible: false, terminalSession: null, terminalOpening: false, portPoolVisible: false
   }),
   computed: {
     validServerIp () { return SERVER_IP_PATTERN.test(this.form.serverIp) },
     canOpenTerminal () { return getRole() === 'SUPER_ADMIN' },
-    upgradeSupported () { return Boolean(this.selected && this.selected.agentVersion && this.selected.agentVersion !== '0.1.0') },
+    targetAgentVersion () { return this.selected && this.selected.targetAgentVersion },
+    upgradeSupported () { return Boolean(this.selected && this.selected.upgradeAvailable) },
     formReady () { return this.validServerIp && !!this.form.label && !!this.form.workspace },
     ipStatusClass () { if (this.statusChecking) return 'is-checking'; return this.serverReachable === true ? 'is-online' : this.serverReachable === false ? 'is-offline' : 'is-waiting' },
     ipStatusText () {
@@ -98,7 +99,7 @@ export default {
   methods: {
     async load () {
       this.loading = true
-      try { const result = await listProcessingAgents(); this.agents = result.data || [] } finally { this.loading = false }
+      try { const result = await listProcessingAgents(); this.agents = result.data || []; if (this.selected) this.selected = this.agents.find(agent => agent.agentId === this.selected.agentId) || null } finally { this.loading = false }
     },
     openTokenDialog () { this.tokenDialog = true; this.checkServerConnectivity() },
     openReconnectDialog () { if (!this.selected) return; this.form = { serverIp: this.selected.primaryIp || '', label: this.selected.displayName || this.selected.hostname || '', workspace: '/srv/xkp', username: 'zyhit', password: '', sshPort: 22 }; this.tokenDialog = true; this.checkServerConnectivity() },

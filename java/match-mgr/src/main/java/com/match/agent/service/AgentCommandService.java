@@ -349,6 +349,7 @@ public class AgentCommandService {
                 && !"DELIVER_COURSE_RESOURCE".equals(commandType)
                 && !"TRANSFER_FILE".equals(commandType)
                 && !"MODEL_WORKSPACE".equals(commandType)
+                && !"DOCKER_INVENTORY_ACTION".equals(commandType)
                 && !"CREATE_COMPETITION_ENVIRONMENT".equals(commandType)
                 && !"START_COMPETITION_ENVIRONMENT".equals(commandType)
                 && !"STOP_COMPETITION_ENVIRONMENT".equals(commandType)
@@ -763,6 +764,31 @@ public class AgentCommandService {
         } catch (IOException | IllegalArgumentException invalidPayload) {
             throw terminalSessionConflict();
         }
+    }
+
+    @Transactional
+    public AgentCommandView requestImageFileDeploymentCommand(ProcessingAgentRecord agent, String imageName,
+                                                               boolean overwrite, String deploymentId,
+                                                               String idempotencyKey, Integer requesterUserId,
+                                                               String requesterRole) {
+        String agentId = requireAgentId(agent);
+        if (mapper.selectEnabledAgentForUpdate(agentId) == null) throw new IllegalArgumentException("Processing server is disabled");
+        if (imageName == null || !imageName.matches("[a-z0-9]+(?:[._/-][a-z0-9]+)*:[A-Za-z0-9._-]+"))
+            throw new IllegalArgumentException("Image name is invalid");
+        String dedupKey = agentId + ":" + DEPLOY_IMAGE + ":" + idempotencyKey;
+        ProcessingAgentCommandRecord existing = mapper.selectActiveByDedup(agentId, DEPLOY_IMAGE, dedupKey);
+        if (existing != null) return toView(existing);
+        ObjectNode payload = objectMapper.createObjectNode(); payload.put("agentId", agentId);
+        payload.put("deploymentId", deploymentId); payload.put("imageName", imageName); payload.put("overwrite", overwrite);
+        payload.put("idempotencyKey", idempotencyKey);
+        String payloadJson; try { payloadJson = objectMapper.writeValueAsString(payload); }
+        catch (IOException e) { throw new IllegalArgumentException("Image deployment payload is invalid", e); }
+        LocalDateTime now = utcNow(); ProcessingAgentCommandRecord record = new ProcessingAgentCommandRecord();
+        record.setCommandId(UUID.randomUUID().toString()); record.setAgentId(agentId); record.setCommandType(DEPLOY_IMAGE);
+        record.setCommandVersion(COMMAND_VERSION); record.setPayloadJson(payloadJson); record.setState("PENDING");
+        record.setActiveDedupKey(dedupKey); record.setRequesterUserId(requesterUserId); record.setRequesterRole(requireRole(requesterRole));
+        record.setCorrelationId(UUID.randomUUID().toString()); record.setRequestedAt(now); record.setAvailableAt(now);
+        record.setAttemptCount(0); record.setUpdatedAt(now); mapper.insert(record); return toView(record);
     }
 
     @Transactional

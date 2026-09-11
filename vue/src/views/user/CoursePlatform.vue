@@ -362,6 +362,7 @@
 </template>
 
 <script>
+import { getClassPolicy } from '@/utils/auth';
 import {
   listUserCourses,
   listAdminCourses,
@@ -418,6 +419,7 @@ export default {
     workspaceEmbeddedKey: 0,
     workspaceBusy: false,
     workspaceStartProgress: 0,
+    environmentTimer: null, destroyed: false, refreshingEnvironment: false,
     defaultCourseCover,
     loadError: "",
   }),
@@ -512,7 +514,7 @@ export default {
       const requestedCourse = requestedCourseId && this.courses.find(
         (item) => String(item.course.courseId) === String(requestedCourseId)
       );
-      if (requestedCourse) this.startLearning(requestedCourse);
+        if (requestedCourse) { this.startLearning(requestedCourse); if (getClassPolicy().active) { await this.openTraining(); await this.openWorkspaceTool(getClassPolicy().editorTool || 'VSCODE'); } }
     } catch (error) {
       this.loadError =
         (error &&
@@ -522,7 +524,18 @@ export default {
         "课程信息加载失败，请刷新重试";
     }
   },
+  mounted() { this.environmentTimer=setInterval(() => this.syncWorkspaceEnvironment().catch(() => {}),2000); },
+  beforeDestroy() { this.destroyed=true; clearInterval(this.environmentTimer); },
   methods: {
+    async syncWorkspaceEnvironment() {
+      if(this.refreshingEnvironment || this.destroyed || this.workspaceBusy) return;
+      this.refreshingEnvironment=true;
+      try {
+        await this.reloadEnvironments();
+        const row=this.courseEnvironments.find(item=>item.environmentId===this.workspaceEnvironmentId);
+        if(row && (row.actualState!=='RUNNING' || row.modeSwitching)) this.workspaceEmbeddedUrl='';
+      } finally {this.refreshingEnvironment=false;}
+    },
     async refreshChapters() {
       if (!this.selectedCourse) {
         this.chapters = [];
@@ -633,34 +646,36 @@ export default {
       this.environments = Array.isArray(result.data) ? result.data : [];
     },
     async waitForWorkspaceEnvironment(environmentId) {
-      for (let attempt = 0; attempt < 30; attempt += 1) {
-        this.workspaceStartProgress = Math.min(95, 10 + attempt * 3);
+      const deadline=Date.now()+15*60*1000;
+      while(!this.destroyed && Date.now()<deadline) {
         await this.reloadEnvironments();
         const environment = this.courseEnvironments.find((item) => item.environmentId === environmentId);
-        if (environment && ["RUNNING", "ERROR"].includes(environment.actualState)) return environment;
+        if (environment && !environment.modeSwitching && ["RUNNING", "ERROR", "DEGRADED", "STOPPED"].includes(environment.actualState) && !['PENDING','RUNNING','WAITING_DEPENDENCY'].includes(environment.operationState)) return environment;
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
       return null;
     },
     async openWorkspaceTool(tool) {
+      if(this.workspaceBusy) return;
       let environment = this.courseEnvironments.find(
         (item) => item.environmentId === this.workspaceEnvironmentId
       );
       if (!environment) return this.$message.warning("请选择实训环境");
+      if(environment.modeSwitching) return this.$message.info("平台正在切换环境，请等待准备完成");
       this.workspaceBusy = true;
       this.workspaceStartProgress = 5;
       try {
         if (environment.actualState !== 'RUNNING') {
           this.workspaceEmbeddedUrl = "";
           this.workspaceEmbeddedTitle = "";
-          if (!['STARTING', 'CREATING', 'WAITING_DEPENDENCY'].includes(environment.actualState)) {
+          if (!['STARTING', 'CREATING', 'WAITING_DEPENDENCY', 'STOPPING', 'RESTORING'].includes(environment.actualState)) {
           await (this.adminDemo
             ? startAdminTrainingEnvironment(environment.environmentId)
             : startUserTrainingEnvironment(environment.environmentId));
           }
           this.$message.info("实训环境正在启动");
           environment = await this.waitForWorkspaceEnvironment(environment.environmentId);
-          if (!environment || environment.actualState !== 'RUNNING') return this.$message.error("实训环境启动失败或等待超时");
+          if (!environment || environment.actualState !== 'RUNNING') return this.$message.error((environment && environment.resultMessage) || "环境尚未就绪，请查看后台准备状态");
         }
         const url =
           tool === "ANNOTATION"

@@ -4,6 +4,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.util.Map;
+import java.util.List;
 
 @Data
 public class AgentMetricSnapshot {
@@ -30,4 +31,6 @@ public class AgentMetricSnapshot {
     private Long networkReceiveBytesPerSecond;
     private Long networkSendBytesPerSecond;
     private Map<String, String> collectorErrors;
+    private List<AgentDockerImageView> images;
+    private List<AgentDockerContainerView> containers;
 }

@@ -5,6 +5,22 @@ umask 077
 die() { printf '[xkp5-offline] ERROR: %s\n' "$*" >&2; exit 1; }
 printf '[xkp5-offline] Installer v7\n'
 expected_archive_sha256=6382ca696bf6f25f1ac3e8af394c13895d7314ed1e70168b9c61987c9a827091
+default_license_public_keys='production-2026-09=MCowBQYDK2VwAyEAhACmob5sstgGFW1COD6sy3BldAoMxG8XP3K5tYzHBoI='
+detect_server_ip() {
+  local detected
+  detected=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++)if($i=="src"){print $(i+1);exit}}')
+  [[ -n $detected ]] || detected=$(hostname -I 2>/dev/null | awk '{print $1}')
+  printf '%s\n' "$detected"
+}
+detect_archive() {
+  local script_dir candidates
+  script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+  shopt -s nullglob
+  candidates=("$script_dir"/xkp5-offline-*.tar.gz)
+  shopt -u nullglob
+  [[ ${#candidates[@]} -eq 1 ]] || return 1
+  printf '%s\n' "${candidates[0]}"
+}
 usage() {
   cat <<'EOF'
 Usage: install-xkp5-offline.sh ARCHIVE [options]
@@ -13,7 +29,7 @@ Usage: install-xkp5-offline.sh ARCHIVE [options]
   --install-dir DIR              Default /opt/xkp5-platform
   --restore-snapshot             Restore the packaged MySQL/FastDFS snapshot
   --configure-ufw
-  --non-interactive
+  --non-interactive             Accepted for compatibility; installation is always unattended
 EOF
 }
 
@@ -23,7 +39,7 @@ license_public_keys=
 install_dir=/opt/xkp5-platform
 restore_snapshot=0
 configure_ufw=0
-non_interactive=0
+non_interactive=1
 
 if (($#)) && [[ $1 != -* ]]; then archive=$1; shift; fi
 while (($#)); do
@@ -39,6 +55,8 @@ while (($#)); do
   esac
 done
 
+[[ -n $archive ]] || archive=$(detect_archive) || die 'Place exactly one xkp5-offline-*.tar.gz beside this installer'
+
 [[ $(id -u) -eq 0 ]] || die 'Run as root'
 [[ -f $archive ]] || die 'Offline archive is required'
 actual_archive_sha256=$(sha256sum "$archive" | awk '{print $1}')
@@ -48,12 +66,9 @@ printf '[xkp5-offline] Archive SHA256 verified\n'
 . /etc/os-release
 [[ ${ID:-} == ubuntu ]] || die 'Ubuntu is required'
 [[ $(dpkg --print-architecture) == amd64 ]] || die 'amd64 is required'
-if ((non_interactive)); then
-  [[ -n $server_ip && -n $license_public_keys ]] || die 'Server IP and license public keys are required in non-interactive mode'
-else
-  [[ -n $server_ip ]] || read -r -p 'Management server IPv4: ' server_ip
-  [[ -n $license_public_keys ]] || read -r -p 'License public keys (keyId=base64): ' license_public_keys
-fi
+[[ -n $server_ip ]] || server_ip=$(detect_server_ip)
+[[ -n $server_ip ]] || die 'Unable to detect the management server IPv4; use --server-ip'
+[[ -n $license_public_keys ]] || license_public_keys=$default_license_public_keys
 
 if tar -tf "$archive" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then die 'Archive contains an unsafe path'; fi
 extract_dir=$(mktemp -d /tmp/xkp5-offline.XXXXXX)
@@ -100,12 +115,10 @@ mkdir -p "$source_dir/deploy"
 install -m 0644 "$package_dir/compose.offline.yml" "$source_dir/compose.offline.yml"
 install -m 0644 "$package_dir/release.env" "$source_dir/release.env"
 install -m 0755 "$package_dir/deploy/quick-install.sh" "$source_dir/deploy/quick-install.sh"
-for file in host-identity.sh agent-ca.sh _common.sh verify.sh uninstall.sh upgrade.sh reset-from-snapshot.sh; do
+for file in host-identity.sh agent-ca.sh code-server-ca.sh _common.sh verify.sh uninstall.sh upgrade.sh reset-from-snapshot.sh; do
   [[ -f $package_dir/$file ]] && install -m 0755 "$package_dir/$file" "$source_dir/$file"
 done
 cp -a "$package_dir/xkp-agent" "$source_dir/xkp-agent"
-sed -i '/^  java:/,/^  vue:/{/MATCH_DB_PASSWORD:/a\      MATCH_COMPETITION_PASSWORD_KEY: ${MATCH_COMPETITION_PASSWORD_KEY:?Set MATCH_COMPETITION_PASSWORD_KEY}
-}' "$source_dir/compose.offline.yml"
 sed -i 's#runtime/fastdfs/storage_data/data#runtime/fastdfs/storage_data#' "$source_dir/verify.sh"
 
 core_args=(

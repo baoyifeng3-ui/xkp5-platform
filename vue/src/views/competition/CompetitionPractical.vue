@@ -10,6 +10,7 @@
         <el-button icon="el-icon-full-screen" @click="toggleFullscreen">全屏</el-button>
         <el-button icon="el-icon-question" @click="openHelp">比赛帮助</el-button>
         <el-button icon="el-icon-document" @click="viewPaper">查看赛题</el-button>
+        <el-button v-if="!previewOnly" icon="el-icon-download" @click="downloadRootCa">下载平台根证书</el-button>
       </div>
     </header>
     <el-drawer title="比赛帮助" :visible.sync="helpVisible" size="420px">
@@ -36,16 +37,17 @@
       <i class="el-icon-info" /><strong>未分配比赛环境</strong>
       <span>您仍可继续浏览试卷并作答，但暂时无法进入实操环境。</span>
     </div>
-    <div v-else-if="environment.readiness === 'STARTING'" class="practical-state">
+    <div v-else-if="['STARTING','STOPPED','CREATING','STOPPING','WAITING_DEPENDENCY'].includes(environment.readiness)" class="practical-state">
       <i class="el-icon-loading" /><strong>比赛环境正在启动</strong>
       <span>容器就绪后入口将自动开放。</span>
     </div>
-    <div v-else-if="environment.readiness === 'DEGRADED'" class="practical-state is-error">
+    <div v-else-if="['DEGRADED','ERROR'].includes(environment.readiness)" class="practical-state is-error">
       <i class="el-icon-warning-outline" /><strong>比赛环境暂不可用</strong>
       <span>环境状态异常，请联系管理员</span>
     </div>
     <div v-else-if="environment.readiness === 'RUNNING' && embeddedUrl" class="practical-ready">
-      <iframe :src="embeddedUrl" class="practical-frame" :title="embeddedTitle" allow="clipboard-read; clipboard-write" />
+      <el-alert v-if="$route.query.tool === 'code'" type="info" :closable="false" title="代码环境需要信任当前平台根证书；若页面空白或提示证书错误，请联系管理员安装当前平台根证书。" />
+      <EnvironmentToolFrame :src="embeddedUrl" class="practical-frame" :title="embeddedTitle" />
     </div>
     <div v-else class="practical-state is-error">
       <i class="el-icon-warning-outline" /><strong>无法确认比赛环境状态</strong>
@@ -54,20 +56,32 @@
 </template>
 
 <script>
+import EnvironmentToolFrame from '@/components/training/EnvironmentToolFrame.vue';
 import request from '@/utils/request'
 import { adminParticipantPreviewCompetitionEnvironmentApi, competitionApi } from '@/api/Match'
 import ParticipantPreviewNotice from '@/components/ParticipantPreviewNotice.vue'
 import { getRole } from '@/utils/auth'
+import { downloadCodeServerRootCa } from '@/api/TrainingModels'
 const { isPreviewRoute } = require('@/services/participantPreview')
 
 export default {
-  components: { ParticipantPreviewNotice },
-  data: () => ({ loading: false, environment: null, openedRequestedTool: false, helpVisible: false, helpContent: '', paperVisible: false }),
+  components: { EnvironmentToolFrame, ParticipantPreviewNotice },
+  data: () => ({ loading: false, environment: null, openedRequestedTool: false, helpVisible: false, helpContent: '', paperVisible: false, pollTimer: null }),
   computed: {
     previewOnly () { return isPreviewRoute(this.$route, getRole()) }
   },
-  mounted () { this.load() },
+  mounted () { this.load(); this.pollTimer=setInterval(() => this.load(),2000) },
+  beforeDestroy () { clearInterval(this.pollTimer) },
   methods: {
+    async downloadRootCa () {
+      const response = await downloadCodeServerRootCa()
+      const url = URL.createObjectURL(new Blob([response.data], { type: 'application/x-pem-file' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'rootCA.pem'
+      link.click()
+      URL.revokeObjectURL(url)
+    },
     backToAnswers () { this.$router.push({ path: '/Question', query: { fromPractical: '1' } }) },
     viewPaper () { this.paperVisible = true },
     async openHelp () {
@@ -93,7 +107,8 @@ export default {
           const result = await adminParticipantPreviewCompetitionEnvironmentApi()
           if (result.code === 200) this.environment = result.data || { readiness: 'UNBOUND' }
         } else {
-          this.environment = await this.$store.dispatch('Match/trainUrl')
+          const result = await request({ url: 'user/competition-environment', method: 'get' })
+          this.environment = result.data
           this.openRequestedTool()
         }
       } catch (error) {

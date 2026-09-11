@@ -13,6 +13,7 @@
           size="small"
           filterable
           placeholder="选择实训环境"
+          :disabled="busy || (currentEnvironment && currentEnvironment.modeSwitching)"
           @input="$emit('update:environmentId', $event)"
         >
           <el-option
@@ -90,11 +91,10 @@
           <div class="workspace-progress-panel">
             <i class="el-icon-loading" />
             <strong>{{ startStage }}</strong>
-            <el-progress :percentage="startProgress" :stroke-width="10" class="workspace-progress" />
-            <span>启动进度 {{ startProgress }}%</span>
+            <span>后台正在准备，完成后自动进入，请勿重复启动</span>
           </div>
         </div>
-        <iframe
+        <EnvironmentToolFrame
           v-else-if="embeddedUrl"
           :key="embeddedKey"
           :src="embeddedUrl"
@@ -109,7 +109,9 @@
 </template>
 
 <script>
+import EnvironmentToolFrame from '@/components/training/EnvironmentToolFrame.vue';
 export default {
+  components: {EnvironmentToolFrame},
   props: {
     visible: Boolean,
     trainingVisible: Boolean,
@@ -147,10 +149,9 @@ export default {
         : "info";
     },
     startStage() {
-      if (this.startProgress < 15) return "正在提交启动任务"
-      if (this.startProgress < 60) return "正在创建实训容器"
-      if (this.startProgress < 95) return "正在等待环境依赖就绪"
-      return "正在完成环境启动"
+      const row=this.currentEnvironment || {};
+      if(row.modeSwitching) return '平台正在切换模式';
+      return ({WAITING_DEPENDENCY:'正在停止原实训环境',CREATING:'正在创建实训容器',STARTING:'正在启动容器并检查工具服务',STOPPING:'正在停止环境',RESTORING:'正在重建环境'}[row.actualState] || '正在提交启动任务');
     },
   },
   mounted() {

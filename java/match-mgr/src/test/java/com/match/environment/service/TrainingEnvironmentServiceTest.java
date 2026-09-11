@@ -40,6 +40,15 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 public class TrainingEnvironmentServiceTest {
+    @Test public void independentWorkspacesAreIsolatedByEnvironment() {
+        request.setCourseId(null); request.setEnvironmentName("Independent A");
+        service.create(request, 9, "SUPER_ADMIN");
+        request.setEnvironmentName("Independent B");
+        service.create(request, 9, "SUPER_ADMIN");
+        ArgumentCaptor<TrainingEnvironmentRecord> rows = ArgumentCaptor.forClass(TrainingEnvironmentRecord.class);
+        verify(environmentMapper, times(2)).insert(rows.capture());
+        assertNotEquals(rows.getAllValues().get(0).getWorkspaceRelativePath(), rows.getAllValues().get(1).getWorkspaceRelativePath());
+    }
     private static final String AGENT_ID = "11111111-1111-4111-8111-111111111111";
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
     private ProcessingAgentMapper agentMapper;
@@ -52,6 +61,7 @@ public class TrainingEnvironmentServiceTest {
     private LicenseGuard licenseGuard;
     private TrainingEnvironmentService service;
     private CreateTrainingEnvironmentRequest request;
+    private ProcessingAgentRecord agent;
 
     @Before
     public void setUp() {
@@ -67,8 +77,9 @@ public class TrainingEnvironmentServiceTest {
                 environmentMapper, portMapper, operationMapper, commandService, licenseGuard,
                 objectMapper, Clock.fixed(Instant.parse("2026-08-19T12:00:00Z"), ZoneOffset.UTC));
 
-        ProcessingAgentRecord agent = new ProcessingAgentRecord();
+        agent = new ProcessingAgentRecord();
         agent.setAgentId(AGENT_ID);
+        agent.setDisplayName("xt-test");
         agent.setEnabled(true);
         when(agentMapper.selectForManagement(AGENT_ID)).thenReturn(agent);
         when(templateMapper.selectVersion("annotation-template", 3))
@@ -198,10 +209,59 @@ public class TrainingEnvironmentServiceTest {
         when(deployments.selectLatestSucceeded(AGENT_ID, "EDITOR")).thenReturn(deployed);
         service.setImageDeploymentMapper(deployments);
 
-        expectIllegalArgument(() -> service.create(request, 9, "SUPER_ADMIN"), "镜像版本");
+        expectIllegalArgument(() -> service.create(request, 9, "SUPER_ADMIN"), "xt-test 缺少镜像 xkp/annotation:v1");
 
         verify(environmentMapper, never()).insert(any(TrainingEnvironmentRecord.class));
         verify(commandService, never()).requestEnvironmentCommand(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    public void actualAgentImageInventoryAllowsDirectDeploymentDespiteLegacyRecordMismatch() {
+        agent.setLatestMetrics("{\"dockerAvailable\":true,\"images\":["
+                + "{\"repository\":\"xkp/annotation\",\"tag\":\"v1\",\"id\":\"sha256:a\"},"
+                + "{\"repository\":\"xkp/editor\",\"tag\":\"v1\",\"id\":\"sha256:b\"}]}");
+        ImageDeploymentMapper deployments = mock(ImageDeploymentMapper.class);
+        ImageDeploymentRecord legacy = new ImageDeploymentRecord();
+        legacy.setTargetDigest("sha256:obsolete");
+        when(deployments.selectLatestSucceeded(any(String.class), any(String.class))).thenReturn(legacy);
+        service.setImageDeploymentMapper(deployments);
+
+        service.create(request, 9, "SUPER_ADMIN");
+
+        verify(environmentMapper).insert(any(TrainingEnvironmentRecord.class));
+    }
+
+    @Test
+    public void legacySuccessfulDeploymentRemainsCompatibleWhenInventoryIsUnavailable() {
+        ImageDeploymentMapper deployments = mock(ImageDeploymentMapper.class);
+        ImageDeploymentRecord annotation = new ImageDeploymentRecord();
+        annotation.setTargetDigest("xkp/annotation:v1");
+        ImageDeploymentRecord editor = new ImageDeploymentRecord();
+        editor.setTargetDigest("xkp/editor:v1");
+        when(deployments.selectLatestSucceeded(AGENT_ID, "ANNOTATION")).thenReturn(annotation);
+        when(deployments.selectLatestSucceeded(AGENT_ID, "EDITOR")).thenReturn(editor);
+        service.setImageDeploymentMapper(deployments);
+
+        service.create(request, 9, "SUPER_ADMIN");
+
+        verify(environmentMapper).insert(any(TrainingEnvironmentRecord.class));
+    }
+
+    @Test
+    public void overwrittenTagCannotChangePinnedTemplateImage() throws Exception {
+        ContainerTemplateRecord template = templateMapper.selectVersion("annotation-template", 3);
+        template.setImageId("sha256:original");
+        agent.setLatestMetrics("{\"dockerAvailable\":true,\"images\":["
+                + "{\"repository\":\"xkp/annotation\",\"tag\":\"v1\",\"id\":\"sha256:replacement\"},"
+                + "{\"repository\":\"xkp/editor\",\"tag\":\"v1\",\"id\":\"sha256:editor\"}]}");
+        expectIllegalArgument(() -> service.create(request, 9, "SUPER_ADMIN"), "服务器缺少模板固定的镜像");
+        agent.setLatestMetrics("{\"dockerAvailable\":true,\"images\":["
+                + "{\"repository\":\"\",\"tag\":\"\",\"id\":\"sha256:original\"},"
+                + "{\"repository\":\"xkp/editor\",\"tag\":\"v1\",\"id\":\"sha256:editor\"}]}");
+        service.create(request, 9, "SUPER_ADMIN");
+        ArgumentCaptor<String> payload = ArgumentCaptor.forClass(String.class);
+        verify(commandService).requestEnvironmentCommand(any(),eq("CREATE_TRAINING_ENVIRONMENT"),payload.capture(),any(),any(),any());
+        assertEquals("sha256:original", objectMapper.readTree(payload.getValue()).path("components").get(0).path("imageReference").asText());
     }
 
     private ContainerTemplateRecord template(String id, int version, String componentType,

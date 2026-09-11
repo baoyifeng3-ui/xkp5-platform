@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
+import org.apache.ibatis.annotations.Delete;
 
 public interface ImageDeploymentMapper extends BaseMapper<ImageDeploymentRecord> {
     @Select("SELECT d.*, "
@@ -36,13 +37,18 @@ public interface ImageDeploymentMapper extends BaseMapper<ImageDeploymentRecord>
             + "ORDER BY completed_at DESC, deployment_id DESC LIMIT 1")
     ImageDeploymentRecord selectLatestSucceeded(@Param("agentId") String agentId,
                                                  @Param("componentType") String componentType);
+    @Select("SELECT * FROM image_deployment WHERE file_id = #{fileId} AND state = 'SUCCEEDED' "
+            + "ORDER BY completed_at DESC, deployment_id DESC LIMIT 1")
+    ImageDeploymentRecord selectLatestSucceededByFileId(@Param("fileId") String fileId);
 
     @Update("UPDATE image_deployment SET active_deployment_key = NULL, "
             + "active_agent_component_key = NULL WHERE deployment_id = #{deploymentId}")
     int clearActiveKeys(@Param("deploymentId") String deploymentId);
+    @Delete("DELETE FROM image_deployment WHERE release_id = #{releaseId}")
+    int deleteByReleaseId(@Param("releaseId") String releaseId);
 
     @Select("SELECT * FROM image_deployment WHERE state = 'RUNNING' "
-            + "AND updated_at < #{cutoff} ORDER BY updated_at LIMIT #{limit}")
+            + "AND requested_at < #{cutoff} ORDER BY requested_at LIMIT #{limit}")
     java.util.List<ImageDeploymentRecord> selectStaleRunning(
             @Param("cutoff") java.time.LocalDateTime cutoff, @Param("limit") int limit);
 }

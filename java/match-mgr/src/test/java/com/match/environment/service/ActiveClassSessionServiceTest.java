@@ -17,6 +17,19 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 public class ActiveClassSessionServiceTest {
+    @Test public void stopClassDispatchesStopsOnBackend() {
+        ActiveClassSessionMapper sessions = mock(ActiveClassSessionMapper.class);
+        ActiveClassSessionRecord session = new ActiveClassSessionRecord(); session.setActive(true);
+        when(sessions.selectCurrentForUpdate()).thenReturn(session);
+        TrainingEnvironmentMapper environments = mock(TrainingEnvironmentMapper.class);
+        com.match.environment.persistence.TrainingEnvironmentRecord row = new com.match.environment.persistence.TrainingEnvironmentRecord();
+        row.setEnvironmentId("running"); row.setEnvironmentType("COURSE"); row.setActualState("STARTING"); row.setDesiredState("RUNNING");
+        when(environments.selectAllEnvironments()).thenReturn(Arrays.asList(row));
+        EnvironmentOperationService operations = mock(EnvironmentOperationService.class);
+        ActiveClassSessionService service = new ActiveClassSessionService(sessions, environments, operations, mock(ProcessingAgentMapper.class), mock(UserMapper.class));
+        service.stopAndShutdown(1, "ADMIN");
+        verify(operations).stop("running", 1, "ADMIN");
+    }
     @Test
     public void userPolicyExposesOnlyTrainingAndValidationDuringClass() {
         ActiveClassSessionMapper sessions = mock(ActiveClassSessionMapper.class);

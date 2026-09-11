@@ -26,6 +26,8 @@ public class UserTrainingEnvironmentController {
     private final EnvironmentOperationService operationService;
     private final EnvironmentPortAllocationMapper portMapper;
     private final ProcessingAgentMapper agentMapper;
+    @org.springframework.beans.factory.annotation.Autowired private com.match.environment.persistence.EnvironmentOperationMapper operationMapper;
+    @org.springframework.beans.factory.annotation.Autowired private com.match.mode.persistence.ProcessingAgentModeMapper agentModes;
     private com.match.environment.service.ActiveClassSessionService classSessionService;
 
     public UserTrainingEnvironmentController(RoleGuard roleGuard,
@@ -51,6 +53,7 @@ public class UserTrainingEnvironmentController {
     public ResponseResult<Object> list(@org.springframework.web.bind.annotation.RequestParam(defaultValue="false") boolean defaultOnly) {
         User user = roleGuard.requireUser();
         List<com.match.environment.persistence.TrainingEnvironmentRecord> rows = operationService.listForUser(user.getUserId());
+        rows = rows.stream().filter(row -> !"COMPETITION".equals(row.getEnvironmentType())).collect(java.util.stream.Collectors.toList());
         com.match.environment.persistence.ActiveClassSessionRecord session=classSessionService==null?null:classSessionService.current();
         if(session!=null&&Boolean.TRUE.equals(session.getActive())) {
             if (session.getCourseId() != null) rows=rows.stream().filter(row->session.getCourseId().equals(row.getCourseId())).collect(java.util.stream.Collectors.toList());
@@ -67,6 +70,14 @@ public class UserTrainingEnvironmentController {
             view.put("userId", row.getUserId()); view.put("userName", user.getUserName());
             view.put("agentId", row.getAgentId()); view.put("slotNumber", row.getSlotNumber());
             view.put("actualState", row.getActualState()); view.put("desiredState", row.getDesiredState());
+            if (operationMapper != null) {
+                List<com.match.environment.persistence.EnvironmentOperationRecord> recent = operationMapper.selectRecent(row.getEnvironmentId(), 1);
+                if (!recent.isEmpty()) { com.match.environment.persistence.EnvironmentOperationRecord op = recent.get(0);
+                    view.put("operationId", op.getOperationId()); view.put("operationState", op.getState());
+                    view.put("resultMessage", op.getResultMessage()); view.put("requestedAt", op.getRequestedAt()); }
+            }
+            if (agentModes != null) { com.match.mode.persistence.ProcessingAgentModeRecord mode = agentModes.selectById(row.getAgentId());
+                view.put("modeSwitching", mode != null && mode.getActiveTransitionId() != null); }
             if (session != null && Boolean.TRUE.equals(session.getActive())) view.put("editorTool", session.getEditorTool());
             if (portMapper != null && agentMapper != null) {
                 ProcessingAgentRecord agent = agentMapper.selectForManagement(row.getAgentId());

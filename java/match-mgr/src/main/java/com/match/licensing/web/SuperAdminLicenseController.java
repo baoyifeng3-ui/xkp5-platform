@@ -9,6 +9,8 @@ import com.match.licensing.identity.HostIdentityProvider;
 import com.match.licensing.persistence.LicenseAuditMapper;
 import com.match.licensing.persistence.LicenseAuditRecord;
 import com.match.licensing.persistence.PlatformInstallation;
+import com.match.licensing.persistence.PlatformLicenseMapper;
+import com.match.licensing.persistence.PlatformLicenseRecord;
 import com.match.licensing.service.InstallationService;
 import com.match.licensing.service.LicenseStatusService;
 import com.match.security.RoleGuard;
@@ -32,33 +34,33 @@ public class SuperAdminLicenseController {
     private final LicenseAuditMapper auditMapper;
     private final HostIdentityProvider identityProvider;
     private final LicenseProperties licenseProperties;
+    private final PlatformLicenseMapper licenseMapper;
 
     public SuperAdminLicenseController(RoleGuard roleGuard, LicenseStatusService statusService,
                                        InstallationService installationService, LicenseAuditMapper auditMapper,
-                                       HostIdentityProvider identityProvider, LicenseProperties licenseProperties) {
+                                       HostIdentityProvider identityProvider, LicenseProperties licenseProperties,
+                                       PlatformLicenseMapper licenseMapper) {
         this.roleGuard = roleGuard;
         this.statusService = statusService;
         this.installationService = installationService;
         this.auditMapper = auditMapper;
         this.identityProvider = identityProvider;
         this.licenseProperties = licenseProperties;
+        this.licenseMapper = licenseMapper;
     }
 
     @GetMapping("/diagnostics")
     public ResponseResult<Object> diagnostics() {
         roleGuard.requireSuperAdmin();
         LicenseStatus status = statusService.currentStatus();
+        PlatformLicenseRecord license = licenseMapper.selectActive();
         PlatformInstallation installation = installationService.installation();
         HostIdentity identity = identityProvider.load();
         Map<String, Object> diagnostics = new LinkedHashMap<>();
         diagnostics.put("state", status == null ? null : status.getState());
-        diagnostics.put("licenseId", status == null ? null : status.getLicenseId());
-        diagnostics.put("installationId", installation == null ? null : installation.getInstallationId());
-        diagnostics.put("maxTrustedTime", installation == null ? null : installation.getMaxTrustedTime());
-        diagnostics.put("environment", identity.getEnvironment());
-        diagnostics.put("fingerprint", identity.getFingerprint());
-        diagnostics.put("keyIds", ("DEVELOPMENT".equals(identity.getEnvironment())
-                ? licenseProperties.developmentKeys() : licenseProperties.productionKeys()).keySet());
+        diagnostics.put("organization", license == null ? null : license.getOrganization());
+        diagnostics.put("expiresAt", license == null ? null : license.getExpiresAt());
+        diagnostics.put("importedAt", license == null ? null : license.getImportedAt());
         return Response.makeOKRsp(diagnostics);
     }
 

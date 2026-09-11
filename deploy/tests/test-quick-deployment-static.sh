@@ -54,6 +54,10 @@ bash -n "$offline_release" || fail 'deploy/quick-offline-release.sh has invalid 
 bash -n "$focal_recovery" || fail 'deploy/recover-focal-offline.sh has invalid syntax'
 grep -q 'sha256sum -c' "$focal_recovery" || fail 'Focal recovery must verify its package checksums'
 grep -q 'expected_archive_sha256=' "$offline_install" || fail 'Offline installer must pin the complete archive checksum'
+grep -q 'detect_server_ip' "$offline_install" || fail 'Offline installer must auto-detect the management IPv4'
+grep -q 'detect_archive' "$offline_install" || fail 'Offline installer must auto-detect the adjacent release archive'
+grep -q '^default_license_public_keys=' "$offline_install" || fail 'Offline installer must provide the production public key'
+if grep -q 'read -r -p' "$offline_install"; then fail 'Offline installer must not require interactive input'; fi
 grep -q 'actual_archive_sha256=.*sha256sum' "$offline_install" || fail 'Offline installer must verify the complete archive checksum'
 grep -q 'tar -xOf.*release.env' "$offline_install" \
   || fail 'Offline installer must re-extract release metadata from the verified archive'
@@ -62,7 +66,7 @@ grep -q "sed -i 's/\\\\r\$//'" "$offline_install" || fail 'Offline installer mus
 grep -q "release.env.*sed -i\|sed -i.*release.env" "$offline_install" || fail 'Offline installer must normalize release metadata line endings'
 grep -q "name '\*.sh'.*chmod" "$offline_install" || fail 'Offline installer must restore shell script execute permissions'
 grep -q 'bash.*quick-install.sh' "$offline_install" || fail 'Offline installer must invoke the shared installer through bash'
-grep -q 'MATCH_COMPETITION_PASSWORD_KEY:' "$offline_install" || fail 'Offline installer must patch the packaged Java competition key wiring'
+grep -q 'MATCH_COMPETITION_PASSWORD_KEY:' "$repo_root/compose.offline.yml" || fail 'Offline Compose must wire the Java competition key'
 grep -q 'source_dir/compose.offline.yml' "$offline_install" || fail 'Offline installer must patch the packaged Compose file'
 grep -q 'openssl rand -base64 32' "$offline_install" || fail 'Offline installer must generate a valid competition key'
 grep -q 'storage_data/data.*storage_data' "$offline_install" || fail 'Offline installer must align FastDFS snapshot verification counts'

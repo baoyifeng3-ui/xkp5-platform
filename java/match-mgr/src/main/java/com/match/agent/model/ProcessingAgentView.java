@@ -12,6 +12,8 @@ public class ProcessingAgentView {
     private String primaryIp;
     private String macAddress;
     private String agentVersion;
+    private String targetAgentVersion;
+    private boolean upgradeAvailable;
     private boolean enabled;
     private boolean online;
     private LocalDateTime lastSeenAt;

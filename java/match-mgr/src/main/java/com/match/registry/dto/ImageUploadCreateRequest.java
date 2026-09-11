@@ -14,4 +14,5 @@ public class ImageUploadCreateRequest {
     private String version;
     private String imageRepository;
     private String imageTag;
+    private Boolean overwrite;
 }

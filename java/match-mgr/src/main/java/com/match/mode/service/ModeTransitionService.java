@@ -48,7 +48,7 @@ import java.util.Objects;
 /** Durable per-Agent entry orchestration. Container work is always phase-barriered. */
 @Service
 public class ModeTransitionService {
-    private static final long ONLINE_TIMEOUT_SECONDS = 300L;
+    private static final long ONLINE_TIMEOUT_SECONDS = 30L;
     private static final String NORMAL = "NORMAL";
     private static final String ENTERING = "ENTERING_COMPETITION";
     private static final String EXITING = "EXITING_COMPETITION";
@@ -160,6 +160,7 @@ public class ModeTransitionService {
 
         List<TrainingEnvironmentRecord> environments = safeTraining(agentId);
         String preflightFailure = preflightFailure(agent, environments);
+        if (preflightFailure == null) preflightFailure = competitionReadinessFailure(agentId);
         if (preflightFailure != null) {
             degrade(transition, mode, preflightFailure, now);
             auditService.recordFailure("MODE_ENTRY_DEGRADED", preflightFailure, identity.userId,
@@ -241,27 +242,14 @@ public class ModeTransitionService {
         Set<String> frozenCompetition = new HashSet<>();
         int ordinal = 1;
         for (ModeTransitionStepRecord entryStep : safeSteps(entry.getTransitionId())) {
-            if ("COMPETITION".equals(entryStep.getEnvironmentKind())
+            if (("COMPETITION".equals(entryStep.getEnvironmentKind()) || "START_TRAINING_ENVIRONMENT".equals(entryStep.getActionType()))
                     && entryStep.getEnvironmentId() != null
                     && frozenCompetition.add(entryStep.getEnvironmentId())) {
-                created.add(step(transition, 1, ordinal++, "COMPETITION",
-                        entryStep.getEnvironmentId(), "STOP_COMPETITION_ENVIRONMENT"));
+                created.add(step(transition, 1, ordinal++, entryStep.getEnvironmentKind(),
+                        entryStep.getEnvironmentId(), "TRAINING".equals(entryStep.getEnvironmentKind())
+                                ? "STOP_TRAINING_ENVIRONMENT" : "STOP_COMPETITION_ENVIRONMENT"));
             }
         }
-        ordinal = 1;
-        Set<String> frozenTraining = new HashSet<>();
-        List<ModeTrainingSnapshotRecord> entrySnapshots = snapshotMapper.selectByTransition(
-                entry.getTransitionId());
-        if (entrySnapshots != null) {
-            for (ModeTrainingSnapshotRecord snapshot : entrySnapshots) {
-                if (snapshot != null && snapshot.getEnvironmentId() != null
-                        && frozenTraining.add(snapshot.getEnvironmentId())) {
-                    created.add(step(transition, 2, ordinal++, "TRAINING",
-                            snapshot.getEnvironmentId(), "RESTORE_TRAINING_ENVIRONMENT"));
-                }
-            }
-        }
-
         modeMapper.updateTransition(agentId, TRAINING_MODE, EXITING,
                 transition.getTransitionId(), now);
         mode.setDesiredMode(TRAINING_MODE);
@@ -298,6 +286,9 @@ public class ModeTransitionService {
         ProcessingAgentRecord agent = agentMapper.selectForManagement(transition.getAgentId());
         List<TrainingEnvironmentRecord> environments = safeTraining(transition.getAgentId());
         String preflightFailure = preflightFailure(agent, environments);
+        if (preflightFailure == null && all.isEmpty() && COMPETITION_MODE.equals(transition.getTargetMode())) {
+            preflightFailure = competitionReadinessFailure(transition.getAgentId());
+        }
         if (preflightFailure != null) {
             LocalDateTime now = utcNow();
             transitionMapper.updateState(transitionId, "DEGRADED", preflightFailure, now);
@@ -417,22 +408,39 @@ public class ModeTransitionService {
         if (agents == null) {
             return;
         }
+        agents = agents.stream().filter(a -> Boolean.TRUE.equals(a.getEnabled()) && a.getRemovedAt() == null)
+                .collect(java.util.stream.Collectors.toList());
+        List<String> failures = new ArrayList<>();
+        // Validate every server before materializing any plan or changing the platform row.
         for (ProcessingAgentRecord agent : agents) {
-            try {
-                if (COMPETITION_MODE.equals(targetMode)) {
-                    planEntry(agent.getAgentId(), actorUserId, actorRole);
-                } else {
-                    User actor = new User();
-                    actor.setUserId(actorUserId);
-                    actor.setEnabled(true);
-                    actor.setRole(actorRole);
-                    planExit(agent.getAgentId(), actor);
-                }
-            } catch (RuntimeException failure) {
-                if (agent.getAgentId() != null) {
-                    auditService.recordFailure("MODE_ENTRY_DEGRADED", "AGENT_TRANSITION_ERROR",
-                            actorUserId, agent.getAgentId(), null);
-                }
+            String agentId = agent.getAgentId();
+            ProcessingAgentModeRecord mode = lockOrCreateMode(agentId);
+            if (transitionMapper.selectActiveForUpdate(agentId) != null || mode.getActiveTransitionId() != null) {
+                failures.add(agentId + ": 切换尚未完成，请先重试失败任务");
+                continue;
+            }
+            String source = COMPETITION_MODE.equals(targetMode) ? TRAINING_MODE : COMPETITION_MODE;
+            String actual = TRAINING_MODE.equals(source) ? NORMAL : COMPETITION_MODE;
+            if (!source.equals(mode.getDesiredMode()) || !actual.equals(mode.getActualMode())) {
+                failures.add(agentId + ": 服务器模式与平台不一致");
+                continue;
+            }
+            String failure = preflightFailure(agent, safeTraining(agentId));
+            if (failure == null && COMPETITION_MODE.equals(targetMode)) failure = competitionReadinessFailure(agentId);
+            if (failure != null) failures.add(agentId + ": " + failure);
+        }
+        if (!failures.isEmpty()) {
+            throw new ModeConflictException("MODE_SWITCH_NOT_READY", String.join("; ", failures));
+        }
+        for (ProcessingAgentRecord agent : agents) {
+            if (COMPETITION_MODE.equals(targetMode)) {
+                planEntry(agent.getAgentId(), actorUserId, actorRole);
+            } else {
+                User actor = new User();
+                actor.setUserId(actorUserId);
+                actor.setEnabled(true);
+                actor.setRole(actorRole);
+                planExit(agent.getAgentId(), actor);
             }
         }
     }
@@ -557,21 +565,24 @@ public class ModeTransitionService {
         List<ModeTransitionStepRecord> created = new ArrayList<>();
         int ordinal = 1;
         for (TrainingEnvironmentRecord environment : environments) {
-            if (!"RUNNING".equals(environment.getActualState())) {
+            if ("COMPETITION".equals(environment.getEnvironmentType())) continue;
+            if ("STOPPED".equals(environment.getActualState()) && "STOPPED".equals(environment.getDesiredState())) {
                 continue;
             }
-            ModeTrainingSnapshotRecord snapshot = new ModeTrainingSnapshotRecord();
-            snapshot.setTransitionId(transition.getTransitionId());
-            snapshot.setEnvironmentId(environment.getEnvironmentId());
-            snapshot.setCapturedAt(now);
-            snapshotMapper.insert(snapshot);
             created.add(step(transition, 1, ordinal++, "TRAINING", environment.getEnvironmentId(),
                     "STOP_TRAINING_ENVIRONMENT"));
         }
         Set<String> boundSlots = boundSlotIds(transition.getAgentId());
         ordinal = 1;
+        Set<String> accountSlots = new HashSet<>();
+        for (TrainingEnvironmentRecord environment : environments) {
+            if (boundSlots.contains(environment.getSlotId()) && readyAccountCompetition(environment)) {
+                accountSlots.add(environment.getSlotId());
+                created.add(step(transition, 2, ordinal++, "TRAINING", environment.getEnvironmentId(), "START_TRAINING_ENVIRONMENT"));
+            }
+        }
         for (CompetitionEnvironmentRecord environment : safeCompetition(transition.getAgentId())) {
-            if (boundSlots.contains(environment.getSlotId()) && ready(environment)) {
+            if (boundSlots.contains(environment.getSlotId()) && !accountSlots.contains(environment.getSlotId()) && ready(environment)) {
                 created.add(step(transition, 2, ordinal++, "COMPETITION", environment.getEnvironmentId(),
                         "START_COMPETITION_ENVIRONMENT"));
             }
@@ -590,6 +601,31 @@ public class ModeTransitionService {
             }
         }
         return result;
+    }
+
+    private String competitionReadinessFailure(String agentId) {
+        List<ProcessingEnvironmentSlotRecord> slots = slotMapper.selectByAgentForUpdate(agentId);
+        List<CompetitionEnvironmentRecord> environments = safeCompetition(agentId);
+        List<TrainingEnvironmentRecord> accountEnvironments = safeTraining(agentId);
+        List<String> missing = new ArrayList<>();
+        if (slots != null) for (ProcessingEnvironmentSlotRecord slot : slots) {
+            if (slot == null || slot.getUserId() == null) continue;
+            boolean found = environments.stream().anyMatch(environment ->
+                    Objects.equals(slot.getSlotId(), environment.getSlotId()) && ready(environment));
+            List<TrainingEnvironmentRecord> accountMatches = accountEnvironments.stream()
+                    .filter(e -> "COMPETITION".equals(e.getEnvironmentType()) && Objects.equals(slot.getSlotId(), e.getSlotId()))
+                    .collect(java.util.stream.Collectors.toList());
+            if (!accountMatches.isEmpty()) found = accountMatches.size() == 1 && readyAccountCompetition(accountMatches.get(0));
+            if (!found) missing.add("账号 " + slot.getUserId() + "（槽位 " + slot.getSlotNumber() + "）");
+        }
+        return missing.isEmpty() ? null : "比赛环境未就绪: " + String.join(", ", missing);
+    }
+
+    private boolean readyAccountCompetition(TrainingEnvironmentRecord e) {
+        return "COMPETITION".equals(e.getEnvironmentType()) && e.getUserId() != null
+                && "STOPPED".equals(e.getDesiredState()) && "STOPPED".equals(e.getActualState())
+                && e.getCurrentOperationId() == null
+                && (e.getAnnotationTemplateId() != null || e.getEditorTemplateId() != null);
     }
 
     private boolean ready(CompetitionEnvironmentRecord environment) {

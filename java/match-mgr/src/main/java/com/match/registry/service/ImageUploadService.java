@@ -9,9 +9,11 @@ import com.match.registry.persistence.ImageUploadChunkMapper;
 import com.match.registry.persistence.ImageUploadChunkRecord;
 import com.match.registry.persistence.ImageUploadMapper;
 import com.match.registry.persistence.ImageUploadRecord;
+import com.match.registry.persistence.ImageFileRecord;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -77,6 +79,8 @@ public class ImageUploadService {
     private final long maxFileBytes;
     private final long maxStagingBytes;
     private final Clock clock;
+    private final ImageDeletionService deletionService;
+    private final ImageFileService imageFiles;
     private final AtomicLong cachedStagedBytes = new AtomicLong(-1L);
     private final ExecutorService completionExecutor = Executors.newSingleThreadExecutor(r -> { Thread t=new Thread(r,"image-upload-completion");t.setDaemon(true);return t; });
     private final java.util.Set<String> activeCompletions = ConcurrentHashMap.newKeySet();
@@ -85,7 +89,8 @@ public class ImageUploadService {
 
     public ImageUploadService(ImageUploadMapper uploadMapper, ImageUploadChunkMapper chunkMapper,
                               ImageArtifactMapper artifactMapper, Path stagingRoot,
-                              long maxFileBytes, long maxStagingBytes, Clock clock) {
+                              long maxFileBytes, long maxStagingBytes, Clock clock, ImageDeletionService deletionService,
+                              ImageFileService imageFiles) {
         this.uploadMapper = uploadMapper;
         this.chunkMapper = chunkMapper;
         this.artifactMapper = artifactMapper;
@@ -93,6 +98,14 @@ public class ImageUploadService {
         this.maxFileBytes = maxFileBytes;
         this.maxStagingBytes = maxStagingBytes;
         this.clock = clock;
+        this.deletionService = deletionService;
+        this.imageFiles = imageFiles;
+    }
+
+    public ImageUploadService(ImageUploadMapper uploadMapper, ImageUploadChunkMapper chunkMapper,
+                              ImageArtifactMapper artifactMapper, Path stagingRoot,
+                              long maxFileBytes, long maxStagingBytes, Clock clock) {
+        this(uploadMapper, chunkMapper, artifactMapper, stagingRoot, maxFileBytes, maxStagingBytes, clock, null, null);
     }
 
     @Autowired
@@ -100,13 +113,55 @@ public class ImageUploadService {
                               ImageArtifactMapper artifactMapper,
                               @Value("${xkp.registry.staging-dir:${java.io.tmpdir}/xkp-registry-staging}") String staging,
                               @Value("${xkp.registry.max-file-bytes:53687091200}") long maxFileBytes,
-                              @Value("${xkp.registry.max-staging-bytes:107374182400}") long maxStagingBytes) {
+                              @Value("${xkp.registry.max-staging-bytes:107374182400}") long maxStagingBytes,
+                              @Lazy ImageDeletionService deletionService, ImageFileService imageFiles) {
         this(uploadMapper, chunkMapper, artifactMapper, java.nio.file.Paths.get(staging),
-                maxFileBytes, maxStagingBytes, Clock.systemUTC());
+                maxFileBytes, maxStagingBytes, Clock.systemUTC(), deletionService, imageFiles);
     }
 
     private void requireSuperAdmin(String role) {
         if (!"SUPER_ADMIN".equals(role)) throw error(CODE_AUTHORIZATION, "SUPER_ADMIN required");
+    }
+
+    // ponytail: serialize direct uploads in this JVM; use a database filename lock for multiple backend instances.
+    public synchronized ImageFileRecord uploadFile(String role, String repository, String tag,
+                                      boolean overwrite, MultipartFile file, int actorId) {
+        requireSuperAdmin(role);
+        if (imageFiles == null) throw error(CODE_STATE, "镜像文件服务不可用");
+        if (file == null || file.isEmpty() || file.getSize() > maxFileBytes) throw error(CODE_SIZE, "镜像文件为空或超过 50GB 限制");
+        String filename = file.getOriginalFilename();
+        try { ImageFileService.validateFilename(filename); }
+        catch (IllegalArgumentException invalid) { throw error(CODE_ARCHIVE, invalid.getMessage()); }
+        ImageFileRecord existing = imageFiles.findByFilename(filename);
+        repository = existing == null ? ImageFileService.repositoryFromFilename(filename) : existing.getImageRepository();
+        tag = existing == null ? "latest" : existing.getImageTag();
+        if (imageFiles.exists(repository, filename) && !overwrite) throw error("FILE_EXISTS", "同名镜像归档已存在，确认后可覆盖");
+        Path dir = stagingRoot.resolve("direct");
+        Path temporary = dir.resolve(UUID.randomUUID() + ".tar");
+        try {
+            Files.createDirectories(dir);
+            long copied = 0;
+            byte[] buffer = new byte[1024 * 1024];
+            try (InputStream in = file.getInputStream(); OutputStream out = new BufferedOutputStream(
+                    Files.newOutputStream(temporary, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE))) {
+                int count;
+                while ((count = in.read(buffer)) != -1) {
+                    copied += count;
+                    if (copied > maxFileBytes || copied > file.getSize()) throw error(CODE_SIZE, "镜像文件大小不正确");
+                    out.write(buffer, 0, count);
+                }
+            }
+            if (copied != file.getSize()) throw error(CODE_SIZE, "镜像文件大小不正确");
+            ImageUploadRecord probe = new ImageUploadRecord(); probe.setTotalSize(copied);
+            validateCompletedArchive(probe, temporary);
+            return imageFiles.enable(repository, filename, tag, temporary, actorId);
+        } catch (UploadException error) {
+            throw error;
+        } catch (IOException error) {
+            throw error(CODE_STAGING, error.getMessage());
+        } finally {
+            deleteQuietly(temporary);
+        }
     }
 
     @Transactional
@@ -117,20 +172,18 @@ public class ImageUploadService {
         if (request.getChunkSize() == null || request.getChunkSize() <= 0) throw error(CODE_SIZE, "invalid chunk size");
         long chunkCount = (request.getTotalSize() + request.getChunkSize() - 1) / request.getChunkSize();
         if (chunkCount < 1 || chunkCount > MAX_CHUNKS || chunkCount > Integer.MAX_VALUE) throw error(CODE_SIZE, "too many chunks");
-        requireText(request.getGroupId(), "groupId"); requireText(request.getComponentType(), "componentType");
-        requireText(request.getOriginalFilename(), "originalFilename"); requireText(request.getVersion(), "version");
-        if (request.getOriginalFilename().contains("/") || request.getOriginalFilename().contains("\\") || request.getOriginalFilename().contains("..")) throw error(CODE_STATE, "invalid originalFilename");
-        if (request.getExpectedSha256() != null && !request.getExpectedSha256().trim().isEmpty()
-                && !validSha256(request.getExpectedSha256())) throw error(CODE_CHECKSUM, "expectedSha256 must be lowercase SHA-256");
+        requireText(request.getOriginalFilename(), "originalFilename"); requireText(request.getImageRepository(), "imageRepository");
+        if (!request.getOriginalFilename().matches("[A-Za-z0-9._-]+\\.tar") || request.getOriginalFilename().contains("..")) throw error(CODE_ARCHIVE, "仅支持安全命名的 .tar 文件");
+        if (imageFiles != null && imageFiles.exists(request.getImageRepository(), request.getOriginalFilename())
+                && !Boolean.TRUE.equals(request.getOverwrite())) throw error("FILE_EXISTS", "同名镜像归档已存在，确认后可覆盖");
         String uploadId = UUID.randomUUID().toString();
         String artifactId = request.getArtifactId() == null ? UUID.randomUUID().toString() : request.getArtifactId();
         LocalDateTime now = now();
-        String expectedSha256 = request.getExpectedSha256() == null || request.getExpectedSha256().trim().isEmpty()
-                ? null : request.getExpectedSha256().trim().toLowerCase(Locale.ROOT);
+        String expectedSha256 = null;
         ImageArtifactRecord artifact = new ImageArtifactRecord();
-        artifact.setArtifactId(artifactId); artifact.setGroupId(request.getGroupId()); artifact.setComponentType(request.getComponentType());
+        artifact.setArtifactId(artifactId); artifact.setGroupId(request.getImageRepository()); artifact.setComponentType("DIRECT");
         artifact.setOriginalFilename(request.getOriginalFilename()); artifact.setSizeBytes(request.getTotalSize()); artifact.setSha256(expectedSha256);
-        artifact.setVersion(request.getVersion()); artifact.setImageRepository(request.getImageRepository()); artifact.setImageTag(request.getImageTag());
+        artifact.setVersion(request.getOriginalFilename()); artifact.setImageRepository(request.getImageRepository()); artifact.setImageTag(request.getImageTag());
         artifact.setReviewState("UPLOADING"); artifact.setImportState("NOT_IMPORTED"); artifact.setCreatedBy(actorId); artifact.setCreatedAt(now); artifact.setUpdatedAt(now);
         if (artifactMapper.selectById(artifactId) != null) throw error(CODE_STATE, "artifact already exists");
         try { artifactMapper.insert(artifact); } catch (DataIntegrityViolationException e) { throw error(CODE_STATE, "artifact checksum or id already exists"); }
@@ -166,7 +219,7 @@ public class ImageUploadService {
         String normalized = normalize(checksum); Path dir = stagingRoot.resolve(uploadId); Path target = dir.resolve(index + ".part");
         ImageUploadChunkRecord existing = chunkMapper.selectForUpdate(uploadId, index);
         if (existing != null) {
-            if (existing.getChunkSha256().equals(normalized) && Files.exists(target)) return view(upload, existing);
+            if (java.util.Objects.equals(existing.getChunkSha256(), normalized) && Files.exists(target)) return view(upload, existing);
             throw error(CODE_CONFLICT, "chunk checksum conflicts with existing chunk");
         }
         Path reservation = dir.resolve(index + ".reserve");
@@ -177,13 +230,13 @@ public class ImageUploadService {
         }
         reserveCapacity(reservation, size);
         try {
-            Files.createDirectories(dir); MessageDigest md = MessageDigest.getInstance("SHA-256");
+            Files.createDirectories(dir); MessageDigest md = normalized == null ? null : MessageDigest.getInstance("SHA-256");
             long copied = 0; byte[] buf = new byte[8192];
             try (java.io.RandomAccessFile out = new java.io.RandomAccessFile(reservation.toFile(), "rw")) {
-                out.seek(0); int n; while ((n = in.read(buf)) != -1) { copied += n; if (copied > size) throw error(CODE_SIZE, "chunk size mismatch"); md.update(buf, 0, n); out.write(buf, 0, n); } out.getFD().sync();
+                out.seek(0); int n; while ((n = in.read(buf)) != -1) { copied += n; if (copied > size) throw error(CODE_SIZE, "chunk size mismatch"); if (md != null) md.update(buf, 0, n); out.write(buf, 0, n); } out.getFD().sync();
             }
-            if (copied != size) throw error(CODE_SIZE, "chunk size mismatch"); String actual = hex(md.digest());
-            if (normalized == null || !actual.equals(normalized)) throw error(CODE_CHECKSUM, "chunk checksum mismatch");
+            if (copied != size) throw error(CODE_SIZE, "chunk size mismatch"); String actual = md == null ? null : hex(md.digest());
+            if (normalized != null && !actual.equals(normalized)) throw error(CODE_CHECKSUM, "chunk checksum mismatch");
             Files.move(reservation, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             ImageUploadChunkRecord record = new ImageUploadChunkRecord(); record.setUploadId(uploadId); record.setChunkIndex(index); record.setChunkSize((int) size); record.setChunkSha256(actual); record.setStoredBytes(size); record.setCreatedAt(now()); chunkMapper.insertOrRetry(uploadId, index, (int) size, actual, size, record.getCreatedAt());
             upload.setReceivedBytes(upload.getReceivedBytes() + size); upload.setUpdatedAt(now()); uploadMapper.updateById(upload); return view(upload, record);
@@ -250,8 +303,10 @@ public class ImageUploadService {
     @javax.annotation.PreDestroy public void shutdownCompletionExecutor(){completionExecutor.shutdownNow();}
     private void validateCompletedArchive(ImageUploadRecord upload, Path assembled) { try { if (Files.size(assembled) != upload.getTotalSize()) throw error(CODE_SIZE, "archive size mismatch"); } catch (IOException e) { throw error(CODE_SIZE, "archive size unavailable"); } if (upload.getExpectedSha256() != null && !upload.getExpectedSha256().equals(digestFile(assembled))) throw error(CODE_CHECKSUM, "archive checksum mismatch"); if (!isDockerSave(assembled)) throw error(CODE_ARCHIVE, "Docker save archive is invalid"); }
     private ImageUploadRecord transitionToReview(ImageUploadRecord upload, Path assembled) {
-        String sha = digestFile(assembled); upload.setFinalSha256(sha); upload.setState(PENDING_REVIEW); upload.setCompletedAt(now()); upload.setUpdatedAt(now()); uploadMapper.updateById(upload);
-        ImageArtifactRecord artifact = artifactMapper.selectById(upload.getArtifactId()); if (artifact != null) { artifact.setSha256(sha); artifact.setReviewState(PENDING_REVIEW); artifact.setUpdatedAt(now()); artifactMapper.updateById(artifact); }
+        ImageArtifactRecord artifact = artifactMapper.selectById(upload.getArtifactId());
+        if (artifact != null && imageFiles != null) imageFiles.enable(artifact.getImageRepository(), artifact.getOriginalFilename(), artifact.getImageTag(), assembled, artifact.getCreatedBy());
+        upload.setFinalSha256(null); upload.setState(PENDING_REVIEW); upload.setCompletedAt(now()); upload.setUpdatedAt(now()); uploadMapper.updateById(upload);
+        if (artifact != null) { artifact.setSha256(null); artifact.setReviewState(APPROVED); artifact.setImportState("READY"); artifact.setUpdatedAt(now()); artifactMapper.updateById(artifact); }
         afterCommit(() -> { for (int i = 0; i < upload.getTotalChunks(); i++) deleteQuietly(stagingRoot.resolve(upload.getUploadId()).resolve(i + ".part")); });
         return upload;
     }
@@ -272,6 +327,7 @@ public class ImageUploadService {
     private boolean discardExact(InputStream in, long bytes) throws IOException { byte[] b = new byte[8192]; while (bytes > 0) { int n = in.read(b, 0, (int) Math.min(bytes, b.length)); if (n < 0) return false; bytes -= n; } return true; }
 
     @Transactional public ImageUploadRecord cancel(String role, String uploadId) { requireSuperAdmin(role); ImageUploadRecord x = locked(uploadId); if (UPLOADING.equals(x.getState())) { x.setState(CANCELLED); x.setUpdatedAt(now()); uploadMapper.updateById(x); afterCommit(() -> cleanupStaging(uploadId)); } return x; }
+    @Transactional public void deleteFailed(String role, String uploadId) { requireSuperAdmin(role); ImageUploadRecord upload = locked(uploadId); if (upload == null) throw error(CODE_STATE, "upload not found"); ImageArtifactRecord artifact = artifactMapper.selectById(upload.getArtifactId()); boolean deletable = CANCELLED.equals(upload.getState()) || EXPIRED.equals(upload.getState()) || artifact != null && ("REJECTED".equals(artifact.getReviewState()) || "FAILED".equals(artifact.getImportState())); if (!deletable) throw error(CODE_STATE, "only failed uploads can be deleted"); uploadMapper.deleteById(uploadId); if (artifact != null) artifactMapper.deleteById(artifact.getArtifactId()); afterCommit(() -> cleanupStaging(uploadId)); }
     @Transactional public ImageArtifactRecord review(String role, String artifactId, ImageReviewRequest request, int reviewerId) { requireSuperAdmin(role); String d = request == null ? null : request.getDecision(); if (!APPROVED.equals(d) && !REJECTED.equals(d)) throw error(CODE_STATE, "invalid review decision"); ImageArtifactRecord a = artifactMapper.selectPendingReviewForUpdate(artifactId); if (a == null) { a = artifactMapper.selectById(artifactId); if (a == null) throw error(CODE_STATE, "artifact not found"); if (d.equals(a.getReviewState())) return a; throw error(CODE_STATE, "artifact review decision conflicts"); } a.setReviewState(d); a.setReviewedBy(reviewerId); a.setReviewedAt(now()); a.setFailureMessage(request.getReason()); a.setUpdatedAt(now()); artifactMapper.updateById(a); if (REJECTED.equals(d)) afterCommit(() -> cleanupArtifactStaging(artifactId)); return a; }
     public ImageUploadRecord status(String role, String uploadId) { if (!"ADMIN".equals(role) && !"SUPER_ADMIN".equals(role)) throw error(CODE_AUTHORIZATION, "admin required"); return enrichStatus(uploadMapper.selectById(uploadId)); }
     public ImageUploadRecord statusByArtifact(String role, String artifactId) { requireSuperAdmin(role); ImageUploadRecord upload=uploadMapper.selectByArtifactId(artifactId); if(upload==null) throw error(CODE_STATE,"upload not found"); return enrichStatus(upload); }
@@ -313,5 +369,5 @@ public class ImageUploadService {
     private String normalize(String s) { return s == null ? null : s.toLowerCase(Locale.ROOT); }
     private IllegalArgumentException error(String code, String msg) { return new UploadException(code, msg); }
     private String hex(byte[] b) { StringBuilder s = new StringBuilder(); for (byte x : b) s.append(String.format("%02x", x)); return s.toString(); }
-    public static class UploadException extends IllegalArgumentException { private final String code; public UploadException(String code, String message) { super(message); this.code = code; } public String getCode() { return code; } }
+    public static class UploadException extends IllegalArgumentException { private final String code; private final String referenceId; public UploadException(String code, String message) { this(code, message, null); } public UploadException(String code, String message, String referenceId) { super(message); this.code = code; this.referenceId = referenceId; } public String getCode() { return code; } public String getReferenceId() { return referenceId; } }
 }

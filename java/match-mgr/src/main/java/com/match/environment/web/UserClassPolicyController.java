@@ -21,7 +21,6 @@ public class UserClassPolicyController {
 
     @GetMapping
     public ResponseResult<Object> get() {
-        roles.requireUser();
-        return Response.makeOKRsp(service.userPolicy());
+        return Response.makeOKRsp(service.userPolicy(roles.requireUser().getUserId()));
     }
 }

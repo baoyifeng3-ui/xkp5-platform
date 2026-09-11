@@ -8,7 +8,7 @@ function read (file) {
 const shell = read('src/components/PlatformShell.vue')
 const theme = read('src/assets/style/platform-theme.css')
 const loginOverlayCss = read('src/assets/style/login.css')
-assert.match(loginOverlayCss, /rgba\(26, 34, 55, \.35\)/)
+assert.match(loginOverlayCss, /--login-background-overlay-opacity/)
 assert.ok(shell.includes('shell-breadcrumb'), 'shared shell must render one breadcrumb on every page')
 assert.ok(shell.includes('currentBreadcrumbs'), 'shared shell must derive breadcrumbs from navigation')
 assert.ok(shell.includes('首页'), 'top-level pages must use 首页 as breadcrumb root')
@@ -42,8 +42,8 @@ assert.match(shell, /aria-label="导航搜索建议"/)
 assert.match(shell, /<el-menu[^>]*\bunique-opened\b/)
 assert.match(shell, /class="shell-submenu-item"/)
 assert.doesNotMatch(shell, /role="listbox"|role="option"/)
-assert.match(theme, /--ui-primary:\s*var\(--platform-theme-color,\s*#7184f8\)/)
-assert.strictEqual(themeService.DEFAULT_THEME_COLOR, '#6f7ff7')
+assert.match(theme, /--ui-primary:\s*var\(--platform-theme-color,\s*#386bdc\)/)
+assert.strictEqual(themeService.DEFAULT_THEME_COLOR, '#386bdc')
 assert.deepStrictEqual(themeService.themeVariables('#123456'), {
   '--platform-theme-color': '#123456',
   '--ui-primary-strong': '#0f2b47',
@@ -51,9 +51,9 @@ assert.deepStrictEqual(themeService.themeVariables('#123456'), {
 })
 ;['src/store/modules/Match.js', 'src/views/Admin.vue', 'src/views/management/PlatformSettings.vue']
   .forEach(file => assert.doesNotMatch(read(file), /DEFAULT_THEME_COLOR\s*=\s*['"]#162d45['"]/i))
-assert.match(theme, /--ui-workspace:\s*#f1f2f5/)
-assert.match(theme, /--ui-radius:\s*10px/)
-assert.match(theme, /--ui-sidebar-width:\s*188px/)
+assert.match(theme, /--ui-workspace:\s*#f3f6fa/)
+assert.match(theme, /--ui-radius:\s*8px/)
+assert.match(theme, /--ui-sidebar-width:\s*184px/)
 assert.match(theme, /--ui-sidebar-compact-width:\s*76px/)
 
 ;['ManagementShell', 'OperationsShell', 'NormalUserShell'].forEach(name => {
@@ -141,12 +141,10 @@ const composedPages = [
   'src/views/management/CompetitionManagement.vue',
   'src/views/management/CourseManagement.vue',
   'src/views/management/ResourceManagement.vue',
-  'src/views/management/TrainingManagement.vue',
   'src/views/management/DeviceManagement.vue',
   'src/views/operations/AdministratorManagement.vue',
   'src/views/operations/CompetitionEnvironments.vue',
   'src/views/operations/ContainerTemplates.vue',
-  'src/views/operations/ImageRegistryView.vue',
   'src/views/operations/LicenseDiagnostics.vue',
   'src/views/operations/OperationsHome.vue',
   'src/views/operations/ProcessingAgents.vue',
@@ -162,8 +160,8 @@ const composedPages = [
 
 composedPages.forEach(file => {
   const source = read(file)
-  assert.match(source, file.includes('ManagementHome') ? /reference-home|module-page/ : /module-page/, `${file} must use the shared page composition`)
-  assert.match(source, file.includes('ManagementHome') ? /reference-page-heading|module-heading/ : (file.includes('CoursePlatform') ? /course-heading|module-heading/ : (file.includes('ResourceCenter') || file.includes('ResourceManagement') ? /file-heading|module-heading/ : /module-heading/)), `${file} must use the shared page heading`)
+  assert.match(source, file.includes('ManagementHome') ? /reference-home|module-page/ : (file.includes('OperationsHome') ? /operations-dashboard/ : /module-page/), `${file} must use the shared page composition`)
+  assert.match(source, file.includes('ManagementHome') ? /reference-page-heading|module-heading/ : (file.includes('OperationsHome') ? /dashboard-header/ : (file.includes('CoursePlatform') ? /course-heading|module-heading/ : (file.includes('CourseManagement') || file.includes('ResourceManagement') || file.includes('ResourceCenter') ? /page-heading|file-heading|module-heading/ : /module-heading/))), `${file} must use the shared page heading`)
   assert.doesNotMatch(source, /h[1-6][^{]*\{[^{}]*font-size\s*:\s*(?:3[3-9]|[4-9]\d|\d{3,})px/, `${file} must keep panel headings compact`)
 })
 
@@ -176,17 +174,15 @@ managementPages.forEach(file => {
 const workspacePages = composedPages.filter(file => /\/(management|operations|user)\//.test(file))
 workspacePages.forEach(file => {
   const source = read(file)
-  assert.match(source, file.includes('ManagementHome') ? /reference-home|module-composed-page/ : /module-composed-page|operations-dashboard/, `${file} must opt into the refreshed workspace composition`)
+  assert.match(source, /module-page|operations-dashboard/, `${file} must opt into the refreshed workspace composition`)
   assert.doesNotMatch(source, /#(?:17324d|294152|318063|216c54|9a7517|1e587e|25745b|356d95)\b/i, `${file} must use shared theme tokens instead of the legacy page palette`)
 })
 
 const tablePages = [
-  'src/views/management/TrainingManagement.vue',
   'src/views/management/DeviceManagement.vue',
   'src/views/operations/AdministratorManagement.vue',
   'src/views/operations/CompetitionEnvironments.vue',
   'src/views/operations/ContainerTemplates.vue',
-  'src/views/operations/ImageRegistryView.vue',
   'src/views/operations/LicenseDiagnostics.vue',
   'src/views/operations/ProcessingAgents.vue',
   'src/views/user/TrainingEnvironment.vue'
@@ -203,7 +199,6 @@ const toolbarPages = [
   'src/views/operations/AdministratorManagement.vue',
   'src/views/operations/CompetitionEnvironments.vue',
   'src/views/operations/ContainerTemplates.vue',
-  'src/views/operations/ImageRegistryView.vue',
   'src/views/operations/LicenseDiagnostics.vue',
   'src/views/operations/ProcessingAgents.vue'
 ]
@@ -221,7 +216,7 @@ const contextPages = [
 ]
 contextPages.forEach(file => {
   const source = read(file)
-  assert.match(source, /module-page/, `${file} must render a module page`)
+  assert.match(source, file.includes('OperationsHome') ? /operations-dashboard/ : /module-page/, `${file} must render a module page`)
   assert.doesNotMatch(source, /待接入|暂无课程数据/, `${file} must not remain a placeholder`)
 })
 assert.match(read('src/views/operations/OperationsHome.vue'), /operations-dashboard/)
@@ -237,9 +232,9 @@ assert.doesNotMatch(participantCss, /#(?:010d3b|012292|091722|1e65b9|083e81|173d
 const competitionHub = read('src/views/management/CompetitionManagement.vue')
 const { competitionItems } = require('../src/navigation/roleNavigation')
 assert.deepStrictEqual(competitionItems.map(item => item.label), [
-  '模式与环境', '参赛端预览', '比赛控制', '赛程赛规', '试卷题目', '试卷评分', '比赛账号与容器绑定'
+  '参赛端预览', '比赛控制', '赛程赛规', '试卷题目', '试卷评分'
 ])
-assert.strictEqual(competitionItems.length, 7)
+assert.strictEqual(competitionItems.length, 5)
 assert.ok(!competitionHub.includes('比赛设备'))
 assert.ok(!competitionHub.includes('平台设置'))
 

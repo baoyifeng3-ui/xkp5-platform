@@ -29,10 +29,7 @@ $deploymentTests = Read-RepoFile 'java/match-mgr/src/test/java/com/match/registr
 
 Assert-Ordered $upload @('public ImageUploadChunkView putChunk', 'public ImageUploadRecord complete', 'transitionToReview') 'Upload resume/completion ordering is missing'
 Assert-Ordered $import @('"APPROVED".equals', 'claimImport', 'importTool.importArchive', 'completeImport') 'Import ordering must be approval -> claim -> import -> digest'
-$completedImportPosition = $import.IndexOf('completeImport')
-if ($completedImportPosition -lt 0 -or $import.Substring($completedImportPosition) -notmatch 'deleteImportedArchive\(archive\)') {
-    throw 'Imported staging archive must be deleted only after digest persistence'
-}
+if ($import -match 'deleteImportedArchive\(archive\)') { throw 'Imported archive must remain available for Agent deployment' }
 Assert-Contains $release '"APPROVED"\.equals\(artifact\.getReviewState\(\)\)' 'Release must require approved review state'
 Assert-Contains $release '"READY"\.equals\(artifact\.getImportState\(\)\)' 'Release must require imported artifact'
 Assert-Contains $release '\^sha256:\[0-9a-f\]\{64\}\$' 'Release must persist immutable lowercase digest only'

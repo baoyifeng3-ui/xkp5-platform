@@ -27,7 +27,7 @@ public class WebConfigAgentBoundaryTest {
             actual.add(paths.group(1));
         }
         Set<String> expected = new HashSet<>(Arrays.asList("/user/login", "/competition",
-                "/health", "/error", "/agent/v1/**", "/terminal/v1/**", "/v2/api-docs/**",
+                "/health", "/error", "/files/**", "/agent/v1/**", "/terminal/v1/**", "/v2/api-docs/**",
                 "/swagger-resources/**", "/swagger-ui.html"));
         assertEquals(expected, actual);
         assertEquals(1, occurrences(source, "\"/agent/v1/**\""));

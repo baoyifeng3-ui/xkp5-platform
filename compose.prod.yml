@@ -23,6 +23,7 @@ services:
     environment:
       REGISTRY_URL: https://registry:5000
       SPRING_PROFILES_ACTIVE: prod
+      XKP_PLATFORM_VERSION: ${XKP_PLATFORM_VERSION:-5.1.0}
       XKP_REGISTRY_IMPORT_ENABLED: "true"
       MATCH_DB_HOST: mysql
       MATCH_DB_PORT: 3306
@@ -100,6 +101,7 @@ services:
     restart: unless-stopped
     environment:
       TZ: Asia/Shanghai
+      JAVA_TOOL_OPTIONS: -Dxkp.registry.staging-dir=/data/registry-staging
       SPRING_PROFILES_ACTIVE: prod
       MATCH_BACKEND_PORT: 19141
       MATCH_DB_HOST: mysql
@@ -158,6 +160,7 @@ services:
       - "${XKP_AGENT_PORT:-19443}:19443"
     volumes:
       - ./download/dataset:/data/dataset:ro
+      - ${XKP_REGISTRY_STAGING_DIR:-./runtime/registry/staging}:/data/registry-staging:ro
       - ${XKP_AGENT_TLS_DIR:-/etc/xkp/agent-tls}:/etc/xkp/agent-tls:ro
     depends_on:
       - java

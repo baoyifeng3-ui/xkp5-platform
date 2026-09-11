@@ -30,8 +30,11 @@
         <el-upload action="#" accept="image/jpeg,image/png,image/webp" :auto-upload="false" :show-file-list="false" :on-change="selectLoginBackground" :disabled="backgroundUploading || !initialized || loading">
           <el-button icon="el-icon-picture-outline" :loading="backgroundUploading">选择本地图片</el-button>
         </el-upload>
-        <div v-if="platformForm.loginBackgroundUrl" class="background-preview"><img :src="platformForm.loginBackgroundUrl" alt="登录背景预览" @error="assetLoadError('背景图片')" /></div>
+        <div v-if="platformForm.loginBackgroundUrl" class="background-preview"><img :src="platformForm.loginBackgroundUrl" alt="登录背景预览" @error="assetLoadError('背景图片')" /><i :style="{ background: `rgba(26,34,55,${platformForm.loginBackgroundOverlayOpacity / 100})` }" /></div>
         <el-button v-if="platformForm.loginBackgroundUrl" type="text" icon="el-icon-delete" @click="removeLoginBackground">移除背景图片</el-button>
+      </el-form-item>
+      <el-form-item label="背景蒙版透明度">
+        <el-slider v-model="platformForm.loginBackgroundOverlayOpacity" :min="0" :max="100" show-input @input="platformEditing = true" />
       </el-form-item>
       <div class="settings-actions">
         <el-button icon="el-icon-refresh-left" :disabled="platformSaving || platformForm.themeColor === defaultThemeColor" @click="restoreDefaultTheme">恢复默认主题色</el-button>
@@ -50,7 +53,7 @@ export default {
   name: 'PlatformSettings',
   data () {
     return {
-      platformForm: { platformName: '', themeColor: DEFAULT_THEME_COLOR, loginBackgroundUrl: '', platformLogoUrl: '', loginEnglishSubtitle: '', loginBrandName: '', loginTitle: '', loginDescription: '', loginCopyright: '' },
+      platformForm: { platformName: '', themeColor: DEFAULT_THEME_COLOR, loginBackgroundUrl: '', loginBackgroundOverlayOpacity: 35, platformLogoUrl: '', loginEnglishSubtitle: '', loginBrandName: '', loginTitle: '', loginDescription: '', loginCopyright: '' },
       defaultThemeColor: DEFAULT_THEME_COLOR,
       loading: true,
       loadError: false,
@@ -100,6 +103,7 @@ export default {
         platformName: this.platformName,
         themeColor: state.themeColor,
         loginBackgroundUrl: state.loginBackgroundUrl,
+        loginBackgroundOverlayOpacity: state.loginBackgroundOverlayOpacity,
         platformLogoUrl: state.platformLogoUrl,
         loginEnglishSubtitle: state.loginEnglishSubtitle,
         loginBrandName: state.loginBrandName,
@@ -118,6 +122,7 @@ export default {
           platformName: String(this.platformForm.platformName || '').trim(),
           themeColor: String(this.platformForm.themeColor || DEFAULT_THEME_COLOR).trim(),
           loginBackgroundUrl: String(this.platformForm.loginBackgroundUrl || '').trim(),
+          loginBackgroundOverlayOpacity: Number(this.platformForm.loginBackgroundOverlayOpacity),
           platformLogoUrl: String(this.platformForm.platformLogoUrl || '').trim(),
           loginEnglishSubtitle: String(this.platformForm.loginEnglishSubtitle || '').trim(),
           loginBrandName: String(this.platformForm.loginBrandName || '').trim(),
@@ -189,6 +194,8 @@ export default {
 .settings-form::v-deep .el-form-item__label { color: #405267; font-size: 13px; font-weight: 600; }
 .background-preview { width: 100%; max-width: 360px; height: 120px; margin-top: 10px; overflow: hidden; background: #f3f5f6; border: 1px solid #e3e8eb; border-radius: 6px; }
 .background-preview img { width: 100%; height: 100%; object-fit: cover; }
+.background-preview { position: relative; }
+.background-preview i { position: absolute; inset: 0; pointer-events: none; }
 .logo-preview { display: grid; place-items: center; width: 120px; height: 80px; margin-top: 10px; background: #f3f5f6; border: 1px solid #e3e8eb; border-radius: 6px; }
 .logo-preview img { max-width: 100px; max-height: 64px; object-fit: contain; }
 .settings-actions { display: flex; justify-content: flex-end; gap: 10px; }

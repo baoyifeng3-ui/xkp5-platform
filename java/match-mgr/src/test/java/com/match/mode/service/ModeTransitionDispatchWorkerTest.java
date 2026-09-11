@@ -84,6 +84,8 @@ public class ModeTransitionDispatchWorkerTest {
                 any(), any(LocalDateTime.class));
         verify(modes, never()).updateTransition(anyString(), anyString(), anyString(),
                 anyString(), any(LocalDateTime.class));
+        verify(factory).createControlPayloadJson(environment, step.getStepId());
+        verify(factory, never()).createPayloadJson(environment, step.getStepId());
     }
 
     @Test

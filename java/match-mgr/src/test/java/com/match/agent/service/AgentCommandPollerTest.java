@@ -48,6 +48,7 @@ public class AgentCommandPollerTest {
         AgentCommandService commands = mock(AgentCommandService.class);
         ProcessingAgentRecord agent = new ProcessingAgentRecord();
         AgentCommandEnvelope command = new AgentCommandEnvelope();
+        command.setType("START_TRAINING_ENVIRONMENT");
         when(commands.lease(agent)).thenReturn(Optional.of(command));
         AgentCommandPoller.Sleeper sleeper = mock(AgentCommandPoller.Sleeper.class);
         AgentCommandPoller poller = new AgentCommandPoller(commands, () -> 10L, sleeper);

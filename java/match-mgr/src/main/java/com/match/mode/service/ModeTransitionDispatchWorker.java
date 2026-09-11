@@ -27,7 +27,7 @@ import java.util.List;
 /** Owns the transaction that atomically creates Agent commands and associates transition steps. */
 @Service
 public class ModeTransitionDispatchWorker {
-    private static final long ONLINE_TIMEOUT_SECONDS = 300L;
+    private static final long ONLINE_TIMEOUT_SECONDS = 30L;
 
     private final ModeTransitionMapper transitionMapper;
     private final ModeTransitionStepMapper stepMapper;
@@ -173,18 +173,21 @@ public class ModeTransitionDispatchWorker {
     }
 
     private String payload(ModeTransitionStepRecord step) {
+        boolean control = step.getActionType().startsWith("START_") || step.getActionType().startsWith("STOP_");
         if ("TRAINING".equals(step.getEnvironmentKind())) {
             TrainingEnvironmentRecord environment = trainingMapper.selectForUpdate(step.getEnvironmentId());
             if (environment == null) {
                 throw new IllegalArgumentException("实训环境不存在");
             }
-            return commandFactory.createPayloadJson(environment, step.getStepId());
+            return control ? commandFactory.createControlPayloadJson(environment, step.getStepId())
+                    : commandFactory.createPayloadJson(environment, step.getStepId());
         }
         CompetitionEnvironmentRecord environment = competitionMapper.selectForUpdate(step.getEnvironmentId());
         if (environment == null) {
             throw new IllegalArgumentException("比赛环境不存在");
         }
-        return commandFactory.createPayloadJson(environment, step.getStepId());
+        return control ? commandFactory.createControlPayloadJson(environment, step.getStepId())
+                : commandFactory.createPayloadJson(environment, step.getStepId());
     }
 
     private int lowestReadyPhase(List<ModeTransitionStepRecord> steps) {

@@ -36,6 +36,46 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 public class EnvironmentOperationServiceTest {
+    @Test public void teacherTakesOverWhileStudentEnvironmentIsCreating() {
+        TrainingEnvironmentRecord old = environment("student-create", 21, 31, "STOPPED", "CREATING", 1L);
+        TrainingEnvironmentRecord target = environment("class", 21, 32, "STOPPED", "STOPPED", 1L);
+        when(environmentMapper.selectUserId("class")).thenReturn(21);
+        when(environmentMapper.selectUserEnvironmentsForUpdate(21)).thenReturn(Arrays.asList(old, target));
+        EnvironmentOperationRecord active = new EnvironmentOperationRecord(); active.setOperationId("old-create"); active.setOperationType("CREATE");
+        when(operationMapper.selectActive("student-create")).thenReturn(active);
+        assertEquals("WAITING_DEPENDENCY", service.start("class", 9, "ADMIN").getState());
+        verify(operationMapper).markTerminal(eq("old-create"), eq("FAILED"), any(LocalDateTime.class), eq("SUPERSEDED_BY_STOP"), any(String.class), isNull());
+    }
+    @Test public void teacherTakesOverWhileStudentEnvironmentIsStarting() {
+        TrainingEnvironmentRecord old = environment("student", 21, 31, "RUNNING", "STARTING", 1L);
+        TrainingEnvironmentRecord target = environment("class", 21, 32, "STOPPED", "STOPPED", 1L);
+        when(environmentMapper.selectUserId("class")).thenReturn(21);
+        when(environmentMapper.selectUserEnvironmentsForUpdate(21)).thenReturn(Arrays.asList(old, target));
+        EnvironmentOperationRecord active = new EnvironmentOperationRecord(); active.setOperationId("old-start"); active.setOperationType("START");
+        when(operationMapper.selectActive("student")).thenReturn(active);
+        assertEquals("WAITING_DEPENDENCY", service.start("class", 9, "ADMIN").getState());
+        verify(operationMapper).markTerminal(eq("old-start"), eq("FAILED"), any(LocalDateTime.class), eq("SUPERSEDED_BY_STOP"), any(String.class), isNull());
+        verify(commandService).requestEnvironmentCommand(eq(agent), eq("STOP_TRAINING_ENVIRONMENT"), eq("{}"), eq(9), eq("ADMIN"), eq("student:STOP"));
+        verify(commandService, never()).requestEnvironmentCommand(eq(agent), eq("START_TRAINING_ENVIRONMENT"), any(), any(), any(), any());
+    }
+    @Test public void stopSupersedesPendingStartAndQueuesStopAfterIt() {
+        TrainingEnvironmentRecord selected = environment("env-selected", 21, 32, "RUNNING", "STARTING", 7L);
+        when(environmentMapper.selectUserId("env-selected")).thenReturn(21);
+        when(environmentMapper.selectUserEnvironmentsForUpdate(21)).thenReturn(Collections.singletonList(selected));
+        EnvironmentOperationRecord start = new EnvironmentOperationRecord(); start.setOperationId("start-op"); start.setOperationType("START"); start.setState("PENDING");
+        when(operationMapper.selectActive("env-selected")).thenReturn(start);
+        service.stop("env-selected", 9, "ADMIN");
+        verify(operationMapper).markTerminal(eq("start-op"),eq("FAILED"),any(LocalDateTime.class),eq("SUPERSEDED_BY_STOP"),any(String.class),isNull());
+        verify(commandService).requestEnvironmentCommand(eq(agent),eq("STOP_TRAINING_ENVIRONMENT"),eq("{}"),eq(9),eq("ADMIN"),eq("env-selected:STOP"));
+    }
+    @Test(expected = IllegalArgumentException.class)
+    public void trainingStartCannotStartCompetitionEnvironment() {
+        TrainingEnvironmentRecord competition = environment("competition", 21, 31, "STOPPED", "STOPPED", 0L);
+        competition.setEnvironmentType("COMPETITION");
+        when(environmentMapper.selectUserId("competition")).thenReturn(21);
+        when(environmentMapper.selectUserEnvironmentsForUpdate(21)).thenReturn(Collections.singletonList(competition));
+        service.start("competition", 21, "USER");
+    }
     private static final String AGENT_ID = "11111111-1111-4111-8111-111111111111";
     private TrainingEnvironmentMapper environmentMapper;
     private EnvironmentOperationMapper operationMapper;
@@ -45,6 +85,8 @@ public class EnvironmentOperationServiceTest {
     private LicenseGuard licenseGuard;
     private EnvironmentOperationService service;
     private ProcessingAgentRecord agent;
+    private com.match.mode.persistence.PlatformModeMapper platformModes;
+    private com.match.mode.service.ProcessingAgentModeGuard agentModeGuard;
 
     @Before
     public void setUp() {
@@ -54,9 +96,14 @@ public class EnvironmentOperationServiceTest {
         commandService = mock(AgentCommandService.class);
         commandFactory = mock(EnvironmentCommandFactory.class);
         licenseGuard = mock(LicenseGuard.class);
+        platformModes = mock(com.match.mode.persistence.PlatformModeMapper.class);
+        com.match.mode.persistence.PlatformModeRecord platform = new com.match.mode.persistence.PlatformModeRecord();
+        platform.setMode("TRAINING");
+        when(platformModes.selectForUpdate()).thenReturn(platform);
+        agentModeGuard = mock(com.match.mode.service.ProcessingAgentModeGuard.class);
         service = new EnvironmentOperationService(environmentMapper, operationMapper, agentMapper,
                 commandService, commandFactory, licenseGuard,
-                Clock.fixed(Instant.parse("2026-08-19T12:00:00Z"), ZoneOffset.UTC));
+                Clock.fixed(Instant.parse("2026-08-19T12:00:00Z"), ZoneOffset.UTC), platformModes, agentModeGuard);
         agent = new ProcessingAgentRecord();
         agent.setAgentId(AGENT_ID);
         agent.setEnabled(true);
@@ -266,6 +313,73 @@ public class EnvironmentOperationServiceTest {
         verify(commandService).requestEnvironmentCommand(eq(agent),
                 eq("DELETE_TRAINING_ENVIRONMENT"), eq("{}"), eq(9), eq("ADMIN"),
                 eq("env-selected:DELETE"));
+    }
+
+    @Test
+    public void repeatedDeleteReturnsSameOperationWithoutCancellingItsCommand() {
+        TrainingEnvironmentRecord selected = environment("env-selected", 21, 32, "STOPPED", "DELETING", 7L);
+        when(environmentMapper.selectForUpdate("env-selected")).thenReturn(selected);
+        EnvironmentOperationRecord pending = new EnvironmentOperationRecord(); pending.setOperationId("deletion");
+        pending.setEnvironmentId("env-selected"); pending.setOperationType("DELETE"); pending.setState("PENDING");
+        when(operationMapper.selectActive("env-selected")).thenReturn(pending);
+        assertEquals("deletion", service.delete("env-selected", 9, "ADMIN").getOperationId());
+        verify(commandService, never()).cancelEnvironmentCommands(any(), any());
+        verify(commandService, never()).requestEnvironmentCommand(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    public void startRejectedWhileAgentIsStillExitingCompetition() {
+        TrainingEnvironmentRecord target = environment("target", 21, 32, "STOPPED", "STOPPED", 2L);
+        when(environmentMapper.selectUserId("target")).thenReturn(21);
+        when(environmentMapper.selectUserEnvironmentsForUpdate(21)).thenReturn(Collections.singletonList(target));
+        org.mockito.Mockito.doThrow(new com.match.mode.service.ModeConflictException("AGENT_MODE_TRANSITION_ACTIVE", "busy"))
+                .when(agentModeGuard).requireIdleForBinding(AGENT_ID);
+        try { service.start("target", 21, "USER"); throw new AssertionError("started during mode transition"); }
+        catch (com.match.mode.service.ModeConflictException expected) {
+            verify(commandService, never()).requestEnvironmentCommand(any(), any(), any(), any(), any(), any());
+        }
+    }
+
+    @Test
+    public void competitionModeRejectsTrainingStartBeforeLockingEnvironments() {
+        com.match.mode.persistence.PlatformModeRecord platform = new com.match.mode.persistence.PlatformModeRecord();
+        platform.setMode("COMPETITION");
+        when(platformModes.selectForUpdate()).thenReturn(platform);
+        try { service.start("target", 21, "USER"); throw new AssertionError("started in competition mode"); }
+        catch (com.match.mode.service.ModeConflictException expected) {
+            verify(environmentMapper, never()).selectUserId(any());
+        }
+    }
+
+    @Test
+    public void dependencyFailureTerminatesWaitingStartWithoutStartingTarget() {
+        assertWaitingFailure("ERROR", LocalDateTime.of(2026, 8, 19, 11, 59, 59), "DEPENDENCY_FAILED");
+    }
+
+    @Test
+    public void dependencyTimeoutTerminatesWaitingStartWithoutStartingTarget() {
+        assertWaitingFailure("STOPPING", LocalDateTime.of(2026, 8, 19, 11, 40, 0), "DEPENDENCY_TIMEOUT");
+    }
+
+    private void assertWaitingFailure(String dependencyState, LocalDateTime requestedAt, String code) {
+        TrainingEnvironmentRecord old = environment("old", 21, 31, "STOPPED", dependencyState, 1L);
+        TrainingEnvironmentRecord target = environment("target", 21, 32, "RUNNING", "WAITING_DEPENDENCY", 2L);
+        target.setCurrentOperationId("waiting");
+        EnvironmentOperationRecord operation = new EnvironmentOperationRecord();
+        operation.setOperationId("waiting");
+        operation.setEnvironmentId("target");
+        operation.setOperationType("START");
+        operation.setState("WAITING_DEPENDENCY");
+        operation.setActorUserId(9);
+        operation.setActorRole("ADMIN");
+        operation.setRequestedAt(requestedAt);
+        when(environmentMapper.selectWaitingDependencies()).thenReturn(Collections.singletonList(target));
+        when(environmentMapper.selectUserEnvironmentsForUpdate(21)).thenReturn(Arrays.asList(old, target));
+        when(operationMapper.selectActive("target")).thenReturn(operation);
+        service.dispatchWaitingStarts();
+        verify(operationMapper).markTerminal(eq("waiting"), eq("FAILED"), any(LocalDateTime.class), eq(code), any(String.class), isNull());
+        verify(environmentMapper).compareAndSetState(eq("target"), eq(2L), eq("STOPPED"), eq("ERROR"), isNull(), eq(9), any(LocalDateTime.class));
+        verify(commandService, never()).requestEnvironmentCommand(any(), any(), any(), any(), any(), any());
     }
 
     private TrainingEnvironmentRecord environment(String id, int userId, int courseId,

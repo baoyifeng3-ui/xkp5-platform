@@ -7,6 +7,7 @@ public class PlatformSettingsRequest {
     private String platformName;
     private String themeColor;
     private String loginBackgroundUrl;
+    private Integer loginBackgroundOverlayOpacity;
     private String platformLogoUrl;
     private String loginEnglishSubtitle;
     private String loginBrandName;
