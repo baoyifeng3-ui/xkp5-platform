@@ -20,7 +20,7 @@ import com.match.terminal.service.SshBridgeService;
 
 @Service
 public class AgentPackageService {
-    public static final String AGENT_VERSION = "0.2.34";
+    public static final String AGENT_VERSION = "0.2.35";
     private final RegistrationTokenService tokenService;
     private final Path packageRoot;
     private final Path caFile;

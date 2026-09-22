@@ -199,7 +199,7 @@ export default {
   }),
   computed: {
     classLocked() { const policy=getClassPolicy(); return Boolean(policy.active || policy.modeSwitching); },
-    elapsedSeconds() { return this.waitingSince ? Math.floor((this.nowTick-this.waitingSince)/1000) : 0; },
+    elapsedSeconds() { return this.waitingSince ? Math.max(0, Math.floor((this.nowTick-this.waitingSince)/1000)) : 0; },
     preparationText() { const state=this.currentEnvironment && this.currentEnvironment.actualState; return this.currentEnvironment && this.currentEnvironment.modeSwitching ? "平台模式切换中，等待原环境停止" : ({WAITING_DEPENDENCY:"正在停止原环境",STARTING:"正在启动容器并检查工具服务",CREATING:"正在创建容器",STOPPING:"正在停止环境",RESTORING:"正在重建环境"}[state] || "正在准备环境"); },
     previewOnly() {
       return !this.adminDemo && isPreviewRoute(this.$route, getRole());

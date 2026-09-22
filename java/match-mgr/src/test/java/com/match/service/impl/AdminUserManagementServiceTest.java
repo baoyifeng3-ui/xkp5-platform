@@ -62,6 +62,18 @@ public class AdminUserManagementServiceTest {
 
     private AdminUserManagementService service;
 
+    @Test
+    public void deletingStudentRemovesLearningProgress() {
+        com.match.course.persistence.CourseProgressMapper progress = org.mockito.Mockito.mock(com.match.course.persistence.CourseProgressMapper.class);
+        service.setCourseProgressMapper(progress);
+        User student = user(3, "qa-student", "unused");
+        student.setRole("USER");
+        when(userMapper.selectBatchIds(Collections.singletonList(3))).thenReturn(Collections.singletonList(student));
+        service.deleteUsers(Collections.singletonList(3));
+        verify(progress).deleteByUser(3);
+        verify(userMapper).deleteBatchIds(Collections.singletonList(3));
+    }
+
     @Before
     public void setUp() {
         MapperBuilderAssistant assistant = new MapperBuilderAssistant(new MybatisConfiguration(), "test");

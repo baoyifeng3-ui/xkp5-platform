@@ -19,6 +19,7 @@ public class UserCourseController {
     private final RoleGuard roleGuard;
     private final CourseLearningService learningService;
     private CourseChapterMapper chapterMapper;
+    private com.match.course.persistence.CourseMapper courseMapper;
     private com.match.environment.service.ActiveClassSessionService classSessionService;
 
     public UserCourseController(RoleGuard roleGuard, CourseLearningService learningService) {
@@ -26,9 +27,18 @@ public class UserCourseController {
         this.learningService = learningService;
     }
     @org.springframework.beans.factory.annotation.Autowired public void setChapterMapper(CourseChapterMapper mapper){this.chapterMapper=mapper;}
+    @org.springframework.beans.factory.annotation.Autowired public void setCourseMapper(com.match.course.persistence.CourseMapper mapper){this.courseMapper=mapper;}
     @org.springframework.beans.factory.annotation.Autowired public void setClassSessionService(com.match.environment.service.ActiveClassSessionService value){this.classSessionService=value;}
 
-    @GetMapping("/{courseId}/chapters") public ResponseResult<Object> chapters(@PathVariable String courseId){roleGuard.requireUser();return Response.makeOKRsp(chapterMapper.selectByCourse(courseId));}
+    @GetMapping("/{courseId}/chapters")
+    public ResponseResult<Object> chapters(@PathVariable String courseId) {
+        roleGuard.requireUser();
+        com.match.course.persistence.CourseRecord course = courseMapper.selectById(courseId);
+        if (course == null || !Boolean.TRUE.equals(course.getEnabled())) {
+            throw new IllegalArgumentException("课程不存在");
+        }
+        return Response.makeOKRsp(chapterMapper.selectByCourse(courseId));
+    }
 
     @GetMapping
     public ResponseResult<Object> list() {

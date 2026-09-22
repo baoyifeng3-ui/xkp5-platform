@@ -136,9 +136,9 @@ export default {
         if (!t100Url) throw new Error("当前用户未分配 T100 服务");
         let image = this.imageBase64;
         if (this.mode === "url") {
-          const converted = await request.post("/sample/httpToBase64", {
-            url: this.imageUrl,
-          });
+            const converted = await request.post("/sample/httpToBase64", {
+              url: this.imageUrl,
+            }, { headers: { "Content-Type": "application/json" } });
           image =
             converted.data && (converted.data.base64 || converted.data.image);
         }

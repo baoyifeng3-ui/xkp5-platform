@@ -32,23 +32,22 @@ public class SampleController {
     public ResponseResult<Object> httpToBase64(@RequestBody(required = false) Map<String, String> body) {
         String url = body == null ? null : body.get("url");
         if (url == null || url.trim().isEmpty()) {
-            return Response.makeErrRsp(new IllegalArgumentException("url 不能为空"));
+            return Response.makeRsp(400, "url 不能为空");
         }
         String normalized = url.trim();
         if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
-            return Response.makeErrRsp(new IllegalArgumentException("仅支持 http/https 图片地址"));
+            return Response.makeRsp(400, "仅支持 http/https 图片地址");
         }
         try {
             String base64 = downloadToBase64(normalized);
             if (base64 == null) {
-                return Response.makeErrRsp(new IllegalStateException("远程图片获取失败：" + normalized));
+                return Response.makeErrRsp("远程图片获取失败");
             }
             Map<String, Object> data = new HashMap<>();
             data.put("base64", base64);
             return Response.makeOKRsp(data);
         } catch (Exception e) {
-            e.printStackTrace();
-            return Response.makeErrRsp(e);
+            return Response.makeErrRsp("远程图片获取失败");
         }
     }
 

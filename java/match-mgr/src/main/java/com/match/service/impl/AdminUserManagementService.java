@@ -17,6 +17,7 @@ import com.match.entity.TeamsUser;
 import com.match.entity.TrainUrl;
 import com.match.entity.User;
 import com.match.entity.UserTrainingAssignment;
+import com.match.course.persistence.CourseProgressMapper;
 import com.match.mapper.AnswerSheetMapper;
 import com.match.mapper.ScoreMapper;
 import com.match.mapper.TeamsMapper;
@@ -68,11 +69,13 @@ public class AdminUserManagementService {
     private TrainingEnvironmentMapper trainingEnvironmentMapper;
     private ProcessingEnvironmentSlotMapper slotMapper;
     private ProcessingAgentMapper processingAgentMapper;
+    private CourseProgressMapper courseProgressMapper;
 
     @Autowired public void setAccountSlotService(AccountSlotService value) { this.accountSlotService = value; }
     @Autowired public void setTrainingEnvironmentMapper(TrainingEnvironmentMapper value) { this.trainingEnvironmentMapper = value; }
     @Autowired public void setSlotMapper(ProcessingEnvironmentSlotMapper value){this.slotMapper=value;}
     @Autowired public void setProcessingAgentMapper(ProcessingAgentMapper value){this.processingAgentMapper=value;}
+    @Autowired public void setCourseProgressMapper(CourseProgressMapper value){this.courseProgressMapper=value;}
 
     @Autowired
     public AdminUserManagementService(UserMapper userMapper,
@@ -497,6 +500,9 @@ public class AdminUserManagementService {
         teamsUserMapper.delete(Wrappers.<TeamsUser>lambdaQuery().in(TeamsUser::getUserId, ids));
         trainUrlMapper.delete(Wrappers.<TrainUrl>lambdaQuery().in(TrainUrl::getUserId, ids));
         announcementFieldService.deleteValuesForUsers(ids);
+        if (courseProgressMapper != null) {
+            for (Integer id : ids) courseProgressMapper.deleteByUser(id);
+        }
         for (Integer id : ids) accountSlotService.unbind(id);
         userMapper.deleteBatchIds(ids);
         return ids.size();

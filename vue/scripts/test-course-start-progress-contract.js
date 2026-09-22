@@ -9,4 +9,7 @@ const standalone = fs.readFileSync(path.resolve(__dirname, '../src/views/user/Tr
 for (const token of ['standalone-start-progress', 'environmentStarting', 'preparationText', '已等待']) {
   if (!standalone.includes(token)) throw new Error(`standalone training start progress missing ${token}`)
 }
+if (!/Math\.max\(0,\s*Math\.floor\(\(this\.nowTick-this\.waitingSince\)\/1000\)/.test(standalone)) {
+  throw new Error('elapsed start time must never be negative')
+}
 console.log('course start progress contract passed')
