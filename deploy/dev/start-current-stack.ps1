@@ -16,9 +16,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Docker Desktop is not available.' }
 $composeArgs = @('--env-file', $envPath, '-f', $composePath)
 Push-Location $repoRoot
 try {
-    docker compose @composeArgs build java vue
+    docker compose @composeArgs build ssh-bridge java vue
     if ($LASTEXITCODE -ne 0) { throw 'Application image build failed.' }
-    docker compose @composeArgs up -d java vue
+    docker compose @composeArgs up -d ssh-bridge java vue
     if ($LASTEXITCODE -ne 0) { throw 'Application stack startup failed.' }
 
     $deadline = (Get-Date).AddSeconds($HealthTimeoutSeconds)

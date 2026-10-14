@@ -72,7 +72,7 @@ sudo /opt/match-v2/verify.sh --install-dir /opt/match-v2
 sudo ./upgrade.sh --install-dir /opt/match-v2
 ```
 
-升级脚本会先备份数据库，只重建 Java 和 Vue 容器。MySQL、FastDFS、赛卷及评分数据不会从发布快照覆盖。
+升级脚本会先备份数据库，重建 SSH Bridge、Java 和 Vue 容器。Bridge 管理密钥保存在独立卷中；MySQL、FastDFS、赛卷及评分数据不会从发布快照覆盖。
 
 ## 停止并移除容器
 

@@ -131,6 +131,16 @@ export default {
     async wakeAgent () { this.busyAction = 'wake'; try { await wakeProcessingAgent(this.selected.agentId); this.$message.success('唤醒请求已提交') } finally { this.busyAction = '' } },
     async shutdownAgent () { await this.$confirm('确认关闭服务器？', '提示', { type: 'warning' }); this.busyAction = 'shutdown'; try { await shutdownProcessingAgent(this.selected.agentId); await this.selectAgent(this.selected) } finally { this.busyAction = '' } },
     async upgradeAgent () { await this.$confirm(`确认将 Agent ${this.selected.agentVersion || '未知版本'} 升级到 ${this.targetAgentVersion}？升级失败会自动回滚。`, '升级 Agent', { type: 'warning' }); this.busyAction = 'upgrade'; try { await upgradeProcessingAgent(this.selected.agentId); this.$message.success('升级任务已下发，Agent 将自动重启'); await this.selectAgent(this.selected) } finally { this.busyAction = '' } },
+    async responseErrorMessage (error, fallback) {
+      let data = error && error.response && error.response.data
+      if (typeof Blob !== 'undefined' && data instanceof Blob) {
+        try { data = await data.text() } catch (ignored) { data = '' }
+      }
+      if (typeof data === 'string' && data.trim()) {
+        try { data = JSON.parse(data) } catch (ignored) { return data }
+      }
+      return (data && (data.message || data.msg)) || (error && error.message) || fallback
+    },
     async downloadPackage () {
       if (!this.formReady) { this.$message.warning('请完整填写服务器 IP、备注名称和工作目录'); return }
       this.downloading = true
@@ -145,12 +155,12 @@ export default {
         window.setTimeout(() => { if (anchor.parentNode) anchor.parentNode.removeChild(anchor); window.URL.revokeObjectURL(url) }, 2000)
         this.pendingServerIp = this.form.serverIp
         this.$message.success('部署包已下载，安装完成后点击“搜索已注册 Agent”加入平台'); this.tokenDialog = false
-      } catch (error) { this.$message.error('部署包下载失败，请确认已登录超级管理员账号后重试') } finally { this.downloading = false }
+      } catch (error) { this.$message.error(await this.responseErrorMessage(error, '部署包下载失败，请稍后重试')) } finally { this.downloading = false }
     },
     async remoteDeploy () {
       if (!this.formReady || !this.form.username || !this.form.password) return this.$message.warning('请填写 SSH 用户名和密码')
       this.remoteDeploying = true
-      try { const result = await remoteDeployAgent(this.form); const data = result.data || result; if (!data.success) throw new Error(data.message || '远程部署失败'); this.$message.success('Agent 已远程部署，等待注册回连'); this.tokenDialog = false; this.pendingServerIp = this.form.serverIp; await this.load() } catch (error) { this.$message.error((error.response && error.response.data && error.response.data.message) || error.message || '远程部署失败') } finally { this.remoteDeploying = false }
+      try { const result = await remoteDeployAgent(this.form); const data = result.data || result; if (!data.success) throw new Error(data.message || '远程部署失败'); this.$message.success('Agent 已远程部署，等待注册回连'); this.tokenDialog = false; this.pendingServerIp = this.form.serverIp; await this.load() } catch (error) { this.$message.error(await this.responseErrorMessage(error, '远程部署失败')) } finally { this.remoteDeploying = false }
     },
     clearForm () { window.clearTimeout(this.ipCheckTimer); this.form = { serverIp: '', label: '', workspace: '/srv/xkp', username: '', password: '', sshPort: 22 }; this.ipTouched = false; this.statusChecking = false; this.serverReachable = null },
     async disableAgentAction () { await this.$confirm('停用该处理服务器？', '提示', { type: 'warning' }); await disableProcessingAgent(this.selected.agentId); await this.load() },

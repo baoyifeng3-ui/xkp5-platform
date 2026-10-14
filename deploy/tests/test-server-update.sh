@@ -17,15 +17,19 @@ dry_run_output=$("$SCRIPT" --dry-run)
 
 grep -q 'Back up MySQL' <<<"$dry_run_output" || fail "Dry run must show the backup stage"
 grep -q 'Fast-forward pull' <<<"$dry_run_output" || fail "Dry run must show the Git stage"
-grep -q 'Build services: java vue' <<<"$dry_run_output" || fail "Dry run must limit builds to application services"
+grep -q 'Build services: ssh-bridge java vue' <<<"$dry_run_output" || fail "Dry run must include the SSH Bridge"
+grep -q 'Recreate and health-check: ssh-bridge' <<<"$dry_run_output" || fail "Dry run must update the SSH Bridge first"
 grep -q 'Recreate and health-check: java' <<<"$dry_run_output" || fail "Dry run must update Java first"
 grep -q 'Recreate and health-check: vue' <<<"$dry_run_output" || fail "Dry run must update Vue after Java"
 
 grep -q 'git pull --ff-only origin master' "$SCRIPT" || fail "Git update must be fast-forward only"
-grep -q 'compose build java vue' "$SCRIPT" || fail "Only Java and Vue may be built"
+grep -q 'compose build ssh-bridge java vue' "$SCRIPT" || fail "SSH Bridge, Java and Vue must be built"
+grep -q 'force-recreate ssh-bridge' "$SCRIPT" || fail "SSH Bridge must be recreated explicitly"
 grep -q 'force-recreate java' "$SCRIPT" || fail "Java must be recreated explicitly"
 grep -q 'force-recreate vue' "$SCRIPT" || fail "Vue must be recreated explicitly"
 grep -q 'mysqldump' "$SCRIPT" || fail "Database backup is required"
+grep -q 'openssl rand -hex 32' "$SCRIPT" || fail "Older installations must receive a random SSH Bridge token"
+grep -q 'install -m 0600 .env' "$SCRIPT" || fail "Environment configuration must be backed up before migration"
 
 if grep -Eq 'compose (.* )?down|docker volume rm|git (reset|clean)|rm -rf' "$SCRIPT"; then
   fail "Script contains a destructive command"

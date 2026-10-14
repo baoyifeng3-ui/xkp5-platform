@@ -48,19 +48,20 @@ build_empty_release() {
   mkdir -p "$stage_dir/images" "$stage_dir/data"
 
   if ((reuse_images)); then
-    for image in match-v2_java:latest match-v2_vue:latest mysql:8.0 delron/fastdfs:latest registry:2 xkp5/registry-importer:latest; do
+    for image in match-v2_java:latest match-v2_vue:latest xkp5/ssh-bridge:latest mysql:8.0 delron/fastdfs:latest registry:2 xkp5/registry-importer:latest; do
       docker image inspect "$image" >/dev/null 2>&1 || die "Required local image not found: $image"
     done
   else
     docker build -f "$repo_root/deploy/registry/import-worker.Dockerfile" -t xkp5/registry-importer:latest "$repo_root"
-    docker compose --env-file "$env_file" -f "$repo_root/compose.prod.yml" build java vue
+    docker compose --env-file "$env_file" -f "$repo_root/compose.prod.yml" build java vue ssh-bridge
     docker pull mysql:8.0
     docker pull delron/fastdfs:latest
     docker pull registry:2
   fi
   docker tag match-v2_java:latest "match-v2_java:$version"
   docker tag match-v2_vue:latest "match-v2_vue:$version"
-  docker save "match-v2_java:$version" "match-v2_vue:$version" mysql:8.0 delron/fastdfs:latest registry:2 xkp5/registry-importer:latest \
+  docker tag xkp5/ssh-bridge:latest "xkp5/ssh-bridge:$version"
+  docker save "match-v2_java:$version" "match-v2_vue:$version" "xkp5/ssh-bridge:$version" mysql:8.0 delron/fastdfs:latest registry:2 xkp5/registry-importer:latest \
     | gzip -c > "$stage_dir/images/match-v2-images.tar.gz"
 
   printf '%s\n' '-- XKP5 empty database release' | gzip -c > "$stage_dir/data/mysql.sql.gz"

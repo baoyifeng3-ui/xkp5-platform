@@ -33,8 +33,8 @@ docker image inspect <JAVA_IMAGE> <VUE_IMAGE> > backups/<TIMESTAMP>/images.inspe
 先构建并检查目标镜像，再停止旧容器；旧容器和镜像保留到验收完成：
 
 ```bash
-docker compose build java vue
-docker compose up -d java vue
+docker compose build ssh-bridge java vue
+docker compose up -d ssh-bridge java vue
 docker compose ps
 curl -fsS http://127.0.0.1:19141/health
 curl -fsS http://127.0.0.1:19140/
@@ -46,6 +46,8 @@ curl -fsS http://127.0.0.1:19140/
 docker logs --tail 200 xkp5-stable-java
 docker logs --tail 200 xkp5-stable-vue
 ```
+
+SSH Bridge 是下载 Agent 部署包和远程部署 Agent 的平台内部依赖，不对宿主机发布端口。`MATCH_SSH_BRIDGE_TOKEN` 必须使用随机值，Bridge 密钥保存在 `match-v2_ssh_bridge_data` 卷中；升级和重建容器时不得删除该卷。
 
 ## 4. Agent 升级
 

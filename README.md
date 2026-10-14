@@ -264,9 +264,9 @@ make prod-down
 ./deploy/server-update.sh
 ```
 
-脚本会先将数据库备份到项目同级的 `backups/`，再快进拉取 `master`、构建并
-依次更新 Java 和 Vue。MySQL、FastDFS、数据库卷、上传文件和 `.env` 不会被
-重建或删除。也可以使用等价入口：
+脚本会先将数据库和 `.env` 备份到项目同级的 `backups/`，再快进拉取 `master`、构建并
+依次更新 SSH Bridge、Java 和 Vue。MySQL、FastDFS、数据库卷和上传文件不会被
+重建或删除；旧安装缺少 Bridge 令牌时会自动生成并写入 `.env`。也可以使用等价入口：
 
 ```bash
 make server-update

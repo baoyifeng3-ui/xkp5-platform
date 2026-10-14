@@ -36,7 +36,7 @@ if ((dry_run)); then
   cat <<EOF
 [xkp5-online-update] Dry run only.
 [xkp5-online-update] 1. Clone $repo at $ref.
-[xkp5-online-update] 2. Build Java, Vue, and Registry Importer images.
+[xkp5-online-update] 2. Build SSH Bridge, Java, Vue, and Registry Importer images.
 [xkp5-online-update] 3. Back up MySQL under $install_dir/backups/.
 [xkp5-online-update] 4. Switch versioned application images; preserve MySQL, FastDFS, and volumes.
 [xkp5-online-update] 5. Health-check Java and Vue; rollback application metadata on failure.
@@ -48,7 +48,7 @@ fi
 [[ -n $repo && -n $ref ]] || die 'Repository and ref are required'
 [[ $install_dir == /* && $install_dir != / && $install_dir != /opt && $install_dir != /root ]] || die 'Unsafe install directory'
 [[ $health_timeout =~ ^[1-9][0-9]*$ ]] || die 'Health timeout must be a positive integer'
-for command_name in git docker curl gzip sha256sum; do command -v "$command_name" >/dev/null || die "Required command not found: $command_name"; done
+for command_name in git docker curl gzip sha256sum openssl; do command -v "$command_name" >/dev/null || die "Required command not found: $command_name"; done
 docker compose version >/dev/null 2>&1 || die 'Docker Compose v2 is required'
 docker info >/dev/null 2>&1 || die 'Docker is not running'
 [[ -f $install_dir/.env && -f $install_dir/release.env && -f $install_dir/compose.offline.yml ]] || die "Existing installation not found: $install_dir"
@@ -118,13 +118,18 @@ old_version=$(sed -n 's/^MATCH_RELEASE_VERSION=//p' "$install_dir/release.env")
 [[ $new_version != "$old_version" ]] || die "Version $new_version is already installed"
 
 source_compose=(docker compose --project-name xkp5-online-build --env-file "$install_dir/.env" -f "$checkout_dir/source/compose.prod.yml")
-log 'Building Java and Vue images'
-"${source_compose[@]}" build java vue
+bridge_token=$(sed -n 's/^MATCH_SSH_BRIDGE_TOKEN=//p' "$install_dir/.env" | head -n 1)
+bridge_token=${bridge_token:-$(openssl rand -hex 32)}
+export MATCH_SSH_BRIDGE_TOKEN=$bridge_token
+log 'Building SSH Bridge, Java and Vue images'
+"${source_compose[@]}" build ssh-bridge java vue
 java_image=$("${source_compose[@]}" images -q java | head -n 1)
 vue_image=$("${source_compose[@]}" images -q vue | head -n 1)
-[[ -n $java_image && -n $vue_image ]] || die 'Unable to resolve built application images'
+ssh_bridge_image=$("${source_compose[@]}" images -q ssh-bridge | head -n 1)
+[[ -n $java_image && -n $vue_image && -n $ssh_bridge_image ]] || die 'Unable to resolve built application images'
 docker tag "$java_image" "match-v2_java:$new_version"
 docker tag "$vue_image" "match-v2_vue:$new_version"
+docker tag "$ssh_bridge_image" "xkp5/ssh-bridge:$new_version"
 
 log 'Building Registry Importer image'
 mkdir -p "$checkout_dir/source/java/match-mgr/target"
@@ -158,11 +163,13 @@ set_env_value "$install_dir/release.env" MATCH_RELEASE_CREATED_AT "$(date -u +%Y
 set_env_value "$install_dir/release.env" MATCH_REGISTRY_IMPORTER_IMAGE "xkp5/registry-importer:$new_version"
 set_env_value "$install_dir/.env" MATCH_RELEASE_VERSION "$new_version"
 set_env_value "$install_dir/.env" MATCH_REGISTRY_IMPORTER_IMAGE "xkp5/registry-importer:$new_version"
+set_env_value "$install_dir/.env" MATCH_SSH_BRIDGE_TOKEN "$bridge_token"
+set_env_value "$install_dir/.env" XKP_SSH_BRIDGE_VOLUME_NAME match-v2_ssh_bridge_data
 compose config --quiet
 
 rollback_needed=1
 log "Switching application release $old_version -> $new_version"
-compose up -d --no-deps --force-recreate registry-importer java vue
+compose up -d --force-recreate ssh-bridge registry-importer java vue
 backend_port=$(published_port java 19141)
 frontend_port=$(published_port vue 19090)
 wait_url Java "http://127.0.0.1:$backend_port/health" || die 'Java health check failed'

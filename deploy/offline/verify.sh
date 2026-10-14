@@ -33,11 +33,15 @@ require_command docker
 require_command curl
 
 running_count=$(compose_at "$install_dir" ps --status running -q | wc -l | tr -d ' ')
-[[ "$running_count" == 7 ]] || die "Expected 7 running containers; found $running_count"
+[[ "$running_count" == 8 ]] || die "Expected 8 running containers; found $running_count"
 
 mysql_id=$(compose_at "$install_dir" ps -q mysql)
 mysql_health=$(docker inspect --format '{{.State.Health.Status}}' "$mysql_id")
 [[ "$mysql_health" == healthy ]] || die "MySQL is not healthy: $mysql_health"
+
+ssh_bridge_id=$(compose_at "$install_dir" ps -q ssh-bridge)
+ssh_bridge_health=$(docker inspect --format '{{.State.Health.Status}}' "$ssh_bridge_id")
+[[ "$ssh_bridge_health" == healthy ]] || die "SSH Bridge is not healthy: $ssh_bridge_health"
 
 for service in java vue; do
   container_id=$(compose_at "$install_dir" ps -q "$service")

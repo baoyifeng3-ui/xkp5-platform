@@ -111,6 +111,7 @@ chmod 0700 "$config_dir" "$registry_tls_dir" "$registry_auth_dir" "$registry_sec
 db_password=$(openssl rand -hex 32)
 competition_key=$(openssl rand -base64 32 | tr -d '\n')
 registry_password=$(openssl rand -hex 32)
+ssh_bridge_token=$(openssl rand -hex 32)
 registry_user=xkp-importer
 
 host_identity_script="$install_dir/deploy/host-identity.sh"
@@ -178,8 +179,8 @@ XKP_CODE_SERVER_TLS_DIR=$code_server_tls_dir
 XKP_CODE_SERVER_ROOT_CA_FILE=$code_server_tls_dir/rootCA.pem
 XKP_CODE_SERVER_CA_KEY_FILE=$code_server_tls_dir/ca.key
 XKP_AGENT_PACKAGE_DIR=$install_dir/xkp-agent
-MATCH_SSH_BRIDGE_URL=${MATCH_SSH_BRIDGE_URL:-http://127.0.0.1:19245}
-MATCH_SSH_BRIDGE_TOKEN=${MATCH_SSH_BRIDGE_TOKEN:-xkp5-development-ssh-bridge}
+MATCH_SSH_BRIDGE_URL=http://ssh-bridge:19245
+MATCH_SSH_BRIDGE_TOKEN=$ssh_bridge_token
 XKP_REGISTRY_IMAGE=$registry_image
 XKP_REGISTRY_IMPORTER_IMAGE=$registry_importer_image
 XKP_REGISTRY_TLS_DIR=$registry_tls_dir
@@ -192,6 +193,7 @@ XKP_REGISTRY_STAGING_ROOT=/data/registry-staging
 XKP_REGISTRY_IMPORT_ROOT=/data/registry-import
 XKP_REGISTRY_MAX_FILE_BYTES=21474836480
 XKP_REGISTRY_VOLUME_NAME=match-v2_registry_data
+XKP_SSH_BRIDGE_VOLUME_NAME=match-v2_ssh_bridge_data
 MATCH_RELEASE_VERSION=$release_version
 EOF
 install -o root -g root -m 0600 "$env_tmp" "$config_dir/xkp5.env"

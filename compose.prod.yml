@@ -93,6 +93,25 @@ services:
     depends_on:
       - fastdfs-tracker
 
+  ssh-bridge:
+    image: xkp5/ssh-bridge:latest
+    build:
+      context: .
+      dockerfile: docker/ssh-bridge/Dockerfile
+    restart: unless-stopped
+    environment:
+      XKP_SSH_BRIDGE_TOKEN: ${MATCH_SSH_BRIDGE_TOKEN:?Set MATCH_SSH_BRIDGE_TOKEN}
+      XKP_SSH_BRIDGE_STATE_DIR: /var/lib/xkp/ssh
+    expose:
+      - "19245"
+    volumes:
+      - ssh_bridge_data:/var/lib/xkp/ssh
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- --header='X-Bridge-Token: '$$XKP_SSH_BRIDGE_TOKEN http://127.0.0.1:19245/public-key >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
   java:
     image: match-v2_java:latest
     build:
@@ -126,8 +145,8 @@ services:
       XKP_AGENT_PACKAGE_ROOT: /opt/xkp-agent-package
       XKP_AGENT_CA_FILE: /etc/xkp/agent-tls/ca.crt
       XKP_AGENT_MANAGEMENT_URL: ${XKP_AGENT_MANAGEMENT_URL:?Set XKP_AGENT_MANAGEMENT_URL}
-      MATCH_SSH_BRIDGE_URL: ${MATCH_SSH_BRIDGE_URL:-http://127.0.0.1:19245}
-      MATCH_SSH_BRIDGE_TOKEN: ${MATCH_SSH_BRIDGE_TOKEN:-xkp5-development-ssh-bridge}
+      MATCH_SSH_BRIDGE_URL: http://ssh-bridge:19245
+      MATCH_SSH_BRIDGE_TOKEN: ${MATCH_SSH_BRIDGE_TOKEN:?Set MATCH_SSH_BRIDGE_TOKEN}
       XKP_CODE_SERVER_ROOT_CA_FILE: ${XKP_CODE_SERVER_ROOT_CA_FILE:-/etc/xkp/code-server-tls/rootCA.pem}
       XKP_CODE_SERVER_CA_KEY_FILE: ${XKP_CODE_SERVER_CA_KEY_FILE:-/etc/xkp/code-server-tls/ca.key}
     volumes:
@@ -146,6 +165,8 @@ services:
         condition: service_healthy
       fastdfs-storage:
         condition: service_started
+      ssh-bridge:
+        condition: service_healthy
 
   vue:
     image: match-v2_vue:latest
@@ -169,3 +190,5 @@ volumes:
   match_prod_mysql:
   registry_data:
     name: ${XKP_REGISTRY_VOLUME_NAME:-match-v2_registry_data}
+  ssh_bridge_data:
+    name: ${XKP_SSH_BRIDGE_VOLUME_NAME:-match-v2_ssh_bridge_data}

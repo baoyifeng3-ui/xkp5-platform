@@ -103,14 +103,17 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 log "Building application images"
-compose_source build java vue
+compose_source build java vue ssh-bridge
 compose_source pull registry registry-importer
 java_image_id=$(compose_source images -q java | head -n 1)
 vue_image_id=$(compose_source images -q vue | head -n 1)
+ssh_bridge_image_id=$(compose_source images -q ssh-bridge | head -n 1)
 [[ -n "$java_image_id" ]] || die "Unable to resolve the Java image"
 [[ -n "$vue_image_id" ]] || die "Unable to resolve the Vue image"
+[[ -n "$ssh_bridge_image_id" ]] || die "Unable to resolve the SSH Bridge image"
 docker tag "$java_image_id" "match-v2_java:$version"
 docker tag "$vue_image_id" "match-v2_vue:$version"
+docker tag "$ssh_bridge_image_id" "xkp5/ssh-bridge:$version"
 
 check_loaded_images "$version" "$registry_image" "$registry_importer_image"
 
@@ -149,6 +152,7 @@ log "Exporting runtime images"
 docker save \
   "match-v2_java:$version" \
   "match-v2_vue:$version" \
+  "xkp5/ssh-bridge:$version" \
   mysql:8.0 \
   delron/fastdfs:latest \
   "$registry_image" \
@@ -193,6 +197,7 @@ fi
   printf 'Architecture: linux/amd64\n'
   printf 'Java image: %s\n' "$(docker image inspect --format '{{.Id}}' "match-v2_java:$version")"
   printf 'Vue image: %s\n' "$(docker image inspect --format '{{.Id}}' "match-v2_vue:$version")"
+  printf 'SSH Bridge image: %s\n' "$(docker image inspect --format '{{.Id}}' "xkp5/ssh-bridge:$version")"
   printf 'MySQL image: %s\n' "$(docker image inspect --format '{{.Id}}' mysql:8.0)"
   printf 'FastDFS image: %s\n' "$(docker image inspect --format '{{.Id}}' delron/fastdfs:latest)"
   printf 'Registry image (%s): %s\n' "$registry_image" "$(docker image inspect --format '{{.Id}}' "$registry_image")"
@@ -238,7 +243,7 @@ for _ in $(seq 1 60); do
 done
 [[ ${source_healthy:-0} == 1 ]] || die "Source services restarted but the backend health check failed"
 source_running_count=$(compose_source ps --status running -q | wc -l | tr -d ' ')
-[[ "$source_running_count" == 7 ]] || die "Source restart expected 7 running containers; found $source_running_count"
+[[ "$source_running_count" == 8 ]] || die "Source restart expected 8 running containers; found $source_running_count"
 
 log "Creating release archive"
 tar -czf "$archive_file" -C "$output_dir" "$release_name"

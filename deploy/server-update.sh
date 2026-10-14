@@ -67,15 +67,16 @@ if ((dry_run)); then
 [server-update] 1. Validate Git, Docker, Compose, environment, branch, and worktree.
 [server-update] 2. Back up MySQL to: $backup_dir
 [server-update] 3. Fast-forward pull: origin/master
-[server-update] 4. Build services: java vue (linux/amd64, cached bases)
-[server-update] 5. Recreate and health-check: java
-[server-update] 6. Recreate and health-check: vue
-[server-update] 7. Print service status and update summary.
+[server-update] 4. Build services: ssh-bridge java vue (linux/amd64, cached bases)
+[server-update] 5. Recreate and health-check: ssh-bridge
+[server-update] 6. Recreate and health-check: java
+[server-update] 7. Recreate and health-check: vue
+[server-update] 8. Print service status and update summary.
 EOF
   exit 0
 fi
 
-for command_name in git docker curl gzip date; do
+for command_name in git docker curl gzip date openssl; do
   require_command "$command_name"
 done
 
@@ -140,6 +141,7 @@ mysql_container=$(compose ps -q mysql)
 before_commit=$(git rev-parse HEAD)
 mkdir -p "$backup_dir"
 backup_file="$backup_dir/match-before-${before_commit:0:7}-$(date +%Y%m%d-%H%M%S).sql.gz"
+env_backup="$backup_dir/xkp5-env-before-${before_commit:0:7}-$(date +%Y%m%d-%H%M%S)"
 
 log "Backing up database to $backup_file"
 compose exec -T mysql sh -c \
@@ -147,19 +149,27 @@ compose exec -T mysql sh -c \
   | gzip -c > "$backup_file"
 [[ -s "$backup_file" ]] || die "Database backup is empty: $backup_file"
 gzip -t "$backup_file" || die "Database backup is invalid: $backup_file"
+install -m 0600 .env "$env_backup"
 
 log "Pulling origin/master with fast-forward only"
 git pull --ff-only origin master
 after_commit=$(git rev-parse HEAD)
 
+if ! grep -q '^MATCH_SSH_BRIDGE_TOKEN=.' .env; then
+  printf 'MATCH_SSH_BRIDGE_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
+fi
+
 export DOCKER_DEFAULT_PLATFORM=linux/amd64
 export DOCKER_BUILDKIT=1
 
-log "Building Java and Vue images"
-compose build java vue
+log "Building SSH Bridge, Java and Vue images"
+compose build ssh-bridge java vue
+
+log "Recreating SSH Bridge service"
+compose up -d --force-recreate ssh-bridge
 
 log "Recreating Java service"
-compose up -d --no-deps --force-recreate java
+compose up -d --force-recreate java
 backend_port=$(published_port java 19141)
 if ! wait_for_url "Java" "http://127.0.0.1:$backend_port/health"; then
   compose logs --tail 120 java >&2 || true

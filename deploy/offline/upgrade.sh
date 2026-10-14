@@ -28,7 +28,7 @@ assert_safe_install_dir "$install_dir"
 [[ -f "$install_dir/.env" ]] || die "Existing installation not found: $install_dir"
 [[ -f "$install_dir/release.env" ]] || die "Existing release metadata not found"
 require_amd64
-for command_name in docker gzip sha256sum curl; do
+for command_name in docker gzip sha256sum curl openssl; do
   require_command "$command_name"
 done
 docker compose version >/dev/null
@@ -47,6 +47,7 @@ mkdir -p "$backup_dir"
 backup_database "$install_dir" "$backup_dir/mysql.sql.gz"
 install -m 0644 "$install_dir/release.env" "$backup_dir/release.env"
 install -m 0644 "$install_dir/compose.offline.yml" "$backup_dir/compose.offline.yml"
+install -m 0600 "$install_dir/.env" "$backup_dir/.env"
 
 load_images "$PACKAGE_DIR"
 check_loaded_images "$new_version"
@@ -55,10 +56,16 @@ install -m 0644 "$PACKAGE_DIR/release.env" "$install_dir/release.env"
 install -m 0755 "$PACKAGE_DIR/_common.sh" "$install_dir/_common.sh"
 install -m 0755 "$PACKAGE_DIR/verify.sh" "$install_dir/verify.sh"
 install -m 0755 "$PACKAGE_DIR/uninstall.sh" "$install_dir/uninstall.sh"
+if ! grep -q '^MATCH_SSH_BRIDGE_TOKEN=.' "$install_dir/.env"; then
+  printf 'MATCH_SSH_BRIDGE_TOKEN=%s\n' "$(openssl rand -hex 32)" >> "$install_dir/.env"
+fi
+if ! grep -q '^XKP_SSH_BRIDGE_VOLUME_NAME=.' "$install_dir/.env"; then
+  printf 'XKP_SSH_BRIDGE_VOLUME_NAME=match-v2_ssh_bridge_data\n' >> "$install_dir/.env"
+fi
 validate_install_config "$install_dir"
 
-log "Recreating Java and Vue; persistent services are unchanged"
-compose_at "$install_dir" up -d --no-deps --force-recreate java vue
+log "Recreating SSH Bridge, Java and Vue; persistent data is unchanged"
+compose_at "$install_dir" up -d --force-recreate ssh-bridge java vue
 
 if ! "$install_dir/verify.sh" --install-dir "$install_dir"; then
   printf 'Rollback metadata: cp %q %q && cp %q %q\n' \

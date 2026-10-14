@@ -44,6 +44,12 @@ grep -q 'image: match-v2_java:latest' "$REPO_ROOT/compose.prod.yml" \
 grep -q 'image: match-v2_vue:latest' "$REPO_ROOT/compose.prod.yml" \
   || fail "Production Vue image name must be stable"
 for compose_file in "$REPO_ROOT/compose.prod.yml" "$REPO_ROOT/compose.offline.yml"; do
+  grep -q '^  ssh-bridge:' "$compose_file" \
+    || fail "Production Compose must include the SSH Bridge service: $compose_file"
+  grep -q 'MATCH_SSH_BRIDGE_URL: http://ssh-bridge:19245' "$compose_file" \
+    || fail "Java must address the SSH Bridge by its Compose service name: $compose_file"
+  grep -q 'MATCH_SSH_BRIDGE_TOKEN: ${MATCH_SSH_BRIDGE_TOKEN:?Set MATCH_SSH_BRIDGE_TOKEN}' "$compose_file" \
+    || fail "Production Compose must require a private SSH Bridge token: $compose_file"
   grep -q 'XKP_LICENSE_PUBLIC_KEYS:' "$compose_file" \
     || fail "Production Compose must configure the license public keys: $compose_file"
   grep -q 'XKP_HOST_IDENTITY_FILE: /etc/xkp/host-identity.json' "$compose_file" \
@@ -92,10 +98,14 @@ grep -q 'restore_registry_archive' "$OFFLINE_DIR/_common.sh" \
   || fail "Offline helpers must restore uploaded Registry images"
 grep -q 'restore_registry_archive' "$REPO_ROOT/install-xkp5-offline.sh" \
   || fail "Quick offline install must restore uploaded Registry images"
-grep -q 'Expected 7 running containers' "$OFFLINE_DIR/verify.sh" \
+grep -q 'Expected 8 running containers' "$OFFLINE_DIR/verify.sh" \
   || fail "Offline verification must include Registry services"
 grep -q 'host-identity.sh' "$OFFLINE_DIR/install.sh" \
   || fail "Offline install must initialize the host identity"
+grep -q 'openssl rand -hex 32' "$OFFLINE_DIR/upgrade.sh" \
+  || fail "Offline upgrade must provision an SSH Bridge token for older installations"
+grep -q 'install -m 0600.*\.env' "$OFFLINE_DIR/upgrade.sh" \
+  || fail "Offline upgrade must back up the environment before migrating it"
 
 temp_dir=$(mktemp -d)
 trap 'rm -rf "$temp_dir"' EXIT
@@ -112,6 +122,7 @@ expected_images=$(printf '%s\n' \
   match-v2_vue:test-release \
   mysql:8.0 \
   registry:2 \
+  xkp5/ssh-bridge:test-release \
   xkp5/registry-importer:latest | sort)
 [[ "$images" == "$expected_images" ]] || fail "Unexpected offline image set"
 
@@ -120,7 +131,7 @@ compose_at "$temp_dir" config >/dev/null
 grep -q 'name: match-v2_mysql_data' "$REPO_ROOT/compose.offline.yml" \
   || fail "MySQL volume name must be stable"
 pull_policy_count=$(grep -c 'pull_policy: never' "$REPO_ROOT/compose.offline.yml")
-[[ "$pull_policy_count" == 7 ]] || fail "Every offline service must disable image pulls"
+[[ "$pull_policy_count" == 8 ]] || fail "Every offline service must disable image pulls"
 grep -q 'docker image prune -f' "$OFFLINE_DIR/build-release.sh" \
   || fail "Release build must prune dangling images after verification"
 if grep -Eq 'docker compose .*down .*-(v|-v)' "$OFFLINE_DIR/uninstall.sh"; then

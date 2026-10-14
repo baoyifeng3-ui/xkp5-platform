@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,11 +32,11 @@ type server struct {
 }
 
 func main() {
-	root := filepath.Join(os.Getenv("ProgramData"), "XKP5", "ssh")
+	root := bridgeRoot(os.Getenv("XKP_SSH_BRIDGE_STATE_DIR"), runtime.GOOS, os.Getenv("ProgramData"))
 	_ = os.MkdirAll(root, 0700)
 	key := filepath.Join(root, "id_ed25519")
 	if _, e := os.Stat(key); os.IsNotExist(e) {
-		c := exec.Command("ssh-keygen.exe", "-t", "ed25519", "-N", "", "-f", key, "-C", "xkp5-platform")
+		c := exec.Command(executableName(runtime.GOOS, "ssh-keygen"), "-t", "ed25519", "-N", "", "-f", key, "-C", "xkp5-platform")
 		if out, e := c.CombinedOutput(); e != nil {
 			panic(fmt.Sprintf("ssh-keygen: %s %v", out, e))
 		}
@@ -59,6 +60,23 @@ func main() {
 	httpServer := &http.Server{Addr: "0.0.0.0:19245", Handler: secured, ReadHeaderTimeout: 5 * time.Second}
 	fmt.Println("XKP SSH bridge listening on 0.0.0.0:19245")
 	panic(httpServer.ListenAndServe())
+}
+
+func executableName(goos string, name string) string {
+	if goos == "windows" {
+		return name + ".exe"
+	}
+	return name
+}
+
+func bridgeRoot(configured string, goos string, programData string) string {
+	if strings.TrimSpace(configured) != "" {
+		return configured
+	}
+	if goos == "windows" {
+		return filepath.Join(programData, "XKP5", "ssh")
+	}
+	return "/var/lib/xkp/ssh"
 }
 
 func (s *server) publicKey(w http.ResponseWriter, r *http.Request) {
@@ -92,7 +110,7 @@ func (s *server) create(w http.ResponseWriter, r *http.Request) {
 		q.User = "root"
 	}
 	id := strconv.FormatInt(time.Now().UnixNano(), 36)
-	cmd := exec.Command("ssh.exe", "-tt", "-i", s.key, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=10", q.User+"@"+q.Host)
+	cmd := exec.Command(executableName(runtime.GOOS, "ssh"), "-tt", "-i", s.key, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=10", q.User+"@"+q.Host)
 	in, _ := cmd.StdinPipe()
 	out, _ := cmd.StdoutPipe()
 	errOut, _ := cmd.StderrPipe()
