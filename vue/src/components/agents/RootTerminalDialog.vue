@@ -16,7 +16,7 @@ import { pollRootTerminal, executeRootTerminalInput, closeRootTerminal } from '@
 export default {
   name: 'RootTerminalDialog',
   props: { visible: { type: Boolean, default: false }, session: { type: Object, default: null }, agentName: { type: String, default: '处理服务器' } },
-  data: () => ({ terminal: null, fit: null, observer: null, cursor: 0, pollTimer: null, inputQueue: '', flushTimer: null, sending: false, closing: false, remoteClosed: false, connected: false, errorMessage: '', initialized: false }),
+  data: () => ({ terminal: null, fit: null, observer: null, cursor: 0, pollTimer: null, inputQueue: '', flushTimer: null, sending: false, closing: false, remoteClosed: false, sessionEnded: false, connected: false, errorMessage: '', initialized: false }),
   watch: { visible (value) { if (value) this.$nextTick(() => window.setTimeout(this.initializeTerminal, 120)) } },
   mounted () { if (this.visible) this.$nextTick(() => window.setTimeout(this.initializeTerminal, 120)) },
   beforeDestroy () { this.teardown() },
@@ -41,10 +41,10 @@ export default {
     },
     focusTerminal () { if (this.terminal) this.terminal.focus() },
     resize () { if (!this.fit || !this.$refs.terminalHost) return; window.requestAnimationFrame(() => { try { this.fit.fit() } catch (e) {} }) },
-    queueInput (data) { if (this.closing) return; this.inputQueue += data; if (!this.flushTimer) this.flushTimer = setTimeout(this.flushInput, 15) },
+    queueInput (data) { if (this.closing || this.sessionEnded) return; this.inputQueue += data; if (!this.flushTimer) this.flushTimer = setTimeout(this.flushInput, 15) },
     async flushInput () {
       this.flushTimer = null
-      if (this.sending || !this.inputQueue || this.closing) return
+      if (this.sending || !this.inputQueue || this.closing || this.sessionEnded) return
       const data = this.inputQueue.slice(0, 4096)
       this.inputQueue = this.inputQueue.slice(data.length)
       this.sending = true
@@ -55,8 +55,16 @@ export default {
       try {
         const data = await pollRootTerminal(this.session.sessionId, this.cursor)
         if (data.data) { this.terminal.write(data.data); this.cursor = Number(data.nextCursor || this.cursor); this.connected = true; this.errorMessage = ''; this.focusTerminal() }
-        if (data.closed) { this.terminal.write('\r\nSSH 会话已关闭\r\n'); return }
-      } catch (e) { this.errorMessage = 'SSH 输出连接失败' } finally { if (!this.closing) this.pollTimer = setTimeout(this.poll, 200) }
+        if (data.closed) {
+          this.sessionEnded = true
+          this.connected = false
+          this.errorMessage = data.data && data.data.includes('Permission denied')
+            ? 'SSH 身份验证失败，请重新部署 Agent 以同步管理公钥'
+            : 'SSH 会话已关闭'
+          this.terminal.write('\r\n' + this.errorMessage + '\r\n')
+          return
+        }
+      } catch (e) { this.errorMessage = 'SSH 输出连接失败'; this.connected = false } finally { if (!this.closing && !this.sessionEnded) this.pollTimer = setTimeout(this.poll, 200) }
     },
     async close () { if (this.closing) return; this.closing = true; await this.teardown(); this.$emit('update:visible', false); this.$emit('closed') },
     async teardown () {

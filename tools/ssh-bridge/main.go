@@ -122,9 +122,11 @@ func (s *server) create(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	s.sessions[id] = item
 	s.mu.Unlock()
-	go item.capture(out)
-	go item.capture(errOut)
-	go func() { _ = cmd.Wait(); item.mu.Lock(); item.closed = true; item.mu.Unlock() }()
+	var readers sync.WaitGroup
+	readers.Add(2)
+	go func() { defer readers.Done(); item.capture(out) }()
+	go func() { defer readers.Done(); item.capture(errOut) }()
+	go func() { readers.Wait(); _ = cmd.Wait(); item.mu.Lock(); item.closed = true; item.mu.Unlock() }()
 	json.NewEncoder(w).Encode(map[string]string{"sessionId": id})
 }
 func (s *server) route(w http.ResponseWriter, r *http.Request) {

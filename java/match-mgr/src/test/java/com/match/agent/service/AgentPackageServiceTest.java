@@ -9,8 +9,20 @@ import java.nio.file.Path;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 public class AgentPackageServiceTest {
+    @Test public void installerAuthorizesBothDeploymentUserAndRoot() throws Exception {
+        AgentPackageService service = new AgentPackageService(null, ".", ".", "https://localhost", ".", ".");
+        java.lang.reflect.Method wrapper = AgentPackageService.class.getDeclaredMethod(
+                "wrapper", String.class, String.class, String.class);
+        wrapper.setAccessible(true);
+        String script = (String) wrapper.invoke(service, "test-token", "test-agent", "/srv/xkp");
+        assertTrue(script.contains("\"$ssh_home/.ssh/authorized_keys\""));
+        assertTrue(script.contains("/root/.ssh/authorized_keys"));
+        assertTrue(script.contains("grep -qxFf deploy/management-ssh.pub /root/.ssh/authorized_keys"));
+    }
+
     @Test public void packagedShellScriptUsesUnixLineEndings() throws Exception {
         Path script = Files.createTempFile("xkp-agent-install-", ".sh");
         try {

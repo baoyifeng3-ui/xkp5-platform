@@ -1,5 +1,22 @@
 # TODO
 
+## 2026-10-14 SSH 终端与 5.1.1 离线发布
+
+- xt-03 的 SSH 22 端口可达且主机密钥匹配，但当前 Bridge 公钥以 `root` 和原部署账号登录均被拒绝；页面重复显示“SSH 会话已关闭”是关闭后仍持续轮询造成的。不能将 Agent 在线等同于 SSH 已授权。
+- 已修正新 Agent 部署包同时安装管理公钥到部署账号和 `root` 的 `authorized_keys`；Bridge 在标记会话结束前读取完整 SSH 错误输出；前端会话结束时停止轮询并显示认证失败提示。Go 测试、Java 定向测试、Vue 契约及生产构建通过，隔离 Bridge 对 xt-03 的真实探测返回明确的 `Permission denied`。
+- 现有 xt-03 尚需以有效的远端部署账号重新运行修复后的 Agent 部署流程以同步公钥；在此之前不宣称 SSH 终端已在该服务器恢复。
+- 5.1.1 Ubuntu 20.04 空数据离线归档与升级脚本正在构建；5.1.0 发布物保持不变。
+
+## 2026-10-14 Windows 开发环境更新与 Ubuntu 兼容性边界
+
+- 已更新本机 Docker 开发运行环境：`xkp5-stable-java`、`xkp5-stable-vue` 和 `xkp5-stable-ssh-bridge` 均运行；Vue 使用本轮开发镜像，SSH Bridge 使用本轮开发镜像，旧 Java/Vue 容器与回退标签保留。
+- 已验证 Bridge 公钥接口、Java/前端 HTTP 响应、学生登录冒烟、Go 测试、Agent 下载错误契约及 12 项 Vue 关键契约测试；未修改数据库和业务数据。
+- 早前 Agent 部署包下载曾受平台授权到期（HTTP 423 / `EXPIRED`）阻断；本次截图已证明远端取得并执行了安装脚本，当前阻断点为该脚本的 CRLF 换行。
+- 已修复远程部署失败时只显示退出码的问题：`RemoteAgentDeploymentService` 现在捕获远端标准错误，并在非零退出时将脚本的实际错误返回前端；已构建 `match-v2_java:dev-remote-deploy-errors-20261014` 并切换到开发容器。旧 Java 容器和镜像仍保留，可回滚。
+- 修复版 Java 开发容器健康接口返回 HTTP 200，前端 HTTP 200，静态部署冒烟通过；本轮未执行真实 SSH/Ubuntu Agent 部署，因此尚不能确认目标机的具体退出码根因。
+- 后续重试已得到远端确切错误：`deploy/install.sh` 第 2 行 `pipefail` 无效。确认 Windows 工作区中的 `xkp-agent/deploy/install.sh` 为 CRLF，Java 打包此前逐字节复制；现已在打包四个 shell 脚本时统一转换为 LF，新增归档字节回归测试并通过，Java 开发镜像 `match-v2_java:dev-agent-lf-20261014` 已运行、健康接口 HTTP 200。尚未在 Ubuntu 目标机复测安装成功。
+- Windows Docker 开发环境通过不等于 Ubuntu 20.04 生产验收通过。生产机仍需按 Ubuntu 路径、Docker Engine/Compose、证书挂载、systemd/SSH、防火墙和 Linux amd64 实际执行一次部署、升级、回滚及 Agent 下发验收。
+
 ## 2026-10-14 Agent 部署链路修复
 
 - 已确认全新离线部署的“下载部署包”和“远程部署 Agent”共同失败，根因是发布包未包含 `ssh-bridge`，且 Java 容器错误访问自身的 `127.0.0.1:19245`。
