@@ -9,6 +9,7 @@ import com.match.agent.model.RemoteAgentDeployRequest;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -71,12 +72,20 @@ public class RemoteAgentDeploymentService {
 
     private String exec(Session session, String command, String stdin) throws Exception {
         ChannelExec channel = (ChannelExec) session.openChannel("exec");
-        channel.setCommand(command); channel.setInputStream(stdin == null ? null : new ByteArrayInputStream(stdin.getBytes(StandardCharsets.UTF_8))); channel.setErrStream(null);
+        ByteArrayOutputStream errorOutput = new ByteArrayOutputStream();
+        channel.setCommand(command); channel.setInputStream(stdin == null ? null : new ByteArrayInputStream(stdin.getBytes(StandardCharsets.UTF_8))); channel.setErrStream(errorOutput);
         InputStream input = channel.getInputStream(); channel.connect(10000);
         byte[] buffer = new byte[8192]; StringBuilder output = new StringBuilder();
         while (!channel.isClosed()) { while (input.available() > 0) { int n = input.read(buffer); if (n > 0) output.append(new String(buffer, 0, n, StandardCharsets.UTF_8)); } Thread.sleep(100); }
         while (input.available() > 0) { int n = input.read(buffer); if (n > 0) output.append(new String(buffer, 0, n, StandardCharsets.UTF_8)); }
-        int status = channel.getExitStatus(); channel.disconnect(); if (status != 0) throw new IllegalStateException("远程命令失败，退出码 " + status + "：" + output); return output.toString();
+        int status = channel.getExitStatus(); channel.disconnect();
+        if (status != 0) {
+            String stdout = output.toString();
+            String stderr = new String(errorOutput.toByteArray(), StandardCharsets.UTF_8);
+            String detail = (stdout + (stderr.isEmpty() ? "" : "\n" + stderr)).trim();
+            throw new IllegalStateException("远程命令失败，退出码 " + status + (detail.isEmpty() ? "" : "：" + detail));
+        }
+        return output.toString();
     }
 
     private void validate(RemoteAgentDeployRequest request) {

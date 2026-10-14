@@ -77,10 +77,10 @@ public class AgentPackageService {
         try (GZIPOutputStream gzip = new GZIPOutputStream(output)) {
             leafDir = codeServerLeaf(request.getServerIp());
             addFile(gzip, "dist/xkp-agent-linux-amd64", packageRoot.resolve("dist/xkp-agent-linux-amd64"), 0755);
-            addFile(gzip, "deploy/install.sh", packageRoot.resolve("deploy/install.sh"), 0755);
-            addFile(gzip, "deploy/one-click-install.sh", packageRoot.resolve("deploy/one-click-install.sh"), 0755);
-            addFile(gzip, "deploy/build-linux.sh", packageRoot.resolve("deploy/build-linux.sh"), 0755);
-            addFile(gzip, "deploy/verify.sh", packageRoot.resolve("deploy/verify.sh"), 0755);
+            addShellScript(gzip, "deploy/install.sh", packageRoot.resolve("deploy/install.sh"));
+            addShellScript(gzip, "deploy/one-click-install.sh", packageRoot.resolve("deploy/one-click-install.sh"));
+            addShellScript(gzip, "deploy/build-linux.sh", packageRoot.resolve("deploy/build-linux.sh"));
+            addShellScript(gzip, "deploy/verify.sh", packageRoot.resolve("deploy/verify.sh"));
             addFile(gzip, "deploy/xkp-agent.service", packageRoot.resolve("deploy/xkp-agent.service"), 0644);
             addFile(gzip, "deploy/ca.crt", caFile, 0644);
             addFile(gzip, "deploy/code-cert.pem", leafDir.resolve("code-cert.pem"), 0644);
@@ -130,6 +130,11 @@ public class AgentPackageService {
             while ((read = input.read(buffer)) != -1) { output.write(buffer, 0, read); written += read; }
             writePadding(output, written);
         }
+    }
+
+    void addShellScript(OutputStream output, String name, Path source) throws IOException {
+        String content = Files.readString(source, StandardCharsets.UTF_8).replace("\r\n", "\n");
+        addText(output, name, content, 0755);
     }
 
     private Path codeServerLeaf(String ip) {
