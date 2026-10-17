@@ -1,11 +1,12 @@
 # TODO
 
-## 2026-10-14 SSH 终端与 5.1.1 离线发布
+## 2026-10-17 SSH 终端与 5.1.1 离线发布
 
 - xt-03 的 SSH 22 端口可达且主机密钥匹配，但当前 Bridge 公钥以 `root` 和原部署账号登录均被拒绝；页面重复显示“SSH 会话已关闭”是关闭后仍持续轮询造成的。不能将 Agent 在线等同于 SSH 已授权。
 - 已修正新 Agent 部署包同时安装管理公钥到部署账号和 `root` 的 `authorized_keys`；Bridge 在标记会话结束前读取完整 SSH 错误输出；前端会话结束时停止轮询并显示认证失败提示。Go 测试、Java 定向测试、Vue 契约及生产构建通过，隔离 Bridge 对 xt-03 的真实探测返回明确的 `Permission denied`。
-- 现有 xt-03 尚需以有效的远端部署账号重新运行修复后的 Agent 部署流程以同步公钥；在此之前不宣称 SSH 终端已在该服务器恢复。
-- 5.1.1 Ubuntu 20.04 空数据离线归档与升级脚本正在构建；5.1.0 发布物保持不变。
+- 本机开发容器已切换到 `match-v2_java:5.1.1`、`match-v2_vue:5.1.1`、`xkp5/ssh-bridge:5.1.1`，原容器以 `*-before-f1f5583-20261017` 名称保留。前端 HTTP 200，Java 启动成功，Java 容器访问 Bridge 公钥接口 HTTP 200；匿名访问 Java 受保护接口返回缺少 Token，不能作为健康失败判断。
+- 现有 xt-03 尚需以有效的远端部署账号重新运行修复后的 Agent 部署流程以同步公钥；在此之前不宣称 SSH 终端已在该服务器恢复。开发环境切换镜像不会自动改变目标机的 `authorized_keys`。
+- 已生成 Ubuntu 20.04/amd64 空数据 `dist/ubuntu20.04/xkp5-offline-5.1.1.tar.gz`（SHA256 `c22a48fcf7820d85717f9e3e58123711ef380e1ff0969aaa7fdf944facee3621`）与绑定该哈希的 `install-xkp5-offline.sh`。归档内含 `upgrade.sh`，同一归档用于现有部署升级。归档可读取、内层 SHA256SUMS 全通过、关键 shell 脚本语法通过，Docker `containerd.io` 包为 Ubuntu 20.04 amd64。尚未在真实 Ubuntu 主机执行安装或升级；5.1.0 发布物保持不变。
 
 ## 2026-10-14 Windows 开发环境更新与 Ubuntu 兼容性边界
 
