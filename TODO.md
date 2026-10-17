@@ -7,6 +7,7 @@
 - 本机开发容器已切换到 `match-v2_java:5.1.1`、`match-v2_vue:5.1.1`、`xkp5/ssh-bridge:5.1.1`，原容器以 `*-before-f1f5583-20261017` 名称保留。前端 HTTP 200，Java 启动成功，Java 容器访问 Bridge 公钥接口 HTTP 200；匿名访问 Java 受保护接口返回缺少 Token，不能作为健康失败判断。
 - 现有 xt-03 尚需以有效的远端部署账号重新运行修复后的 Agent 部署流程以同步公钥；在此之前不宣称 SSH 终端已在该服务器恢复。开发环境切换镜像不会自动改变目标机的 `authorized_keys`。
 - 已生成 Ubuntu 20.04/amd64 空数据 `dist/ubuntu20.04/xkp5-offline-5.1.1.tar.gz`（SHA256 `c22a48fcf7820d85717f9e3e58123711ef380e1ff0969aaa7fdf944facee3621`）与绑定该哈希的 `install-xkp5-offline.sh`。归档内含 `upgrade.sh`，同一归档用于现有部署升级。归档可读取、内层 SHA256SUMS 全通过、关键 shell 脚本语法通过，Docker `containerd.io` 包为 Ubuntu 20.04 amd64。尚未在真实 Ubuntu 主机执行安装或升级；5.1.0 发布物保持不变。
+- GitHub 同步待完成：本地修复提交已落盘，2026-10-17 三次 `git fetch origin main` 均因 GitHub 443 连接重置或超时失败；网络恢复后应先 fetch 核对远端再推送。
 
 ## 2026-10-14 Windows 开发环境更新与 Ubuntu 兼容性边界
 
